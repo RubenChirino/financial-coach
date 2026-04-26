@@ -1,0 +1,115 @@
+import { db } from "@/db/client";
+import { users } from "@/db/schema";
+import { buildAdvisorContext } from "@/lib/advisor/context";
+import {
+  appendMessage,
+  createConversation,
+  getConversationMessages,
+  maybeAutoTitle,
+} from "@/lib/advisor/conversations";
+import { buildSystemPrompt } from "@/lib/advisor/prompt";
+import { getCurrentSession } from "@/lib/auth/session";
+import { getLanguageModel, providerInfo } from "@/lib/llm/provider";
+import { guardCsrf } from "@/lib/security/csrf";
+import { streamText } from "ai";
+import { eq } from "drizzle-orm";
+import type { NextRequest } from "next/server";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+interface ChatBody {
+  conversationId?: number;
+  messages: { role: "user" | "assistant"; content: string }[];
+}
+
+/**
+ * Streaming chat endpoint for the financial coach.
+ *
+ * Flow per request:
+ *   1. Auth check via session cookie. No session → 401.
+ *   2. Cloud-consent gate: if provider != ollama and `cloudLlmConsentAt` is null → 403.
+ *      The UI shows a consent dialog and POSTs to a separate consent action; only
+ *      then is the chat call retried.
+ *   3. Build a *fresh* `AdvisorContext` (redacted aggregates) per request. We don't
+ *      cache it — the user's data may have changed since the last turn.
+ *   4. Persist the user's new message immediately (so refresh-mid-stream still
+ *      keeps it). The assistant's reply is persisted in `onFinish` once streaming
+ *      completes.
+ *   5. Stream the response via the AI SDK's data-stream protocol so the React
+ *      `useChat` hook can render tokens as they arrive.
+ */
+export async function POST(req: NextRequest): Promise<Response> {
+  // CSRF: a cross-site form submission would otherwise rack up paid LLM calls
+  // and persist messages under the victim's account.
+  const csrf = guardCsrf(req);
+  if (csrf) return csrf;
+
+  const session = await getCurrentSession();
+  if (!session) return new Response("unauthenticated", { status: 401 });
+
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, session.userId),
+  });
+  if (!user) return new Response("user not found", { status: 401 });
+
+  const prefs = { provider: user.llmProvider, model: user.llmModel };
+  const info = providerInfo(prefs);
+
+  if (!info.isLocal && user.cloudLlmConsentAt == null) {
+    return new Response(JSON.stringify({ error: "cloudConsentRequired" }), {
+      status: 403,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  const body = (await req.json()) as ChatBody;
+  if (!Array.isArray(body.messages) || body.messages.length === 0) {
+    return new Response("missing messages", { status: 400 });
+  }
+  const lastUser = [...body.messages].reverse().find((m) => m.role === "user");
+  if (!lastUser || !lastUser.content.trim()) {
+    return new Response("missing user message", { status: 400 });
+  }
+
+  const conversationId = body.conversationId ?? (await createConversation(""));
+
+  // Persist the inbound user message before doing any LLM work, so we don't lose
+  // it on a server crash or stream cancellation.
+  await appendMessage(conversationId, "user", lastUser.content);
+  await maybeAutoTitle(conversationId, lastUser.content);
+
+  // History from DB is the source of truth (the client may be out of sync after
+  // refresh). We pass the full history every turn — at typical sizes this fits
+  // easily in the context window.
+  const persisted = await getConversationMessages(conversationId);
+  const language = user.language === "en" ? "en" : "es";
+  const ctx = await buildAdvisorContext({ monthsBack: 3 });
+  const system = buildSystemPrompt(language, ctx);
+
+  const { model } = getLanguageModel(prefs);
+
+  const result = streamText({
+    model,
+    system,
+    messages: persisted
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => ({ role: m.role, content: m.content })),
+    temperature: 0.4,
+    onFinish: async ({ text, usage }) => {
+      try {
+        await appendMessage(conversationId, "assistant", text, {
+          tokenCount: usage?.totalTokens ?? 0,
+          providerUsed: `${info.provider}:${info.model}`,
+        });
+      } catch (err) {
+        console.warn("failed to persist assistant message", err);
+      }
+    },
+  });
+
+  const response = result.toDataStreamResponse();
+  // Surface the conversation ID so the client can save it for follow-up turns.
+  response.headers.set("X-Conversation-Id", String(conversationId));
+  return response;
+}

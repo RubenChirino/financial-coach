@@ -1,0 +1,344 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ─── Inter variable font (self-hosted from /public/fonts) ─── */
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter-VariableFont_opsz_wght.ttf") format("truetype-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter-Italic-VariableFont_opsz_wght.ttf") format("truetype-variations");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* ────────────────────────────────────────────────────────────
+   * shadcn/Radix tokens (retained — existing components depend on these)
+   * Remapped onto the Coin palette so light-mode UI matches the design
+   * without touching every component.
+   * ──────────────────────────────────────────────────────────── */
+  --background: #eff5fe;
+  --foreground: #0f1421;
+  --card: #ffffff;
+  --card-foreground: #0f1421;
+  --popover: #ffffff;
+  --popover-foreground: #0f1421;
+  --primary: #5389ff;
+  --primary-foreground: #ffffff;
+  --secondary: #e2eefe;
+  --secondary-foreground: #0f1421;
+  --muted: #e2eefe;
+  --muted-foreground: rgba(15, 20, 33, 0.55);
+  --accent: #d4e6ff;
+  --accent-foreground: #0f1421;
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: #ffffff;
+  --border: #d4e6ff;
+  --input: #d4e6ff;
+  --ring: #5389ff;
+  --radius: 0.625rem;
+
+  /* ────────────────────────────────────────────────────────────
+   * Coin design tokens (verbatim from design/colors_and_type.css)
+   * Use these for any new component built from Phase 7b onwards.
+   * ──────────────────────────────────────────────────────────── */
+
+  /* Brand / creative */
+  --brand-primary: #5389ff;
+  --brand-primary-hover: #3e76f2;
+  --brand-primary-soft: #d4e6ff;
+  --brand-primary-border: #86adff;
+  --creative-pink: #ffd1dc;
+  --creative-pink-hover: #ffbdcd;
+  --creative-pink-text: #8b2d43;
+
+  /* Surfaces */
+  --surface-app: #eff5fe;
+  --surface-sidebar: #e2eefe;
+  --surface-card: #ffffff;
+
+  /* Text hierarchy */
+  --text-primary: #0f1421;
+  --text-secondary: rgba(15, 20, 33, 0.7);
+  --text-tertiary: rgba(15, 20, 33, 0.55);
+  --text-on-primary: #ffffff;
+
+  /* Borders */
+  --border-default: #d4e6ff;
+  --border-strong: #86adff;
+
+  /* Type scale */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --display-size: 32px;
+  --display-lh: 40px;
+  --display-weight: 600;
+  --h1-size: 24px;
+  --h1-lh: 32px;
+  --h1-weight: 600;
+  --h2-size: 18px;
+  --h2-lh: 24px;
+  --h2-weight: 600;
+  --h3-size: 16px;
+  --h3-lh: 22px;
+  --h3-weight: 600;
+  --body-size: 14px;
+  --body-lh: 20px;
+  --body-weight: 400;
+  --label-size: 13px;
+  --label-lh: 16px;
+  --label-weight: 500;
+  --caption-size: 12px;
+  --caption-lh: 16px;
+  --caption-weight: 400;
+
+  /* Spacing (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(15, 20, 33, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 20, 33, 0.08), 0 2px 4px rgba(15, 20, 33, 0.04);
+  --shadow-card: 0 1px 3px rgba(15, 20, 33, 0.07), 0 1px 2px rgba(15, 20, 33, 0.04);
+  --shadow-focus: 0 0 0 2px rgba(83, 137, 255, 0.4);
+
+  /* Semantic colours */
+  --error: #dc2626;
+  --error-soft: #fef2f2;
+  --error-border: #fecaca;
+  --success: #059669;
+  --success-soft: #f0fdf4;
+  --warning: #d97706;
+  --warning-soft: #fffbeb;
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+}
+
+.dark {
+  /* shadcn tokens (dark) */
+  --background: #0c1220;
+  --foreground: #eaf0ff;
+  --card: #131a2b;
+  --card-foreground: #eaf0ff;
+  --popover: #131a2b;
+  --popover-foreground: #eaf0ff;
+  --primary: #86adff;
+  --primary-foreground: #0c1220;
+  --secondary: #1a2338;
+  --secondary-foreground: #eaf0ff;
+  --muted: #1a2338;
+  --muted-foreground: rgba(234, 240, 255, 0.6);
+  --accent: #1f2a44;
+  --accent-foreground: #eaf0ff;
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: #ffffff;
+  --border: #243150;
+  --input: #243150;
+  --ring: #86adff;
+
+  /* Coin tokens (dark variant — keeps brand hues, rebalances surfaces/text) */
+  --brand-primary: #86adff;
+  --brand-primary-hover: #a7c1ff;
+  --brand-primary-soft: #1f2a44;
+  --brand-primary-border: #3a4d7a;
+  --creative-pink: #f6a6bb;
+  --creative-pink-hover: #f08da8;
+  --creative-pink-text: #ffe2ec;
+
+  --surface-app: #0c1220;
+  --surface-sidebar: #131a2b;
+  --surface-card: #131a2b;
+
+  --text-primary: #eaf0ff;
+  --text-secondary: rgba(234, 240, 255, 0.72);
+  --text-tertiary: rgba(234, 240, 255, 0.55);
+  --text-on-primary: #0c1220;
+
+  --border-default: #243150;
+  --border-strong: #3a4d7a;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.55), 0 2px 4px rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-focus: 0 0 0 2px rgba(134, 173, 255, 0.45);
+
+  /* Semantic colours (dark) */
+  --error: #f87171;
+  --error-soft: #1c1010;
+  --error-border: #7f1d1d;
+  --success: #34d399;
+  --success-soft: #052e16;
+  --warning: #fbbf24;
+  --warning-soft: #1c1003;
+}
+
+@theme inline {
+  /* shadcn mapping (unchanged shape, retargeted values above) */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Coin palette surfaced to Tailwind arbitrary-value users
+   * (e.g. `bg-(--brand-primary)` or `text-(--text-tertiary)`).
+   * Also expose named color utilities for the most common picks. */
+  --color-brand: var(--brand-primary);
+  --color-brand-soft: var(--brand-primary-soft);
+  --color-brand-border: var(--brand-primary-border);
+  --color-creative: var(--creative-pink);
+  --color-creative-text: var(--creative-pink-text);
+  --color-surface-app: var(--surface-app);
+  --color-surface-sidebar: var(--surface-sidebar);
+  --color-surface-card: var(--surface-card);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html,
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--body-size);
+    line-height: var(--body-lh);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  [type="number"] {
+    font-variant-numeric: tabular-nums;
+  }
+  .tabular,
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Privacy mode — wrap any sensitive value: <span class="balance-hidden">€4.280,12</span> */
+  .balance-hidden {
+    filter: blur(8px);
+    user-select: none;
+    transition: filter var(--duration-normal) var(--ease-standard);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Baseline card primitive lifted from the design system. Tailwind `bg-card`
+   * still works for shadcn — this is additive for Coin bento tiles. */
+  .coin-card {
+    background: var(--surface-card);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow var(--duration-normal) var(--ease-standard);
+  }
+  .coin-card:hover {
+    box-shadow: var(--shadow-md);
+  }
+  .coin-display {
+    font-size: var(--display-size);
+    line-height: var(--display-lh);
+    font-weight: var(--display-weight);
+    letter-spacing: -0.015em;
+  }
+  .coin-label {
+    font-size: var(--label-size);
+    line-height: var(--label-lh);
+    font-weight: var(--label-weight);
+  }
+  .coin-caption {
+    font-size: var(--caption-size);
+    line-height: var(--caption-lh);
+    font-weight: var(--caption-weight);
+    color: var(--text-tertiary);
+  }
+
+  /* PIN pad + dots — used by /onboarding and /lock. */
+  .pin-shake {
+    animation: pin-shake-kf 380ms var(--ease-standard);
+  }
+  @keyframes pin-shake-kf {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    15% {
+      transform: translateX(-6px);
+    }
+    30% {
+      transform: translateX(6px);
+    }
+    45% {
+      transform: translateX(-4px);
+    }
+    60% {
+      transform: translateX(4px);
+    }
+    75% {
+      transform: translateX(-2px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pin-shake {
+      animation: none;
+    }
+  }
+}

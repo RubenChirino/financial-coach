@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest an improvement or new feature.
+title: "[feat] "
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Tell the story of the user hitting this, not just the feature you want.
+    validations: { required: true }
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations: { required: true }
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy impact
+      options:
+        - label: This change would add outbound network calls beyond existing ones (bank API, configured LLM).
+        - label: This change would add new persisted data.
+        - label: This change would add telemetry or analytics.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else?

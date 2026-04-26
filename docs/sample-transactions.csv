@@ -1,0 +1,31 @@
+date,amount,currency,merchant,description
+2026-01-05,-11.99,EUR,Netflix,Netflix Monthly Subscription
+2026-01-06,-9.99,EUR,Spotify,Spotify Premium
+2026-01-07,-45.00,EUR,Mercadona,Mercadona S.L. Madrid
+2026-01-09,-22.50,EUR,Cepsa,Cepsa Gasolinera
+2026-01-12,-18.00,EUR,Carrefour,Carrefour Market
+2026-01-15,1800.00,EUR,Acme Corp,Salary January 2026
+2026-01-15,-650.00,EUR,Landlord,Rent - January
+2026-01-18,-34.99,EUR,Amazon,Amazon.es order #A2341
+2026-01-22,-28.90,EUR,Mercadona,Mercadona S.L. Madrid
+2026-02-05,-11.99,EUR,Netflix,Netflix Monthly Subscription
+2026-02-06,-9.99,EUR,Spotify,Spotify Premium
+2026-02-07,-38.50,EUR,Mercadona,Mercadona S.L. Madrid
+2026-02-10,-12.99,EUR,Dia,Supermercado DIA
+2026-02-12,-20.00,EUR,Renfe,Renfe Cercanias monthly pass
+2026-02-15,1800.00,EUR,Acme Corp,Salary February 2026
+2026-02-15,-650.00,EUR,Landlord,Rent - February
+2026-02-20,-45.90,EUR,Carrefour,Carrefour Express
+2026-02-24,-18.50,EUR,Cepsa,Cepsa Gasolinera
+2026-02-28,-120.00,EUR,Vodafone,Vodafone Fibra 1Gb
+2026-03-05,-11.99,EUR,Netflix,Netflix Monthly Subscription
+2026-03-06,-9.99,EUR,Spotify,Spotify Premium
+2026-03-07,-41.20,EUR,Mercadona,Mercadona S.L. Madrid
+2026-03-10,-8.50,EUR,Starbucks,Starbucks Sol
+2026-03-13,-24.99,EUR,Amazon,Amazon.es order #B8823
+2026-03-15,1800.00,EUR,Acme Corp,Salary March 2026
+2026-03-15,-650.00,EUR,Landlord,Rent - March
+2026-03-18,-33.00,EUR,Mercadona,Mercadona S.L. Madrid
+2026-03-22,-19.50,EUR,Cepsa,Cepsa Gasolinera
+2026-03-28,-120.00,EUR,Vodafone,Vodafone Fibra 1Gb
+2026-04-05,-11.99,EUR,Netflix,Netflix Monthly Subscription
