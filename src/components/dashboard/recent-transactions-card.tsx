@@ -1,3 +1,4 @@
+import { CategoryIcon } from "@/components/category-icon";
 import { PrivacyAmount } from "@/components/privacy-amount";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -66,7 +67,11 @@ export function RecentTransactionsCard({
                   }}
                   aria-hidden
                 >
-                  {r.categoryIcon ?? <ArrowDownLeft className="h-4 w-4" strokeWidth={2.5} />}
+                  {r.categoryIcon ? (
+                    <CategoryIcon icon={r.categoryIcon} className="h-4 w-4" strokeWidth={2} />
+                  ) : (
+                    <ArrowDownLeft className="h-4 w-4" strokeWidth={2.5} />
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13px] font-medium">{r.merchant}</div>
