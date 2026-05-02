@@ -203,8 +203,15 @@ Rules:
   "Debit" or "Cargo" column with positive values).
 - Choose the closest dateFormat from the allowed list. European banks usually
   use DD/MM/YYYY or DD-MM-YYYY.
-- decimalSeparator is the character separating cents (e.g. "1.234,56" → "," ;
-  "1,234.56" → "."). thousandsSeparator is the OTHER character if used.
+- decimalSeparator and thousandsSeparator: DETERMINE THESE FROM THE ACTUAL
+  AMOUNT VALUES IN THE SAMPLE — never from the language of the merchant text.
+  Look at the rightmost separator in each amount: if amounts look like
+  "-4.50" or "-21.00" or "1,234.56" the decimal is "." and thousands is ","
+  (or empty). If amounts look like "-4,50" or "-21,00" or "1.234,56" the
+  decimal is "," and thousands is "." (or empty). When in doubt, count
+  fractional digits — exactly 2 digits after a separator means that's the
+  decimal mark. XLS files converted to CSV typically use "." decimal even
+  for European banks, because the spreadsheet stored them as numbers.
 - currencyColumn=-1 if no currency column exists; set defaultCurrency to the
   most likely 3-letter code (EUR for Spanish/European banks, GBP for UK, etc.).
 - merchantColumn=-1 if there is no clear merchant/payee column — descriptions
@@ -492,6 +499,104 @@ export interface ParseCsvWithAiResult extends ParseCsvResult {
 }
 
 /**
+ * Look at actual values in the amount column(s) and infer which character is
+ * the decimal separator. The LLM is unreliable here: when merchant text is
+ * Spanish (e.g. "Compra", "Comision") it assumes EU number format ("," decimal,
+ * "." thousands), but XLS exports converted via SheetJS always emit en-US
+ * numbers ("-4.50", "1,234.56"). Voting on fractional-digit counts beats
+ * locale guessing.
+ */
+function detectSeparatorsFromSamples(
+  samples: string[],
+): { decimal: "." | ","; thousands: "" | "." | "," | " " } | null {
+  let dotDecimal = 0;
+  let commaDecimal = 0;
+  let dotThousands = 0;
+  let commaThousands = 0;
+
+  for (const raw of samples) {
+    const s = raw
+      .trim()
+      .replace(/[()]/g, "")
+      .replace(/^[+-]/, "")
+      .replace(/[-+]$/, "")
+      .replace(/\s*[A-Z€$£¥]{1,3}$/i, "")
+      .replace(/^[€$£¥]\s*/, "")
+      .trim();
+    if (!s) continue;
+
+    const dotIdx = s.lastIndexOf(".");
+    const commaIdx = s.lastIndexOf(",");
+
+    if (dotIdx >= 0 && commaIdx >= 0) {
+      // Rightmost separator is the decimal mark.
+      if (dotIdx > commaIdx) {
+        dotDecimal++;
+        commaThousands++;
+      } else {
+        commaDecimal++;
+        dotThousands++;
+      }
+      continue;
+    }
+
+    const sep = dotIdx >= 0 ? "." : commaIdx >= 0 ? "," : null;
+    if (!sep) continue;
+    const idx = sep === "." ? dotIdx : commaIdx;
+    const frac = s.length - idx - 1;
+
+    // 2 fractional digits → decimal mark. 3 → thousands. 1 → likely decimal.
+    if (frac === 2 || frac === 1) {
+      if (sep === ".") dotDecimal++;
+      else commaDecimal++;
+    } else if (frac === 3) {
+      if (sep === ".") dotThousands++;
+      else commaThousands++;
+    }
+  }
+
+  if (dotDecimal + commaDecimal === 0) return null;
+  const decimal: "." | "," = dotDecimal >= commaDecimal ? "." : ",";
+  const thousands: "" | "." | "," =
+    decimal === "." ? (commaThousands > 0 ? "," : "") : dotThousands > 0 ? "." : "";
+  return { decimal, thousands };
+}
+
+function correctSeparators(text: string, spec: CsvMappingSpec): CsvMappingSpec {
+  const cleaned = text.replace(/^\uFEFF/, "");
+  const allLines = cleaned.split(/\r?\n/);
+  const samples: string[] = [];
+  for (let i = spec.headerLineIndex + 1; i < allLines.length && samples.length < 100; i++) {
+    const line = allLines[i];
+    if (!line || line.trim() === "") continue;
+    const cells = splitRow(line, spec.delimiter).map((c) => c.trim());
+    if (spec.amountMode === "single") {
+      const v = spec.amountColumn != null ? cells[spec.amountColumn] : undefined;
+      if (v) samples.push(v);
+    } else {
+      const d = spec.debitColumn != null ? cells[spec.debitColumn] : undefined;
+      const c = spec.creditColumn != null ? cells[spec.creditColumn] : undefined;
+      if (d) samples.push(d);
+      if (c) samples.push(c);
+    }
+  }
+
+  const detected = detectSeparatorsFromSamples(samples);
+  if (!detected) return spec;
+  if (
+    detected.decimal === spec.decimalSeparator &&
+    detected.thousands === spec.thousandsSeparator
+  ) {
+    return spec;
+  }
+  return {
+    ...spec,
+    decimalSeparator: detected.decimal,
+    thousandsSeparator: detected.thousands,
+  };
+}
+
+/**
  * Full flow: ask the LLM to infer the format, then deterministically apply it.
  * The action layer typically calls strict `parseCsv` first and only falls
  * back here if the strict parser couldn't read the header.
@@ -500,7 +605,8 @@ export async function parseCsvWithAi(
   text: string,
   prefs?: { provider?: string | null; model?: string | null },
 ): Promise<ParseCsvWithAiResult> {
-  const { spec, provider, model } = await inferMapping(text, prefs);
+  const { spec: rawSpec, provider, model } = await inferMapping(text, prefs);
+  const spec = correctSeparators(text, rawSpec);
   const result = applyMapping(text, spec);
   return { ...result, spec, provider, model };
 }

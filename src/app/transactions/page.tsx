@@ -1,12 +1,14 @@
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { PullToRefresh } from "@/components/pull-to-refresh";
+import { SpendingHeatmap } from "@/components/transactions/spending-heatmap";
 import { TransactionsView } from "@/components/transactions/transactions-view";
 import { Button } from "@/components/ui/button";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getAccountsTotal } from "@/lib/dashboard/summary";
 import { getLocale } from "@/lib/i18n/locale";
 import { listCategoryOptionsAction } from "@/lib/transactions/actions";
+import { getSpendingHeatmap } from "@/lib/transactions/heatmap";
 import { listTransactions } from "@/lib/transactions/list";
 import { Download, ListMinus } from "lucide-react";
 import { getTranslations } from "next-intl/server";
@@ -19,21 +21,27 @@ export const dynamic = "force-dynamic";
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ review?: string; q?: string }>;
+  searchParams?: Promise<{ review?: string; q?: string; heatmapYear?: string }>;
 }) {
   if (!(await getCurrentSession())) redirect("/lock");
 
   const sp = (await searchParams) ?? {};
   const reviewOnly = sp.review === "1";
   const searchQuery = sp.q?.trim() ?? "";
+  const requestedYear = Number.parseInt(sp.heatmapYear ?? "", 10);
+  const heatmapYearArg: number | "auto" =
+    Number.isFinite(requestedYear) && requestedYear >= 1900 && requestedYear <= 2100
+      ? requestedYear
+      : "auto";
 
-  const [t, tNav, locale, { rows, nextCursor }, options, accountsTotal] = await Promise.all([
+  const [t, tNav, locale, { rows, nextCursor }, options, accountsTotal, heatmap] = await Promise.all([
     getTranslations("transactions"),
     getTranslations("nav"),
     getLocale(),
     listTransactions({ needsReviewOnly: reviewOnly, query: searchQuery || undefined }),
     listCategoryOptionsAction(),
     getAccountsTotal(),
+    getSpendingHeatmap(heatmapYearArg),
   ]);
   const intlLocale = locale === "en" ? "en-US" : "es-ES";
 
@@ -79,6 +87,55 @@ export default async function TransactionsPage({
               }
             />
           ) : (
+            <>
+              <div id="heatmap">
+                <SpendingHeatmap
+                  data={heatmap}
+                  intlLocale={intlLocale}
+                  currency={accountsTotal.currency}
+                  pathname="/transactions"
+                  defaultOpen={heatmapYearArg !== "auto"}
+                  searchParams={{
+                    ...(reviewOnly ? { review: "1" } : {}),
+                    ...(searchQuery ? { q: searchQuery } : {}),
+                  }}
+                  labels={{
+                    title: t("heatmapTitle"),
+                    subtitle: t("heatmapSubtitle"),
+                    monthNames: [
+                      t("monthJan"),
+                      t("monthFeb"),
+                      t("monthMar"),
+                      t("monthApr"),
+                      t("monthMay"),
+                      t("monthJun"),
+                      t("monthJul"),
+                      t("monthAug"),
+                      t("monthSep"),
+                      t("monthOct"),
+                      t("monthNov"),
+                      t("monthDec"),
+                    ],
+                    dayInitials: [
+                      t("dayMon"),
+                      t("dayTue"),
+                      t("dayWed"),
+                      t("dayThu"),
+                      t("dayFri"),
+                      t("daySat"),
+                      t("daySun"),
+                    ],
+                    savedLabel: t("heatmapSaved"),
+                    overspentLabel: t("heatmapOverspent"),
+                    spentOnDay: t("heatmapSpentOnDay"),
+                    receivedOnDay: t("heatmapReceivedOnDay"),
+                    noActivity: t("heatmapNoActivity"),
+                    futureDay: t("heatmapFuture"),
+                    prevYear: t("heatmapPrevYear"),
+                    nextYear: t("heatmapNextYear"),
+                  }}
+                />
+              </div>
             <TransactionsView
               rows={rows}
               initialNextCursor={nextCursor}
@@ -108,6 +165,7 @@ export default async function TransactionsPage({
                 endOfList: t("endOfList"),
               }}
             />
+            </>
           )}
         </div>
       </PullToRefresh>

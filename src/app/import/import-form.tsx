@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle2, Loader2, Sparkles, Upload } from "lucide-r
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ChangeEvent, useRef, useState, useTransition } from "react";
+import * as XLSX from "xlsx";
 
 export interface ImportFormLabels {
   pasteLabel: string;
@@ -74,12 +75,28 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
   function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const isExcel = /\.(xls|xlsx)$/i.test(file.name);
     const reader = new FileReader();
-    reader.onload = () => {
-      const content = typeof reader.result === "string" ? reader.result : "";
-      setText(content);
-    };
-    reader.readAsText(file);
+    if (isExcel) {
+      reader.onload = () => {
+        const data = reader.result;
+        if (!(data instanceof ArrayBuffer)) return;
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        if (!sheetName) return;
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) return;
+        const csv = XLSX.utils.sheet_to_csv(sheet);
+        setText(csv);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = () => {
+        const content = typeof reader.result === "string" ? reader.result : "";
+        setText(content);
+      };
+      reader.readAsText(file);
+    }
   }
 
   function humanizeError(raw: string): string {
@@ -192,7 +209,7 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv,text/csv,text/plain"
+          accept=".csv,.xls,.xlsx,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           className="hidden"
           onChange={handleFile}
         />

@@ -168,7 +168,7 @@ export async function importParsedRows(
 ): Promise<ImportParsedRowsResult> {
   if (rows.length === 0) return { inserted: 0, duplicates: 0, ruleMatched: 0 };
 
-  const candidates = rows.map((r) => ({
+  const allCandidates = rows.map((r) => ({
     externalId: dedupeIdFor({
       date: r.date,
       amountCents: r.amountCents,
@@ -179,16 +179,30 @@ export async function importParsedRows(
     row: r,
   }));
 
+  // Dedupe within the batch itself: bank exports often contain identical rows
+  // (e.g. two 2.00 fees on the same day) which would otherwise collide on the
+  // global UNIQUE(gocardless_transaction_id) constraint during insert.
+  const seenInBatch = new Set<string>();
+  const candidates: typeof allCandidates = [];
+  let intraBatchDuplicates = 0;
+  for (const c of allCandidates) {
+    if (seenInBatch.has(c.externalId)) {
+      intraBatchDuplicates++;
+      continue;
+    }
+    seenInBatch.add(c.externalId);
+    candidates.push(c);
+  }
+
+  // Check globally, not just on this account: the UNIQUE constraint on
+  // gocardless_transaction_id spans the whole table.
   const existing = await db
     .select({ id: transactions.gocardlessTransactionId })
     .from(transactions)
     .where(
-      and(
-        eq(transactions.accountId, opts.accountRowId),
-        inArray(
-          transactions.gocardlessTransactionId,
-          candidates.map((c) => c.externalId),
-        ),
+      inArray(
+        transactions.gocardlessTransactionId,
+        candidates.map((c) => c.externalId),
       ),
     );
   const existingIds = new Set(existing.map((r) => r.id));
@@ -237,7 +251,7 @@ export async function importParsedRows(
 
   return {
     inserted: fresh.length,
-    duplicates: candidates.length - fresh.length,
+    duplicates: intraBatchDuplicates + (candidates.length - fresh.length),
     ruleMatched,
   };
 }
