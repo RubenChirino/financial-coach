@@ -8,12 +8,14 @@ import {
   Landmark,
   LayoutDashboard,
   LifeBuoy,
+  Lightbulb,
   type LucideIcon,
   PieChart,
   Repeat,
   Settings,
   Sparkles,
   Target,
+  TrendingUp,
   Upload,
 } from "lucide-react";
 import { getTranslations } from "next-intl/server";
@@ -32,6 +34,8 @@ const MAIN: readonly NavEntry[] = [
   { href: "/advisor", tKey: "advisor", Icon: Sparkles, matchPrefix: true },
   { href: "/categories", tKey: "budgets", Icon: PieChart, matchPrefix: true },
   { href: "/transactions", tKey: "transactions", Icon: ArrowLeftRight },
+  { href: "/predictions", tKey: "predictions", Icon: TrendingUp },
+  { href: "/opportunities", tKey: "opportunities", Icon: Lightbulb },
   { href: "/subscriptions", tKey: "subscriptions", Icon: Repeat },
   { href: "/banks", tKey: "banks", Icon: Landmark, matchPrefix: true },
 ] as const;

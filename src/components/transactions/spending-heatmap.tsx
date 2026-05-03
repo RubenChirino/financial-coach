@@ -1,20 +1,26 @@
+"use client";
+
 import type { SpendingHeatmap } from "@/lib/transactions/heatmap";
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useRef, useState } from "react";
 
 export interface SpendingHeatmapLabels {
   title: string;
   subtitle: string;
-  monthNames: string[]; // 12, January..December (localized)
-  dayInitials: string[]; // 7, starting Monday (localized)
-  savedLabel: string; // "Saved"
-  overspentLabel: string; // "Overspent"
-  spentOnDay: string; // "Spent on {date}: {amount}"
-  receivedOnDay: string; // "Received on {date}: {amount}"
-  noActivity: string; // "No activity"
-  futureDay: string; // "Future"
+  monthNames: string[];
+  dayInitials: string[];
+  savedLabel: string;
+  overspentLabel: string;
+  spentOnDay: string;
+  receivedOnDay: string;
+  noActivity: string;
+  futureDay: string;
   prevYear: string;
   nextYear: string;
+  selectedCount: string; // "{n} days selected"
+  clearSelection: string; // "Clear"
 }
 
 export function SpendingHeatmap({
@@ -25,18 +31,22 @@ export function SpendingHeatmap({
   pathname,
   searchParams,
   defaultOpen = false,
+  initialSelectedDates = [],
 }: {
   data: SpendingHeatmap;
   labels: SpendingHeatmapLabels;
   intlLocale: string;
   currency: string;
-  /** Path to keep when building year-navigation links (e.g. "/transactions"). */
   pathname: string;
-  /** Other search params to preserve when switching years. */
   searchParams: Record<string, string | undefined>;
-  /** When true, the section renders expanded. Defaults to collapsed. */
   defaultOpen?: boolean;
+  initialSelectedDates?: string[];
 }) {
+  const router = useRouter();
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelectedDates));
+  // Track the last individually-toggled date for shift-click range selection
+  const lastClickedRef = useRef<string | null>(null);
+
   const today = new Date();
   const todayUTC = new Date(
     Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
@@ -45,15 +55,45 @@ export function SpendingHeatmap({
   const years = data.availableYears.length > 0 ? data.availableYears : [data.year];
   const minYear = Math.min(...years, data.year);
   const maxYear = Math.max(...years, today.getUTCFullYear());
-  const prevYearLink = data.year > minYear ? buildYearLink(pathname, searchParams, data.year - 1) : null;
-  const nextYearLink = data.year < maxYear ? buildYearLink(pathname, searchParams, data.year + 1) : null;
+  const prevYearLink =
+    data.year > minYear ? buildYearLink(pathname, searchParams, data.year - 1) : null;
+  const nextYearLink =
+    data.year < maxYear ? buildYearLink(pathname, searchParams, data.year + 1) : null;
+
+  const pushDates = useCallback(
+    (next: Set<string>) => {
+      const params = new URLSearchParams();
+      for (const [k, v] of Object.entries(searchParams)) {
+        if (v && k !== "dates") params.set(k, v);
+      }
+      if (next.size > 0) {
+        params.set("dates", [...next].sort().join(","));
+      }
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
+
+  const toggleDate = useCallback(
+    (dateStr: string) => {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(dateStr)) next.delete(dateStr);
+        else next.add(dateStr);
+        lastClickedRef.current = dateStr;
+        pushDates(next);
+        return next;
+      });
+    },
+    [pushDates],
+  );
+
+  const clearAll = useCallback(() => {
+    setSelected(new Set());
+    pushDates(new Set());
+  }, [pushDates]);
 
   const fmt = new Intl.NumberFormat(intlLocale, {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  });
-  const fmtFull = new Intl.NumberFormat(intlLocale, {
     style: "currency",
     currency,
     minimumFractionDigits: 2,
@@ -80,16 +120,31 @@ export function SpendingHeatmap({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <YearNavButton href={prevYearLink} ariaLabel={labels.prevYear}>
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </YearNavButton>
-          <span className="min-w-[3.5rem] text-center text-sm font-medium tabular-nums">
-            {data.year}
-          </span>
-          <YearNavButton href={nextYearLink} ariaLabel={labels.nextYear}>
-            <ChevronRight className="h-3.5 w-3.5" />
-          </YearNavButton>
+        <div className="flex items-center gap-2">
+          {selected.size > 0 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                clearAll();
+              }}
+              className="inline-flex items-center gap-1 rounded-full bg-[color:var(--brand-primary-soft)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--brand-primary)] hover:opacity-80"
+            >
+              {labels.selectedCount.replace("{n}", String(selected.size))}
+              <X className="h-3 w-3" />
+            </button>
+          )}
+          <div className="flex items-center gap-1.5">
+            <YearNavButton href={prevYearLink} ariaLabel={labels.prevYear}>
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </YearNavButton>
+            <span className="min-w-[3.5rem] text-center text-sm font-medium tabular-nums">
+              {data.year}
+            </span>
+            <YearNavButton href={nextYearLink} ariaLabel={labels.nextYear}>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </YearNavButton>
+          </div>
         </div>
       </summary>
 
@@ -113,8 +168,9 @@ export function SpendingHeatmap({
             noActivityLabel={labels.noActivity}
             futureLabel={labels.futureDay}
             fmt={fmt}
-            fmtFull={fmtFull}
             dateFmt={dateFmt}
+            selected={selected}
+            onToggle={toggleDate}
           />
         ))}
       </div>
@@ -129,7 +185,7 @@ function buildYearLink(
 ): string {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(searchParams)) {
-    if (v && k !== "heatmapYear") params.set(k, v);
+    if (v && k !== "heatmapYear" && k !== "dates") params.set(k, v);
   }
   params.set("heatmapYear", String(year));
   return `${pathname}?${params.toString()}#heatmap`;
@@ -183,8 +239,9 @@ function MonthGrid({
   noActivityLabel,
   futureLabel,
   fmt,
-  fmtFull,
   dateFmt,
+  selected,
+  onToggle,
 }: {
   year: number;
   month: number;
@@ -202,11 +259,10 @@ function MonthGrid({
   noActivityLabel: string;
   futureLabel: string;
   fmt: Intl.NumberFormat;
-  fmtFull: Intl.NumberFormat;
   dateFmt: Intl.DateTimeFormat;
+  selected: Set<string>;
+  onToggle: (dateStr: string) => void;
 }) {
-  // Weekday of the 1st (0 = Sun ... 6 = Sat). We want a Monday-first grid:
-  // shift so Monday=0, Sunday=6.
   const firstWeekdaySun = new Date(Date.UTC(year, month, 1)).getUTCDay();
   const leadBlanks = (firstWeekdaySun + 6) % 7;
   const totalCells = leadBlanks + days.length;
@@ -217,7 +273,6 @@ function MonthGrid({
     isSavingMonth && maxMonthlySavingCents > 0
       ? Math.min(1, netCents / maxMonthlySavingCents)
       : 0;
-  // Drive the badge background via a CSS variable so the gradient stays themable.
   const badgeStyle: React.CSSProperties = isSavingMonth
     ? { backgroundColor: `rgba(34, 197, 94, ${0.12 + monthIntensity * 0.35})` }
     : netCents < 0
@@ -263,8 +318,11 @@ function MonthGrid({
         ))}
         {days.map((d) => {
           const cellDate = new Date(Date.UTC(year, month, d.day));
+          const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d.day).padStart(2, "0")}`;
           const isFuture = cellDate.getTime() > todayUTC.getTime();
           const isToday = cellDate.getTime() === todayUTC.getTime();
+          const isSelected = selected.has(dateStr);
+          const hasActivity = !isFuture && (d.spentCents > 0 || d.receivedCents > 0);
           const intensity =
             !isFuture && d.spentCents > 0 && maxDailySpendCents > 0
               ? Math.min(1, d.spentCents / maxDailySpendCents)
@@ -273,52 +331,71 @@ function MonthGrid({
           let title: string;
           if (isFuture) {
             title = futureLabel;
-          } else if (d.spentCents > 0 || d.receivedCents > 0) {
+          } else if (hasActivity) {
             const parts: string[] = [];
-            const dateStr = dateFmt.format(cellDate);
-            if (d.spentCents > 0) {
+            const dateLabel = dateFmt.format(cellDate);
+            if (d.spentCents > 0)
               parts.push(
                 spentOnDayLabel
-                  .replace("{date}", dateStr)
-                  .replace("{amount}", fmtFull.format(d.spentCents / 100)),
+                  .replace("{date}", dateLabel)
+                  .replace("{amount}", fmt.format(d.spentCents / 100)),
               );
-            }
-            if (d.receivedCents > 0) {
+            if (d.receivedCents > 0)
               parts.push(
                 receivedOnDayLabel
-                  .replace("{date}", dateStr)
-                  .replace("{amount}", fmtFull.format(d.receivedCents / 100)),
+                  .replace("{date}", dateLabel)
+                  .replace("{amount}", fmt.format(d.receivedCents / 100)),
               );
-            }
             title = parts.join("\n");
           } else {
             title = `${dateFmt.format(cellDate)} — ${noActivityLabel}`;
           }
 
-          // Future days get a hairline outline only — no fill.
-          // Spending days get a red fill scaled 0.15 → 0.95 alpha.
-          const style: React.CSSProperties = isFuture
-            ? {}
-            : intensity > 0
-              ? { backgroundColor: `rgba(239, 68, 68, ${0.15 + intensity * 0.8})` }
-              : {};
+          // Colors: selected = brand-primary ring + tint; spending = red fill;
+          // future = outline only; idle = faint border.
+          const bgStyle: React.CSSProperties =
+            isSelected
+              ? { backgroundColor: "color-mix(in srgb, var(--brand-primary) 30%, transparent)" }
+              : isFuture
+                ? {}
+                : intensity > 0
+                  ? { backgroundColor: `rgba(239, 68, 68, ${0.15 + intensity * 0.8})` }
+                  : {};
 
-          const baseClass =
-            "aspect-square rounded-[3px] border transition-colors";
-          const stateClass = isFuture
+          const ringClass = isSelected
+            ? "ring-2 ring-[color:var(--brand-primary)] ring-offset-1 ring-offset-[color:var(--bg-elevated)]"
+            : isToday
+              ? "ring-1 ring-[color:var(--brand-primary)]"
+              : "";
+
+          const borderClass = isFuture
             ? "border-[color:var(--border-default)]/40 bg-transparent"
             : intensity > 0
               ? "border-transparent"
               : "border-[color:var(--border-default)] bg-[color:var(--bg-base)]";
-          const todayClass = isToday ? "ring-1 ring-[color:var(--brand-primary)]" : "";
+
+          if (isFuture) {
+            return (
+              <span
+                key={d.day}
+                title={title}
+                aria-label={title}
+                className={`aspect-square rounded-[3px] border ${borderClass}`}
+                style={bgStyle}
+              />
+            );
+          }
 
           return (
-            <span
+            <button
               key={d.day}
+              type="button"
               title={title}
               aria-label={title}
-              className={`${baseClass} ${stateClass} ${todayClass}`}
-              style={style}
+              aria-pressed={isSelected}
+              onClick={() => onToggle(dateStr)}
+              className={`aspect-square cursor-pointer rounded-[3px] border transition-all hover:scale-110 hover:z-10 ${borderClass} ${ringClass}`}
+              style={bgStyle}
             />
           );
         })}

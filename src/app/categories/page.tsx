@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { CategoryRow } from "@/components/budgets/category-row";
+import { CategoryIcon } from "@/components/category-icon";
 import { EmptyState } from "@/components/empty-state";
 import { PrivacyAmount } from "@/components/privacy-amount";
 import { Button } from "@/components/ui/button";
@@ -307,7 +308,7 @@ export default async function CategoriesPage({
         {/* Two-col: categories list + detail */}
         <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
           {/* Categories list */}
-          <div className="coin-card p-2.5">
+          <div className="coin-card min-w-0 p-2.5">
             <div className="flex items-center justify-between px-2.5 py-2.5">
               <h3 className="text-[14px] font-semibold">{t("allCategories")}</h3>
               <span className="text-[11.5px] text-[color:var(--text-tertiary)]">
@@ -333,15 +334,15 @@ export default async function CategoriesPage({
           </div>
 
           {/* Detail panel */}
-          <div className="space-y-4">
-            <div className="coin-card p-5">
+          <div className="min-w-0 space-y-4">
+            <div className="coin-card min-w-0 overflow-hidden p-5">
               <div className="flex items-center gap-3.5">
                 <div
-                  className="flex h-12 w-12 items-center justify-center rounded-xl text-[20px]"
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-[20px]"
                   style={{ background: `${selected.color}22`, color: selected.color }}
                   aria-hidden
                 >
-                  {selected.icon}
+                  <CategoryIcon icon={selected.icon} className="h-5 w-5" strokeWidth={2} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="truncate text-[18px] font-semibold tracking-[-0.01em]">
@@ -465,7 +466,7 @@ export default async function CategoriesPage({
               </p>
               <Button
                 asChild
-                className="mt-3 bg-[color:var(--text-primary)] text-white hover:bg-[color:var(--text-primary)]/90"
+                className="mt-3 bg-white/90 text-[#4a1225] hover:bg-white dark:bg-white/15 dark:text-[color:var(--creative-pink-text)] dark:hover:bg-white/25"
               >
                 <Link href="/advisor?tab=chat">
                   {t("askCoach")}

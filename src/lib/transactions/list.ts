@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/db/client";
 import { accounts, categories, institutions, requisitions, transactions } from "@/db/schema";
-import { and, desc, eq, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 
 export interface TransactionRow {
   id: number;
@@ -33,6 +33,11 @@ export async function listTransactions(opts?: {
   limit?: number;
   /** Full-text search across merchant name and raw description (case-insensitive). */
   query?: string;
+  /**
+   * Filter to specific calendar days (YYYY-MM-DD). When non-empty, pagination
+   * is disabled — the result set is small by definition (≤ 7 days at most).
+   */
+  dates?: string[];
 }): Promise<{ rows: TransactionRow[]; nextCursor: { bookingDate: number; id: number } | null }> {
   const conds = [];
   if (opts?.accountId) conds.push(eq(transactions.accountId, opts.accountId));
@@ -47,7 +52,16 @@ export async function listTransactions(opts?: {
       ) ?? sql`1=1`,
     );
   }
-  if (opts?.cursor) {
+  if (opts?.dates?.length) {
+    // Match rows whose booking_date falls on one of the selected UTC calendar days.
+    conds.push(
+      inArray(
+        sql<string>`strftime('%Y-%m-%d', datetime(${transactions.bookingDate} / 1000, 'unixepoch'))`,
+        opts.dates,
+      ),
+    );
+  }
+  if (opts?.cursor && !opts?.dates?.length) {
     conds.push(
       or(
         lte(transactions.bookingDate, new Date(opts.cursor.bookingDate)),

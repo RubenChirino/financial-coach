@@ -35,6 +35,9 @@ const ctx: AdvisorContext = {
       isActive: true,
     },
   ],
+  goals: [],
+  investorProfile: null,
+  forecast: null,
 };
 
 describe("buildSystemPrompt", () => {
@@ -62,8 +65,8 @@ describe("buildSystemPrompt", () => {
     const en = buildSystemPrompt("en", ctx);
     const es = buildSystemPrompt("es", ctx);
     expect(en).toMatch(/Do not invent numbers/);
-    expect(en).toMatch(/Never recommend specific financial products/);
+    expect(en).toMatch(/NEVER recommend specific instruments/);
     expect(es).toMatch(/No inventes números/);
-    expect(es).toMatch(/Nunca recomiendes productos financieros/);
+    expect(es).toMatch(/NUNCA recomiendes instrumentos concretos/);
   });
 });

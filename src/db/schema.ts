@@ -277,6 +277,46 @@ export const insights = sqliteTable(
   ],
 );
 
+/**
+ * Investor profile — answers to the questionnaire on /opportunities. The AI
+ * Coach reads this as context to personalize the framing of educational
+ * planning content (NOT to recommend specific instruments — see the system
+ * prompt). At most one row per user; we upsert by `userId`.
+ *
+ * Storing free-text fields would invite the user to paste sensitive details;
+ * we constrain everything to enums to keep the surface narrow.
+ */
+export const investorProfiles = sqliteTable("investor_profiles", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id")
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: "cascade" }),
+  ageRange: text("age_range", {
+    enum: ["under_25", "25_34", "35_44", "45_54", "55_64", "65_plus"],
+  }).notNull(),
+  /** Years until the user expects to need this money. */
+  horizon: text("horizon", {
+    enum: ["under_1y", "1_3y", "3_7y", "7_15y", "over_15y"],
+  }).notNull(),
+  /** Self-rated reaction to a 20% drawdown. */
+  riskTolerance: text("risk_tolerance", {
+    enum: ["sell_all", "sell_some", "hold", "buy_more"],
+  }).notNull(),
+  /** Months of expenses currently held in liquid emergency funds. */
+  emergencyFundMonths: text("emergency_fund_months", {
+    enum: ["none", "under_3", "3_6", "over_6"],
+  }).notNull(),
+  dependents: text("dependents", { enum: ["none", "1_2", "3_plus"] }).notNull(),
+  primaryGoal: text("primary_goal", {
+    enum: ["emergency_fund", "house", "retirement", "education", "freedom", "other"],
+  }).notNull(),
+  /** User's own free-text note shown back to them, never sent to LLM. */
+  note: text("note"),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
+});
+
 export type Insight = typeof insights.$inferSelect;
 
 export const goalsRelations = relations(goals, ({ one }) => ({

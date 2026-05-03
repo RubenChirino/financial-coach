@@ -21,13 +21,21 @@ export const dynamic = "force-dynamic";
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ review?: string; q?: string; heatmapYear?: string }>;
+  searchParams?: Promise<{ review?: string; q?: string; heatmapYear?: string; dates?: string }>;
 }) {
   if (!(await getCurrentSession())) redirect("/lock");
 
   const sp = (await searchParams) ?? {};
   const reviewOnly = sp.review === "1";
   const searchQuery = sp.q?.trim() ?? "";
+
+  // Parse ?dates=YYYY-MM-DD,YYYY-MM-DD — validate each token is a proper ISO date.
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const selectedDates: string[] = (sp.dates ?? "")
+    .split(",")
+    .map((d) => d.trim())
+    .filter((d) => DATE_RE.test(d))
+    .slice(0, 31); // sanity cap
   const requestedYear = Number.parseInt(sp.heatmapYear ?? "", 10);
   const heatmapYearArg: number | "auto" =
     Number.isFinite(requestedYear) && requestedYear >= 1900 && requestedYear <= 2100
@@ -38,7 +46,11 @@ export default async function TransactionsPage({
     getTranslations("transactions"),
     getTranslations("nav"),
     getLocale(),
-    listTransactions({ needsReviewOnly: reviewOnly, query: searchQuery || undefined }),
+    listTransactions({
+      needsReviewOnly: reviewOnly,
+      query: searchQuery || undefined,
+      dates: selectedDates.length ? selectedDates : undefined,
+    }),
     listCategoryOptionsAction(),
     getAccountsTotal(),
     getSpendingHeatmap(heatmapYearArg),
@@ -94,7 +106,8 @@ export default async function TransactionsPage({
                   intlLocale={intlLocale}
                   currency={accountsTotal.currency}
                   pathname="/transactions"
-                  defaultOpen={heatmapYearArg !== "auto"}
+                  defaultOpen={heatmapYearArg !== "auto" || selectedDates.length > 0}
+                  initialSelectedDates={selectedDates}
                   searchParams={{
                     ...(reviewOnly ? { review: "1" } : {}),
                     ...(searchQuery ? { q: searchQuery } : {}),
@@ -133,9 +146,24 @@ export default async function TransactionsPage({
                     futureDay: t("heatmapFuture"),
                     prevYear: t("heatmapPrevYear"),
                     nextYear: t("heatmapNextYear"),
+                    selectedCount: t("heatmapSelectedCount"),
+                    clearSelection: t("heatmapClearSelection"),
                   }}
                 />
               </div>
+            {selectedDates.length > 0 && (
+              <div className="flex items-center justify-between rounded-lg border border-[color:var(--brand-primary)]/30 bg-[color:var(--brand-primary-soft)] px-3 py-2 text-[12.5px]">
+                <span className="text-[color:var(--brand-primary)]">
+                  {t("heatmapDateFilter").replace("{n}", String(selectedDates.length))}
+                </span>
+                <Link
+                  href={`/transactions${reviewOnly ? "?review=1" : ""}${searchQuery ? `${reviewOnly ? "&" : "?"}q=${encodeURIComponent(searchQuery)}` : ""}`}
+                  className="font-medium text-[color:var(--brand-primary)] hover:underline"
+                >
+                  {t("heatmapClearSelection")}
+                </Link>
+              </div>
+            )}
             <TransactionsView
               rows={rows}
               initialNextCursor={nextCursor}

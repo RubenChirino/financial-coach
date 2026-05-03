@@ -84,7 +84,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   // easily in the context window.
   const persisted = await getConversationMessages(conversationId);
   const language = user.language === "en" ? "en" : "es";
-  const ctx = await buildAdvisorContext({ monthsBack: 3 });
+  const ctx = await buildAdvisorContext({ monthsBack: 3, userId: session.userId });
   const system = buildSystemPrompt(language, ctx);
 
   const { model } = getLanguageModel(prefs);

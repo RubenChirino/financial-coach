@@ -36,6 +36,13 @@
       "when": 1776976793262,
       "tag": "0004_cute_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1777816562976,
+      "tag": "0005_investor_profiles",
+      "breakpoints": true
     }
   ]
 }

@@ -1,12 +1,22 @@
 import "server-only";
 
 import { db } from "@/db/client";
-import { categories, transactions } from "@/db/schema";
+import { categories, goals, transactions } from "@/db/schema";
 import {
   getAccountsTotal,
   getMonthSummary,
   getTopCategoriesThisMonth,
 } from "@/lib/dashboard/summary";
+import {
+  type ForecastSummary,
+  getSpendingForecast,
+  summarizeForecast,
+} from "@/lib/predictions/forecast";
+import {
+  type InvestorProfile,
+  getInvestorProfile,
+  summarizeProfileForLlm,
+} from "@/lib/opportunities/profile";
 import { listRecurringSubscriptions, monthlyEquivalentCents } from "@/lib/recurring/list";
 import { redactPII } from "@/lib/redact";
 import { and, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
@@ -19,6 +29,19 @@ export interface AdvisorContext {
   topMerchants: AdvisorMerchant[];
   budgets: AdvisorBudget[];
   subscriptions: AdvisorSubscription[];
+  goals: AdvisorGoal[];
+  /** Null if the user hasn't filled in the questionnaire yet. */
+  investorProfile: ReturnType<typeof summarizeProfileForLlm> | null;
+  forecast: ForecastSummary | null;
+}
+
+export interface AdvisorGoal {
+  title: string;
+  emoji: string;
+  target: number;
+  saved: number;
+  pctComplete: number;
+  remainingMonths: number | null;
 }
 
 export interface AdvisorSubscription {
@@ -72,6 +95,8 @@ const CENTS_TO_UNITS = (n: number) => Math.round(n) / 100;
 export async function buildAdvisorContext(opts?: {
   monthsBack?: number;
   topMerchantLimit?: number;
+  /** Required to load the user's investor profile. Optional — pass when known. */
+  userId?: number;
 }): Promise<AdvisorContext> {
   const monthsBack = Math.max(1, Math.min(opts?.monthsBack ?? 3, 12));
   const topMerchantLimit = Math.max(1, Math.min(opts?.topMerchantLimit ?? 10, 25));
@@ -97,9 +122,15 @@ export async function buildAdvisorContext(opts?: {
     });
   }
 
-  const topMerchants = await selectTopMerchants(topMerchantLimit);
-  const budgets = await selectBudgets();
-  const subscriptions = await selectSubscriptions();
+  const [topMerchants, budgets, subscriptions, advisorGoals, profile, forecast] =
+    await Promise.all([
+      selectTopMerchants(topMerchantLimit),
+      selectBudgets(),
+      selectSubscriptions(),
+      selectGoals(),
+      opts?.userId != null ? getInvestorProfile(opts.userId) : Promise.resolve<InvestorProfile | null>(null),
+      getSpendingForecast({ horizonMonths: 3 }).catch(() => null),
+    ]);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -112,7 +143,39 @@ export async function buildAdvisorContext(opts?: {
     topMerchants,
     budgets,
     subscriptions,
+    goals: advisorGoals,
+    investorProfile: profile ? summarizeProfileForLlm(profile) : null,
+    forecast: forecast ? summarizeForecast(forecast) : null,
   };
+}
+
+async function selectGoals(): Promise<AdvisorGoal[]> {
+  const rows = await db
+    .select({
+      title: goals.title,
+      emoji: goals.emoji,
+      targetCents: goals.targetCents,
+      savedCents: goals.savedCents,
+      deadline: goals.deadline,
+    })
+    .from(goals);
+  const now = Date.now();
+  return rows.map((r) => {
+    const target = CENTS_TO_UNITS(r.targetCents);
+    const saved = CENTS_TO_UNITS(r.savedCents);
+    const pct = r.targetCents > 0 ? Math.round((r.savedCents / r.targetCents) * 100) : 0;
+    const remainingMonths = r.deadline
+      ? Math.max(0, Math.round((r.deadline.getTime() - now) / (1000 * 60 * 60 * 24 * 30)))
+      : null;
+    return {
+      title: r.title,
+      emoji: r.emoji,
+      target,
+      saved,
+      pctComplete: pct,
+      remainingMonths,
+    };
+  });
 }
 
 async function selectSubscriptions(): Promise<AdvisorSubscription[]> {
