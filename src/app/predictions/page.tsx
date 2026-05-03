@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
+import { TourButton } from "@/components/tour-button";
 import { Button } from "@/components/ui/button";
 import { getCurrentSession } from "@/lib/auth/session";
 import { formatAmount } from "@/lib/format";
@@ -56,15 +57,63 @@ export default async function PredictionsPage() {
   return (
     <AppShell title={t("title")} subtitle={t("subtitle")}>
       <div className="mx-auto max-w-5xl space-y-5">
-        <header>
-          <h1 className="text-2xl font-semibold tracking-tight">{t("heading")}</h1>
-          <p className="mt-0.5 text-[12.5px] text-[color:var(--text-tertiary)]">
-            {t("explainer")}
-          </p>
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">{t("heading")}</h1>
+            <p className="mt-0.5 text-[12.5px] text-[color:var(--text-tertiary)]">
+              {t("explainer")}
+            </p>
+          </div>
+          <TourButton
+            label={locale === "es" ? "¿Cómo funciona?" : "How it works"}
+            prevBtnText="←"
+            nextBtnText="→"
+            doneBtnText="✓"
+            steps={[
+              {
+                title: locale === "es" ? "¿Qué son las Predicciones?" : "What are Predictions?",
+                description: locale === "es"
+                  ? "Esta página proyecta tus ingresos, gastos y ahorro para los próximos meses usando tus transacciones históricas. No usamos IA — los números vienen directamente de tus datos."
+                  : "This page projects your income, spending, and savings for the next few months using your historical transactions. No AI is involved — the numbers come straight from your data.",
+              },
+              {
+                element: "#pred-cumulative",
+                title: locale === "es" ? "Ahorro acumulado previsto" : "Projected cumulative savings",
+                description: locale === "es"
+                  ? "La suma total de lo que esperamos que ahorres (o pierdas) en el horizonte de predicción. Verde = estás en camino de ahorrar; rojo = el gasto supera al ingreso."
+                  : "The total sum of what we expect you to save (or lose) over the forecast window. Green = on track to save; red = spending exceeds income.",
+                side: "bottom",
+              },
+              {
+                element: "#pred-months",
+                title: locale === "es" ? "Desglose mensual" : "Month-by-month breakdown",
+                description: locale === "es"
+                  ? "Cada tarjeta muestra los ingresos y gastos proyectados para ese mes y el resultado neto. Las cifras son iguales en todos los meses porque usamos promedios — no predicciones día a día."
+                  : "Each card shows projected income and spending for that month and the net result. Figures are the same across months because we use averages — not day-by-day predictions.",
+                side: "top",
+              },
+              {
+                element: "#pred-inputs",
+                title: locale === "es" ? "Cómo calculamos el número" : "How we calculate the number",
+                description: locale === "es"
+                  ? "Dos componentes: (1) gastos recurrentes detectados de tus suscripciones y cargos habituales, y (2) gasto variable = media histórica menos lo recurrente. Súmalos y obtienes la proyección."
+                  : "Two components: (1) recurring outflows detected from your subscriptions and regular charges, and (2) variable spending = historical average minus recurring. Add them and you get the projection.",
+                side: "top",
+              },
+              {
+                element: "#pred-history",
+                title: locale === "es" ? "Historial reciente" : "Recent history",
+                description: locale === "es"
+                  ? "Los meses que usamos como base. Cuanto más historial tengas, mayor será la confianza de la predicción — indicado por el indicador de colores junto al número principal."
+                  : "The months we used as the baseline. The more history you have, the higher the forecast confidence — indicated by the coloured dot next to the main figure.",
+                side: "top",
+              },
+            ]}
+          />
         </header>
 
         {/* Headline cumulative */}
-        <section className="rounded-lg border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] p-5">
+        <section id="pred-cumulative" className="rounded-lg border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] p-5">
           <div className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-tertiary)]">
             {t("cumulativeLabel", { months: forecast.months.length })}
           </div>
@@ -96,7 +145,7 @@ export default async function PredictionsPage() {
         </section>
 
         {/* Per-month projections */}
-        <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <section id="pred-months" className="grid grid-cols-1 gap-3 md:grid-cols-3">
           {forecast.months.map((m) => {
             const positive = m.projectedNetCents >= 0;
             return (
@@ -137,7 +186,7 @@ export default async function PredictionsPage() {
         </section>
 
         {/* Methodology / inputs */}
-        <section className="rounded-lg border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] p-5">
+        <section id="pred-inputs" className="rounded-lg border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] p-5">
           <h2 className="text-base font-semibold tracking-tight">{t("inputsTitle")}</h2>
           <p className="mt-0.5 text-[12.5px] text-[color:var(--text-tertiary)]">
             {t("inputsHint")}
@@ -190,7 +239,7 @@ export default async function PredictionsPage() {
 
         {/* History strip */}
         {forecast.inputs.history.length > 0 ? (
-          <section className="rounded-lg border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] p-5">
+          <section id="pred-history" className="rounded-lg border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] p-5">
             <h2 className="text-base font-semibold tracking-tight">{t("historyTitle")}</h2>
             <ul className="mt-3 space-y-2">
               {forecast.inputs.history.map((m) => (

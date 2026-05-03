@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/app-shell";
+import { TourButton } from "@/components/tour-button";
 import { Button } from "@/components/ui/button";
 import { getCurrentSession } from "@/lib/auth/session";
 import { formatAmount } from "@/lib/format";
@@ -132,15 +133,52 @@ export default async function OpportunitiesPage() {
   return (
     <AppShell title={t("title")} subtitle={t("subtitle")}>
       <div className="mx-auto max-w-5xl space-y-6">
-        <header>
-          <h1 className="text-2xl font-semibold tracking-tight">{t("heading")}</h1>
-          <p className="mt-0.5 text-[12.5px] text-[color:var(--text-tertiary)]">
-            {t("explainer")}
-          </p>
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">{t("heading")}</h1>
+            <p className="mt-0.5 text-[12.5px] text-[color:var(--text-tertiary)]">
+              {t("explainer")}
+            </p>
+          </div>
+          <TourButton
+            label={locale === "es" ? "¿Cómo funciona?" : "How it works"}
+            steps={[
+              {
+                title: locale === "es" ? "Crecimiento y Oportunidades" : "Growth & Opportunities",
+                description: locale === "es"
+                  ? "Esta página tiene dos partes: oportunidades de ahorro detectadas automáticamente a partir de tus datos, y un perfil inversor que personaliza las respuestas del Coach IA."
+                  : "This page has two parts: savings opportunities detected automatically from your data, and an investor profile that personalises the AI Coach's responses.",
+              },
+              {
+                element: "#opp-list",
+                title: locale === "es" ? "Tus oportunidades de ahorro" : "Your savings opportunities",
+                description: locale === "es"
+                  ? "Cada tarjeta muestra un ahorro concreto calculado con tus números reales: suscripciones solapadas, categorías que superan el presupuesto, proyecciones de objetivos y más. Pulsa 'Abrir' para ir a la sección relevante."
+                  : "Each card shows a concrete saving calculated from your real numbers: overlapping subscriptions, over-budget categories, goal projections, and more. Click 'Open' to jump to the relevant section.",
+                side: "bottom",
+              },
+              {
+                element: "#opp-profile",
+                title: locale === "es" ? "Tu perfil inversor" : "Your investor profile",
+                description: locale === "es"
+                  ? "Responde 6 preguntas rápidas (rango de edad, horizonte temporal, tolerancia al riesgo…). El Coach IA las usa para adaptar sus consejos a tu situación concreta. Tus respuestas se guardan solo en este dispositivo."
+                  : "Answer 6 quick questions (age range, time horizon, risk tolerance…). The AI Coach uses them to tailor advice to your specific situation. Your answers are stored only on this device.",
+                side: "top",
+              },
+              {
+                element: "#opp-disclaimer",
+                title: locale === "es" ? "Nota importante" : "Important note",
+                description: locale === "es"
+                  ? "Estas sugerencias son orientación educativa, no asesoramiento financiero regulado. Nunca recomendamos productos específicos (fondos, acciones, planes)."
+                  : "These suggestions are educational planning guidance, not regulated financial advice. We never recommend specific products (funds, stocks, pension plans).",
+                side: "top",
+              },
+            ]}
+          />
         </header>
 
         {/* Opportunities */}
-        <section className="space-y-3">
+        <section id="opp-list" className="space-y-3">
           <div className="flex items-center gap-2">
             <Lightbulb className="h-4 w-4 text-[color:var(--brand-primary)]" />
             <h2 className="text-base font-semibold tracking-tight">{t("opportunitiesTitle")}</h2>
@@ -162,7 +200,7 @@ export default async function OpportunitiesPage() {
         </section>
 
         {/* Investor profile */}
-        <section className="rounded-lg border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] p-5">
+        <section id="opp-profile" className="rounded-lg border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] p-5">
           <header className="mb-4">
             <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight">
               <Sparkles className="h-4 w-4 text-[color:var(--brand-primary)]" />
@@ -175,7 +213,7 @@ export default async function OpportunitiesPage() {
           <ProfileForm initial={profile} labels={profileLabels} />
         </section>
 
-        <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-[11.5px] text-[color:var(--text-secondary)]">
+        <p id="opp-disclaimer" className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-[11.5px] text-[color:var(--text-secondary)]">
           {t("disclaimer")}
         </p>
       </div>
