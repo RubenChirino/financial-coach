@@ -107,7 +107,7 @@ export function GoalForm({ goal, labels, currency, onClose }: GoalFormProps) {
         if (e.key === "Escape") onClose();
       }}
     >
-      <dialog open className="coin-card w-full max-w-md p-6" aria-labelledby={`${fid}-title`}>
+      <div role="dialog" aria-modal="true" className="coin-card w-full max-w-md p-6" aria-labelledby={`${fid}-title`}>
         <div className="flex items-center justify-between">
           <h2 id={`${fid}-title`} className="text-[15px] font-semibold">
             {goal ? labels.editGoal : labels.newGoal}
@@ -271,7 +271,7 @@ export function GoalForm({ goal, labels, currency, onClose }: GoalFormProps) {
             </button>
           </div>
         </form>
-      </dialog>
+      </div>
     </div>
   );
 

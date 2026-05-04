@@ -27,9 +27,21 @@ export interface ImportActionOk {
     parsed: number;
     inserted: number;
     duplicates: number;
+    /** Rows collapsed against another row in the same file. */
+    intraBatchDuplicates: number;
+    /** Rows whose hash already existed in the DB. */
+    existingDuplicates: number;
     ruleMatched: number;
     rowErrors: { lineNumber: number; message: string }[];
     ai: AiDetectionInfo;
+    /** First parsed row — surfaced so the user can verify column mapping. */
+    sampleRow?: {
+      date: string;
+      amountCents: number;
+      currency: string;
+      merchant: string | null;
+      description: string;
+    };
   };
 }
 export interface ImportActionErr {
@@ -96,6 +108,10 @@ function checkCloudConsent(prefs: {
 interface RunImportOptions {
   /** "auto" (default) tries strict first then AI; "ai" forces AI; "strict" forces strict. */
   mode?: "auto" | "ai" | "strict";
+  /** Original filename if the user picked a file (rather than pasting). */
+  filename?: string;
+  /** Bypass dedup checks. Each row gets a unique id so the UNIQUE constraint passes. */
+  forceReimport?: boolean;
 }
 
 type ParseOutcome =
@@ -165,7 +181,12 @@ async function runImport(text: string, opts: RunImportOptions = {}): Promise<Imp
       encryptionKey: session.encryptionKey,
     });
     const currency = parsed.rows[0]?.currency;
-    const ingest = await importParsedRows(parsed.rows, { accountRowId, currency });
+    const ingest = await importParsedRows(parsed.rows, {
+      accountRowId,
+      currency,
+      filename: opts.filename,
+      forceReimport: opts.forceReimport,
+    });
 
     revalidatePath("/");
     revalidatePath("/transactions");
@@ -177,9 +198,12 @@ async function runImport(text: string, opts: RunImportOptions = {}): Promise<Imp
         parsed: parsed.rows.length,
         inserted: ingest.inserted,
         duplicates: ingest.duplicates,
+        intraBatchDuplicates: ingest.intraBatchDuplicates,
+        existingDuplicates: ingest.existingDuplicates,
         ruleMatched: ingest.ruleMatched,
         rowErrors: parsed.errors.map((e) => ({ lineNumber: e.lineNumber, message: e.message })),
         ai,
+        sampleRow: ingest.sampleRow,
       },
     };
   } catch (err) {
@@ -202,8 +226,10 @@ async function runImport(text: string, opts: RunImportOptions = {}): Promise<Imp
 export async function importCsvAction(
   text: string,
   mode: "auto" | "ai" | "strict" = "auto",
+  filename?: string,
+  forceReimport = false,
 ): Promise<ImportActionResult> {
-  return runImport(text, { mode });
+  return runImport(text, { mode, filename, forceReimport });
 }
 
 /**

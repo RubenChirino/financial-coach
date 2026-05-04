@@ -40,14 +40,32 @@ export interface ImportFormLabels {
   allRowsFailedError: string;
   aiSpecLabel: string;
   cloudConsentRequiredError: string;
+  /** Force-reimport toggle */
+  forceReimportLabel: string;
+  forceReimportHint: string;
+  /** Diagnostic surface */
+  parsedSampleTitle: string;
+  parsedSampleHint: string;
+  duplicatesBreakdownIntra: string;
+  duplicatesBreakdownExisting: string;
+  zeroInsertedHint: string;
 }
 
 interface SuccessState {
   inserted: number;
   duplicates: number;
+  intraBatchDuplicates: number;
+  existingDuplicates: number;
   ruleMatched: number;
   rowErrors: { lineNumber: number; message: string }[];
   ai: AiDetectionInfo;
+  sampleRow?: {
+    date: string;
+    amountCents: number;
+    currency: string;
+    merchant: string | null;
+    description: string;
+  };
 }
 
 type Mode = "auto" | "ai" | "strict";
@@ -65,7 +83,9 @@ type Mode = "auto" | "ai" | "strict";
 export function ImportForm({ labels }: { labels: ImportFormLabels }) {
   const router = useRouter();
   const [text, setText] = useState("");
+  const [filename, setFilename] = useState<string | undefined>(undefined);
   const [mode, setMode] = useState<Mode>("auto");
+  const [forceReimport, setForceReimport] = useState(false);
   const [pending, startTransition] = useTransition();
   const [success, setSuccess] = useState<SuccessState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +95,7 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
   function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setFilename(file.name);
     const isExcel = /\.(xls|xlsx)$/i.test(file.name);
     const reader = new FileReader();
     if (isExcel) {
@@ -123,7 +144,7 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
     }
 
     startTransition(async () => {
-      const res = await importCsvAction(payload, mode);
+      const res = await importCsvAction(payload, mode, filename, forceReimport);
       if (!res.ok) {
         setError(humanizeError(res.error));
         if (res.ai) setErrorAi(res.ai);
@@ -132,9 +153,12 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
       setSuccess({
         inserted: res.data.inserted,
         duplicates: res.data.duplicates,
+        intraBatchDuplicates: res.data.intraBatchDuplicates,
+        existingDuplicates: res.data.existingDuplicates,
         ruleMatched: res.data.ruleMatched,
         rowErrors: res.data.rowErrors,
         ai: res.data.ai,
+        sampleRow: res.data.sampleRow,
       });
       router.refresh();
     });
@@ -195,6 +219,22 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
         </div>
       </fieldset>
 
+      <label className="flex cursor-pointer items-start gap-2 rounded-md border border-[color:var(--border-default)] bg-muted/20 p-2.5 text-xs">
+        <input
+          type="checkbox"
+          checked={forceReimport}
+          onChange={(e) => setForceReimport(e.target.checked)}
+          disabled={pending}
+          className="mt-0.5 accent-current"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="font-medium">{labels.forceReimportLabel}</span>
+          <span className="block text-[11.5px] text-muted-foreground">
+            {labels.forceReimportHint}
+          </span>
+        </span>
+      </label>
+
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
@@ -250,6 +290,43 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
               ? ` ${labels.categorizedSuffix.replace("{count}", String(success.ruleMatched))}`
               : ""}
           </p>
+
+          {/* Diagnostic: when 0 inserted with many duplicates, surface the
+              breakdown + a parsed sample so the user can see what happened. */}
+          {success.inserted === 0 && success.duplicates > 0 ? (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs">
+              <div className="mb-2 font-medium text-amber-700 dark:text-amber-400">
+                {labels.zeroInsertedHint}
+              </div>
+              <ul className="ml-4 list-disc space-y-0.5 text-muted-foreground">
+                <li>
+                  {labels.duplicatesBreakdownIntra.replace(
+                    "{n}",
+                    String(success.intraBatchDuplicates),
+                  )}
+                </li>
+                <li>
+                  {labels.duplicatesBreakdownExisting.replace(
+                    "{n}",
+                    String(success.existingDuplicates),
+                  )}
+                </li>
+              </ul>
+              {success.sampleRow ? (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-muted-foreground">
+                    {labels.parsedSampleTitle}
+                  </summary>
+                  <p className="mt-1 text-[10.5px] text-muted-foreground">
+                    {labels.parsedSampleHint}
+                  </p>
+                  <pre className="mt-2 overflow-x-auto rounded border bg-muted/50 p-2 text-[10.5px] leading-snug">
+                    {JSON.stringify(success.sampleRow, null, 2)}
+                  </pre>
+                </details>
+              ) : null}
+            </div>
+          ) : null}
 
           {success.ai.used && success.ai.spec ? (
             <div className="rounded-md border border-emerald-500/30 bg-background/40 p-2 text-xs">

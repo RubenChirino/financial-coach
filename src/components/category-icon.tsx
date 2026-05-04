@@ -22,6 +22,7 @@ import {
   Shield,
   ShoppingBag,
   ShoppingCart,
+  Smartphone,
   UtensilsCrossed,
   Wifi,
 } from "lucide-react";
@@ -30,6 +31,7 @@ import type { ComponentType } from "react";
 /** Maps every icon slug used in seed-categories.ts to its Lucide component. */
 const ICON_MAP: Record<string, ComponentType<{ className?: string; strokeWidth?: number }>> = {
   ShoppingCart,
+  Smartphone,
   UtensilsCrossed,
   Coffee,
   Bus,

@@ -155,6 +155,20 @@ export const categories = sqliteTable("categories", {
   createdAt: timestamp("created_at"),
 });
 
+/**
+ * One row per CSV/XLS file the user imports. Lets users see what they uploaded
+ * and delete a specific batch if they imported something wrong.
+ */
+export const importBatches = sqliteTable("import_batches", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  /** Original filename, or null when data was pasted directly. */
+  filename: text("filename"),
+  rowsParsed: integer("rows_parsed").notNull().default(0),
+  rowsInserted: integer("rows_inserted").notNull().default(0),
+  rowsDuplicate: integer("rows_duplicate").notNull().default(0),
+  createdAt: timestamp("created_at"),
+});
+
 export const transactions = sqliteTable(
   "transactions",
   {
@@ -163,6 +177,10 @@ export const transactions = sqliteTable(
       .notNull()
       .references(() => accounts.id, { onDelete: "cascade" }),
     gocardlessTransactionId: text("gocardless_transaction_id").notNull().unique(),
+    /** Which import batch this came from. Null for bank-synced transactions. */
+    importBatchId: integer("import_batch_id").references(() => importBatches.id, {
+      onDelete: "set null",
+    }),
     bookingDate: integer("booking_date", { mode: "timestamp_ms" }).notNull(),
     valueDate: integer("value_date", { mode: "timestamp_ms" }),
     amountCents: integer("amount_cents", { mode: "number" }).notNull(),

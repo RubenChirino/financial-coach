@@ -1,9 +1,10 @@
 "use client";
 
+import { CategoryIcon } from "@/components/category-icon";
 import type { CategoryOption } from "@/lib/transactions/actions";
 import { setTransactionCategoryAction } from "@/lib/transactions/actions";
 import { cn } from "@/lib/utils";
-import { Check, Loader2, X } from "lucide-react";
+import { Check, Loader2, Tag, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 interface Props {
@@ -82,26 +83,27 @@ export function CategoryPicker(props: Props) {
         disabled={pending}
         className={cn(
           "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors",
-          props.currentCategoryId == null && "border-dashed text-muted-foreground",
+          props.currentCategoryId == null
+            ? "border-dashed border-amber-400/50 bg-amber-400/8 text-amber-600 dark:text-amber-400 hover:bg-amber-400/15"
+            : "hover:bg-[color:var(--brand-primary-soft)]",
           props.needsReview && "ring-1 ring-amber-400/60",
-          "hover:bg-[color:var(--brand-primary-soft)]",
         )}
-        style={chipStyle}
+        style={props.currentCategoryId != null ? chipStyle : undefined}
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        {props.currentIcon ? <span aria-hidden>{props.currentIcon}</span> : null}
+        {props.currentIcon ? (
+          <CategoryIcon icon={props.currentIcon} className="h-3 w-3" strokeWidth={2} />
+        ) : (
+          <Tag className="h-3 w-3" aria-hidden />
+        )}
         <span className="truncate max-w-[10rem]">{label}</span>
         {props.needsReview ? (
           <span className="text-[10px] text-amber-600 dark:text-amber-400">
             {props.reviewLabel}
           </span>
         ) : null}
-        {pending ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : (
-          <Check className="h-3 w-3 opacity-0" aria-hidden />
-        )}
+        {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
       </button>
       {open ? (
         <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-[280px] rounded-xl border border-[color:var(--border-default)] bg-[color:var(--surface-card)] p-2.5 shadow-[var(--shadow-card)]">
@@ -142,7 +144,7 @@ export function CategoryPicker(props: Props) {
                     borderColor: active ? o.color : "transparent",
                   }}
                 >
-                  <span aria-hidden>{o.icon}</span>
+                  <CategoryIcon icon={o.icon} className="h-3 w-3" strokeWidth={2} />
                   <span>{name}</span>
                   {active ? <Check className="h-2.5 w-2.5" /> : null}
                 </button>

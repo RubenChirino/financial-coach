@@ -10,7 +10,7 @@ import { getAccountsTotal } from "@/lib/dashboard/summary";
 import { getLocale } from "@/lib/i18n/locale";
 import { listCategoryOptionsAction } from "@/lib/transactions/actions";
 import { getSpendingHeatmap } from "@/lib/transactions/heatmap";
-import { listTransactions } from "@/lib/transactions/list";
+import { getTransactionStats, listTransactions } from "@/lib/transactions/list";
 import { Download, ListMinus } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
@@ -43,19 +43,24 @@ export default async function TransactionsPage({
       ? requestedYear
       : "auto";
 
-  const [t, tNav, locale, { rows, nextCursor }, options, accountsTotal, heatmap] = await Promise.all([
-    getTranslations("transactions"),
-    getTranslations("nav"),
-    getLocale(),
-    listTransactions({
-      needsReviewOnly: reviewOnly,
-      query: searchQuery || undefined,
-      dates: selectedDates.length ? selectedDates : undefined,
-    }),
-    listCategoryOptionsAction(),
-    getAccountsTotal(),
-    getSpendingHeatmap(heatmapYearArg),
-  ]);
+  const [t, tNav, locale, { rows, nextCursor }, options, accountsTotal, heatmap, stats] =
+    await Promise.all([
+      getTranslations("transactions"),
+      getTranslations("nav"),
+      getLocale(),
+      listTransactions({
+        needsReviewOnly: reviewOnly,
+        query: searchQuery || undefined,
+        dates: selectedDates.length ? selectedDates : undefined,
+      }),
+      listCategoryOptionsAction(),
+      getAccountsTotal(),
+      getSpendingHeatmap(heatmapYearArg),
+      getTransactionStats(),
+    ]);
+  // The list above is only the FIRST PAGE — show the real total in the header
+  // (otherwise users think their import didn't work).
+  const totalCount = Number(stats.count) || rows.length;
   const intlLocale = locale === "en" ? "en-US" : "es-ES";
 
   const bankSet = new Set(rows.map((r) => r.institutionName));
@@ -70,7 +75,7 @@ export default async function TransactionsPage({
                 {searchQuery ? t("searchResultsFor", { query: searchQuery }) : t("title")}
               </h1>
               <p className="mt-0.5 text-[12.5px] text-[color:var(--text-tertiary)]">
-                {t("countLine", { count: rows.length, banks: bankSet.size })}
+                {t("countLine", { count: totalCount, banks: bankSet.size })}
               </p>
             </div>
             <div className="flex items-center gap-2">

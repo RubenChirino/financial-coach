@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { db } from "@/db/client";
-import { accounts, institutions, requisitions, transactions } from "@/db/schema";
+import { accounts, importBatches, institutions, requisitions, transactions } from "@/db/schema";
 import { categorizeBatchByRules } from "@/lib/categorize";
 import { encrypt } from "@/lib/crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -148,7 +148,20 @@ export function dedupeIdFor(row: {
 export interface ImportParsedRowsResult {
   inserted: number;
   duplicates: number;
+  /** Rows that collapsed against another row IN THE SAME FILE. */
+  intraBatchDuplicates: number;
+  /** Rows whose hash already existed in the DB. */
+  existingDuplicates: number;
   ruleMatched: number;
+  batchId: number;
+  /** First parsed row (if any) — useful for debugging mis-mapped columns. */
+  sampleRow?: {
+    date: string;
+    amountCents: number;
+    currency: string;
+    merchant: string | null;
+    description: string;
+  };
 }
 
 /**
@@ -164,49 +177,95 @@ export interface ImportParsedRowsResult {
  */
 export async function importParsedRows(
   rows: ParsedCsvRow[],
-  opts: { accountRowId: number; currency?: string },
+  opts: {
+    accountRowId: number;
+    currency?: string;
+    filename?: string;
+    /**
+     * When true, skip both intra-batch and existing-row dedup checks. Each row
+     * gets a unique nonce appended to its hash so the global UNIQUE constraint
+     * on `gocardlessTransactionId` is satisfied. Use when the user is sure the
+     * file contains genuinely-new transactions that the dedup logic is
+     * mistakenly flagging as duplicates.
+     */
+    forceReimport?: boolean;
+  },
 ): Promise<ImportParsedRowsResult> {
-  if (rows.length === 0) return { inserted: 0, duplicates: 0, ruleMatched: 0 };
+  // Always create a batch record so import history is complete, even if all rows
+  // turn out to be duplicates. We update counts at the end.
+  const batchRow = await db
+    .insert(importBatches)
+    .values({ filename: opts.filename ?? null, rowsParsed: rows.length })
+    .returning({ id: importBatches.id });
+  const batchId = batchRow[0]?.id;
+  if (!batchId) throw new Error("failed to create import batch");
 
-  const allCandidates = rows.map((r) => ({
-    externalId: dedupeIdFor({
+  if (rows.length === 0)
+    return {
+      inserted: 0,
+      duplicates: 0,
+      intraBatchDuplicates: 0,
+      existingDuplicates: 0,
+      ruleMatched: 0,
+      batchId,
+    };
+
+  // In force-reimport mode, each row gets a unique externalId by appending the
+  // batch id and the row index so the UNIQUE constraint is satisfied AND no
+  // dedup ever fires.
+  const allCandidates = rows.map((r, idx) => {
+    const baseId = dedupeIdFor({
       date: r.date,
       amountCents: r.amountCents,
       currency: r.currency,
       merchant: r.merchant,
       description: r.description,
-    }),
-    row: r,
-  }));
+    });
+    const externalId = opts.forceReimport ? `${baseId}:b${batchId}:${idx}` : baseId;
+    return { externalId, row: r };
+  });
 
-  // Dedupe within the batch itself: bank exports often contain identical rows
-  // (e.g. two 2.00 fees on the same day) which would otherwise collide on the
-  // global UNIQUE(gocardless_transaction_id) constraint during insert.
-  const seenInBatch = new Set<string>();
-  const candidates: typeof allCandidates = [];
+  let candidates = allCandidates;
   let intraBatchDuplicates = 0;
-  for (const c of allCandidates) {
-    if (seenInBatch.has(c.externalId)) {
-      intraBatchDuplicates++;
-      continue;
-    }
-    seenInBatch.add(c.externalId);
-    candidates.push(c);
-  }
+  let existingDuplicates = 0;
 
-  // Check globally, not just on this account: the UNIQUE constraint on
-  // gocardless_transaction_id spans the whole table.
-  const existing = await db
-    .select({ id: transactions.gocardlessTransactionId })
-    .from(transactions)
-    .where(
-      inArray(
-        transactions.gocardlessTransactionId,
-        candidates.map((c) => c.externalId),
-      ),
-    );
-  const existingIds = new Set(existing.map((r) => r.id));
-  const fresh = candidates.filter((c) => !existingIds.has(c.externalId));
+  if (!opts.forceReimport) {
+    // Dedupe within the batch itself: bank exports sometimes contain identical
+    // rows (e.g. two 2.00 fees on the same day) which would otherwise collide
+    // on the global UNIQUE(gocardless_transaction_id) constraint during insert.
+    const seenInBatch = new Set<string>();
+    const deduped: typeof allCandidates = [];
+    for (const c of allCandidates) {
+      if (seenInBatch.has(c.externalId)) {
+        intraBatchDuplicates++;
+        continue;
+      }
+      seenInBatch.add(c.externalId);
+      deduped.push(c);
+    }
+    candidates = deduped;
+
+    // Check globally — the UNIQUE constraint on gocardless_transaction_id
+    // spans the whole table.
+    const existing = await db
+      .select({ id: transactions.gocardlessTransactionId })
+      .from(transactions)
+      .where(
+        inArray(
+          transactions.gocardlessTransactionId,
+          candidates.map((c) => c.externalId),
+        ),
+      );
+    const existingIds = new Set(existing.map((r) => r.id));
+    candidates = candidates.filter((c) => {
+      if (existingIds.has(c.externalId)) {
+        existingDuplicates++;
+        return false;
+      }
+      return true;
+    });
+  }
+  const fresh = candidates;
 
   const insertedIds: number[] = [];
   if (fresh.length > 0) {
@@ -215,6 +274,7 @@ export async function importParsedRows(
       .values(
         fresh.map((c) => ({
           accountId: opts.accountRowId,
+          importBatchId: batchId,
           gocardlessTransactionId: c.externalId,
           bookingDate: c.row.date,
           valueDate: null,
@@ -249,9 +309,33 @@ export async function importParsedRows(
 
   await db.update(accounts).set(updateSet).where(eq(accounts.id, opts.accountRowId));
 
+  const totalDuplicates = intraBatchDuplicates + existingDuplicates;
+  // Persist final counts so the history UI can show accurate numbers.
+  await db
+    .update(importBatches)
+    .set({ rowsInserted: fresh.length, rowsDuplicate: totalDuplicates })
+    .where(eq(importBatches.id, batchId));
+
+  // Pick a sample from the parsed rows (not just `fresh`) so the user can
+  // verify column mapping even when every row was deduped.
+  const first = rows[0];
+  const sampleRow = first
+    ? {
+        date: first.date.toISOString().slice(0, 10),
+        amountCents: first.amountCents,
+        currency: first.currency,
+        merchant: first.merchant,
+        description: first.description,
+      }
+    : undefined;
+
   return {
     inserted: fresh.length,
-    duplicates: intraBatchDuplicates + (candidates.length - fresh.length),
+    duplicates: totalDuplicates,
+    intraBatchDuplicates,
+    existingDuplicates,
     ruleMatched,
+    batchId,
+    sampleRow,
   };
 }

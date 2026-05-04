@@ -43,6 +43,20 @@
       "when": 1777816562976,
       "tag": "0005_investor_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1777834371293,
+      "tag": "0006_import_batches",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1746300000000,
+      "tag": "0007_bizum_category",
+      "breakpoints": true
     }
   ]
 }

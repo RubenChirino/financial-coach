@@ -3,10 +3,14 @@ import { TourButton } from "@/components/tour-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getLocale } from "@/lib/i18n/locale";
-import { FileSpreadsheet } from "lucide-react";
+import { listImportBatches } from "@/lib/import/batches";
+import { listCategoryOptionsAction } from "@/lib/transactions/actions";
+import { FileSpreadsheet, History, PenLine } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { ImportForm } from "./import-form";
+import { ImportHistory } from "./import-history";
+import { ManualTransactionForm } from "./manual-transaction-form";
 import { SampleDataButton } from "./sample-data-button";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +26,13 @@ export const dynamic = "force-dynamic";
 export default async function ImportPage() {
   if (!(await getCurrentSession())) redirect("/lock");
 
-  const [t, locale] = await Promise.all([getTranslations("import"), getLocale()]);
+  const [t, locale, batches, categories] = await Promise.all([
+    getTranslations("import"),
+    getLocale(),
+    listImportBatches(),
+    listCategoryOptionsAction(),
+  ]);
+  const intlLocale = locale === "en" ? "en-US" : "es-ES";
 
   return (
     <AppShell>
@@ -129,6 +139,52 @@ export default async function ImportPage() {
                 allRowsFailedError: t("allRowsFailedError"),
                 aiSpecLabel: t("aiSpecLabel"),
                 cloudConsentRequiredError: t("cloudConsentRequiredError"),
+                forceReimportLabel: t("forceReimportLabel"),
+                forceReimportHint: t("forceReimportHint"),
+                parsedSampleTitle: t("parsedSampleTitle"),
+                parsedSampleHint: t("parsedSampleHint"),
+                duplicatesBreakdownIntra: t("duplicatesBreakdownIntra"),
+                duplicatesBreakdownExisting: t("duplicatesBreakdownExisting"),
+                zeroInsertedHint: t("zeroInsertedHint"),
+              }}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Manual transaction entry */}
+        <Card id="import-manual-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <PenLine className="h-4 w-4" />
+              {t("manualTitle")}
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">{t("manualSubtitle")}</p>
+          </CardHeader>
+          <CardContent>
+            <ManualTransactionForm
+              categories={categories}
+              locale={locale}
+              labels={{
+                sectionTitle: t("manualTitle"),
+                sectionSubtitle: t("manualSubtitle"),
+                typeExpense: t("manualTypeExpense"),
+                typeIncome: t("manualTypeIncome"),
+                dateLabel: t("manualDateLabel"),
+                amountLabel: t("manualAmountLabel"),
+                currencyLabel: t("manualCurrencyLabel"),
+                merchantLabel: t("manualMerchantLabel"),
+                merchantPlaceholder: t("manualMerchantPlaceholder"),
+                descriptionLabel: t("manualDescriptionLabel"),
+                descriptionPlaceholder: t("manualDescriptionPlaceholder"),
+                categoryLabel: t("manualCategoryLabel"),
+                categoryNone: t("manualCategoryNone"),
+                submitButton: t("manualSubmit"),
+                submitting: t("manualSubmitting"),
+                successMessage: t("manualSuccess"),
+                errorInvalidDate: t("manualErrorInvalidDate"),
+                errorInvalidAmount: t("manualErrorInvalidAmount"),
+                errorMissingDescription: t("manualErrorMissingDescription"),
+                errorGeneric: t("manualErrorGeneric"),
               }}
             />
           </CardContent>
@@ -145,6 +201,36 @@ export default async function ImportPage() {
               busyLabel={t("submitting")}
               successLabel={t("sampleDone")}
               errorLabel={t("genericError")}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Import history */}
+        <Card id="import-history-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <History className="h-4 w-4" />
+              {t("historyTitle")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ImportHistory
+              batches={batches}
+              intlLocale={intlLocale}
+              labels={{
+                title: t("historyTitle"),
+                empty: t("historyEmpty"),
+                pastedLabel: t("historyPasted"),
+                rowsInserted: t("historyInserted"),
+                rowsDuplicate: t("historyDuplicate"),
+                deleteButton: t("historyDelete"),
+                deleteConfirm: t("historyDeleteConfirm"),
+                deleting: t("historyDeleting"),
+                deleteError: t("historyDeleteError"),
+                resetAll: t("historyResetAll"),
+                resetAllConfirm: t("historyResetAllConfirm"),
+                resetAllSuccess: t("historyResetAllSuccess"),
+              }}
             />
           </CardContent>
         </Card>

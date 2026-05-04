@@ -99,6 +99,7 @@ export const DEFAULT_CATEGORIES = [
     color: "#94a3b8",
   },
   { slug: "other", nameEs: "Otros", nameEn: "Other", icon: "MoreHorizontal", color: "#737373" },
+  { slug: "bizum", nameEs: "Bizum", nameEn: "Bizum", icon: "Smartphone", color: "#00b8c4" },
 ] as const;
 
 export async function seedDefaultCategories(db: DB): Promise<void> {

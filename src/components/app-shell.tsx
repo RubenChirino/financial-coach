@@ -1,5 +1,6 @@
 import { LanguageToggle } from "@/components/language-toggle";
 import { NavLink } from "@/components/shell/nav-link";
+import { SidebarShell } from "@/components/shell/sidebar-shell";
 import { TopbarActions } from "@/components/shell/topbar-actions";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getLocale } from "@/lib/i18n/locale";
@@ -57,10 +58,11 @@ interface AppShellProps {
 }
 
 /**
- * Coin-branded app shell: 260px sidebar + 64px sticky topbar.
+ * Coin-branded app shell: collapsible 260px sidebar + 64px sticky topbar.
  *
  * Layout:
- *   - ≥ md: CSS-grid with a 260px rail on the left.
+ *   - ≥ md: CSS-grid managed by `SidebarShell` (client) — 260px when expanded,
+ *     52px icon-only when collapsed. State is persisted to localStorage.
  *   - < md: sidebar collapses to a bottom-nav-style rail on small screens.
  *
  * Server-rendered; interactive children (`NavLink`, `TopbarActions`,
@@ -77,95 +79,71 @@ export async function AppShell({ children, title, subtitle, coachUnread = 0 }: A
   const resolvedTitle = title ?? tApp("name");
   const resolvedSubtitle = subtitle ?? tApp("tagline");
 
+  const mainNav = MAIN.map(({ href, tKey, Icon, matchPrefix }) => (
+    <NavLink
+      key={href}
+      href={href}
+      label={tNav(tKey)}
+      icon={<Icon className="h-[17px] w-[17px]" strokeWidth={2} />}
+      matchPrefix={matchPrefix}
+      badge={tKey === "advisor" ? coachUnread : undefined}
+    />
+  ));
+
+  const accountNav = ACCOUNT.map(({ href, tKey, Icon, matchPrefix }) => (
+    <NavLink
+      key={href}
+      href={href}
+      label={tNav(tKey)}
+      icon={<Icon className="h-[17px] w-[17px]" strokeWidth={2} />}
+      matchPrefix={matchPrefix}
+    />
+  ));
+
+  const footer = (
+    <div className="border-t border-[color:var(--border-default)] pt-3">
+      <div className="flex items-center gap-2.5 rounded-[10px] p-2.5 hover:bg-[color:var(--brand-primary-soft)]">
+        <div
+          aria-hidden
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
+          style={{
+            background: "linear-gradient(135deg, #FFD1DC, #FFBDCD)",
+            color: "#8B2D43",
+          }}
+        >
+          <LifeBuoy className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-semibold leading-tight">
+            {tShell("youLabel")}
+          </div>
+          <div className="truncate text-[11px] text-[color:var(--text-tertiary)]">
+            {tShell("youSub")}
+          </div>
+        </div>
+      </div>
+      <div className="mt-2 flex items-center gap-1 px-1">
+        <LanguageToggle current={locale} />
+        <ThemeToggle />
+      </div>
+    </div>
+  );
+
   return (
-    <div className="min-h-dvh bg-[color:var(--surface-app)] text-[color:var(--text-primary)] md:grid md:grid-cols-[260px_1fr]">
-      {/* ─── Sidebar (desktop + tablet) ─── */}
-      <aside className="hidden md:sticky md:top-0 md:flex md:h-dvh md:flex-col md:overflow-y-auto md:border-r md:border-[color:var(--border-default)] md:bg-[color:var(--surface-sidebar)] md:px-3.5 md:py-5">
-        {/* Brand */}
-        <div className="flex items-center gap-2.5 px-2.5 pb-5">
-          <div
-            className="flex h-[34px] w-[34px] items-center justify-center rounded-[10px] text-white shadow-[0_2px_6px_rgba(83,137,255,0.3)]"
-            style={{
-              background: "linear-gradient(135deg, #5389FF 0%, #86ADFF 100%)",
-            }}
-          >
-            <Sparkles className="h-[18px] w-[18px]" strokeWidth={2.5} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-[15px] font-bold leading-tight tracking-tight">{tApp("name")}</div>
-            <div className="mt-0.5 text-[11px] text-[color:var(--text-tertiary)] truncate">
-              {tApp("tagline")}
-            </div>
-          </div>
-        </div>
-
-        {/* Main nav */}
-        <div className="px-2.5 pt-3.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--text-tertiary)]">
-          {tShell("main")}
-        </div>
-        <div className="space-y-1">
-          {MAIN.map(({ href, tKey, Icon, matchPrefix }) => (
-            <NavLink
-              key={href}
-              href={href}
-              label={tNav(tKey)}
-              icon={<Icon className="h-[17px] w-[17px]" strokeWidth={2} />}
-              matchPrefix={matchPrefix}
-              badge={tKey === "advisor" ? coachUnread : undefined}
-            />
-          ))}
-        </div>
-
-        {/* Account nav */}
-        <div className="px-2.5 pt-4 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--text-tertiary)]">
-          {tShell("account")}
-        </div>
-        <div className="space-y-1">
-          {ACCOUNT.map(({ href, tKey, Icon, matchPrefix }) => (
-            <NavLink
-              key={href}
-              href={href}
-              label={tNav(tKey)}
-              icon={<Icon className="h-[17px] w-[17px]" strokeWidth={2} />}
-              matchPrefix={matchPrefix}
-            />
-          ))}
-        </div>
-
-        {/* Footer: user chip + locale/theme quick toggles */}
-        <div className="mt-auto border-t border-[color:var(--border-default)] pt-3">
-          <div className="flex items-center gap-2.5 rounded-[10px] p-2.5 hover:bg-[color:var(--brand-primary-soft)]">
-            <div
-              aria-hidden
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
-              style={{
-                background: "linear-gradient(135deg, #FFD1DC, #FFBDCD)",
-                color: "#8B2D43",
-              }}
-            >
-              <LifeBuoy className="h-4 w-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[13px] font-semibold leading-tight">
-                {tShell("youLabel")}
-              </div>
-              <div className="truncate text-[11px] text-[color:var(--text-tertiary)]">
-                {tShell("youSub")}
-              </div>
-            </div>
-          </div>
-          <div className="mt-2 flex items-center gap-1 px-1">
-            <LanguageToggle current={locale} />
-            <ThemeToggle />
-          </div>
-        </div>
-      </aside>
-
+    <SidebarShell
+      appName={tApp("name")}
+      appTagline={tApp("tagline")}
+      mainLabel={tShell("main")}
+      mainNav={mainNav}
+      accountLabel={tShell("account")}
+      accountNav={accountNav}
+      footer={footer}
+    >
       {/* ─── Main column ─── */}
       <div className="flex min-w-0 flex-col">
         {/* Mobile brand row (visible < md). The desktop topbar is sticky below. */}
         <header className="flex h-14 items-center justify-between gap-2 border-b border-[color:var(--border-default)] bg-[color:var(--surface-card)] px-4 md:hidden">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
             <div
               className="flex h-7 w-7 items-center justify-center rounded-lg text-white"
               style={{
@@ -224,7 +202,7 @@ export async function AppShell({ children, title, subtitle, coachUnread = 0 }: A
           </div>
         </nav>
       </div>
-    </div>
+    </SidebarShell>
   );
 }
 
