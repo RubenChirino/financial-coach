@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache";
 import { type CsvMappingSpec, parseCsvWithAi } from "./ai-mapper";
 import { type ParseCsvResult, parseCsv } from "./csv";
 import { ensureImportedAccount, importParsedRows } from "./ingest";
+import { extractAccountMetadata } from "./metadata";
 
 export interface AiDetectionInfo {
   used: boolean;
@@ -177,15 +178,22 @@ async function runImport(text: string, opts: RunImportOptions = {}): Promise<Imp
   }
 
   try {
+    // Pull IBAN / current balance / currency from the file's header block —
+    // banks like Santander put them above the transaction rows. Falls back to
+    // null fields for files that don't expose any of this.
+    const meta = extractAccountMetadata(text);
     const { accountRowId } = await ensureImportedAccount({
       encryptionKey: session.encryptionKey,
+      iban: meta.iban,
+      currency: meta.currency,
     });
-    const currency = parsed.rows[0]?.currency;
+    const currency = meta.currency ?? parsed.rows[0]?.currency;
     const ingest = await importParsedRows(parsed.rows, {
       accountRowId,
       currency,
       filename: opts.filename,
       forceReimport: opts.forceReimport,
+      accountBalanceCents: meta.balanceCents,
     });
 
     revalidatePath("/");

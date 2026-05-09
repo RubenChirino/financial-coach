@@ -138,6 +138,12 @@ function ResetAllButton({ labels }: { labels: ImportHistoryLabels }) {
     });
   }
 
+  if (result) {
+    return (
+      <p className="text-[11.5px] text-emerald-600 dark:text-emerald-400">{result}</p>
+    );
+  }
+
   return (
     <div className="rounded-md border border-red-500/20 bg-red-500/5 p-3">
       <div className="flex items-center justify-between gap-3">
@@ -145,9 +151,6 @@ function ResetAllButton({ labels }: { labels: ImportHistoryLabels }) {
           <p className="text-[12.5px] font-medium text-red-600 dark:text-red-400">
             {labels.resetAll}
           </p>
-          {result && (
-            <p className="mt-0.5 text-[11.5px] text-emerald-600 dark:text-emerald-400">{result}</p>
-          )}
           {error && (
             <p className="mt-0.5 flex items-center gap-1 text-[11.5px] text-red-500">
               <AlertTriangle className="h-3 w-3 shrink-0" />

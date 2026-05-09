@@ -615,7 +615,11 @@
       "wipeConfirm": "¿Eliminar todos los bancos demo y sus movimientos?",
       "seeded": "Banco demo creado.",
       "wiped": "Datos demo eliminados."
-    }
+    },
+    "deleteAccountTitle": "Eliminar cuenta",
+    "deleteAccountBody": "¿Eliminar permanentemente «{name}» y todas sus transacciones? Esta acción no se puede deshacer.",
+    "deleteAccountDone": "Cuenta eliminada",
+    "deleteAccountError": "No se pudo eliminar la cuenta"
   },
   "goals": {
     "title": "Objetivos",

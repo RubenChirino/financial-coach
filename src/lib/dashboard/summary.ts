@@ -116,13 +116,22 @@ export async function getTopCategoriesThisMonth(
   }));
 }
 
+/**
+ * SQL fragment that hides accounts which carry no balance AND no transactions —
+ * a freshly-created shell with nothing in it. This is what filters the empty
+ * "Imported Transactions" fallback out of the UI once the user has imported
+ * to a real (IBAN-keyed) account instead.
+ */
+const accountIsVisible = sql`NOT (${accounts.balanceCents} = 0 AND NOT EXISTS (SELECT 1 FROM ${transactions} WHERE ${transactions.accountId} = ${accounts.id}))`;
+
 export async function getAccountsTotal(): Promise<AccountsTotal> {
   const rows = await db
     .select({
       balance: accounts.balanceCents,
       currency: accounts.currency,
     })
-    .from(accounts);
+    .from(accounts)
+    .where(accountIsVisible);
   if (rows.length === 0) return { totalCents: 0, currency: "EUR", accountCount: 0 };
   const total = rows.reduce((sum, r) => sum + (r.balance ?? 0), 0);
   const currency = rows[0]?.currency ?? "EUR";
@@ -202,6 +211,7 @@ export async function listAccountsWithInstitutions(): Promise<AccountTile[]> {
     .from(accounts)
     .innerJoin(requisitions, eq(requisitions.id, accounts.requisitionId))
     .innerJoin(institutions, eq(institutions.id, requisitions.institutionId))
+    .where(accountIsVisible)
     .orderBy(desc(accounts.balanceCents));
   return rows;
 }
@@ -241,6 +251,7 @@ export async function listInstitutionGroups(): Promise<InstitutionGroup[]> {
     .from(accounts)
     .innerJoin(requisitions, eq(requisitions.id, accounts.requisitionId))
     .innerJoin(institutions, eq(institutions.id, requisitions.institutionId))
+    .where(accountIsVisible)
     .orderBy(desc(accounts.balanceCents));
 
   const map = new Map<number, InstitutionGroup>();

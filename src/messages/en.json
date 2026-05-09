@@ -615,7 +615,11 @@
       "wipeConfirm": "Remove all demo banks and their transactions?",
       "seeded": "Demo bank seeded.",
       "wiped": "Demo data removed."
-    }
+    },
+    "deleteAccountTitle": "Delete account",
+    "deleteAccountBody": "Permanently delete \"{name}\" and all of its transactions? This cannot be undone.",
+    "deleteAccountDone": "Account deleted",
+    "deleteAccountError": "Couldn't delete account"
   },
   "goals": {
     "title": "Goals",

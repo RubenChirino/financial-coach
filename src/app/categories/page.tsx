@@ -375,6 +375,7 @@ export default async function CategoriesPage({
                   </div>
                   <div className="mt-0.5">
                     <BudgetInput
+                      key={selected.id}
                       categoryId={selected.id}
                       initialBudgetCents={selected.budgetMonthlyCents}
                       currency={currency}

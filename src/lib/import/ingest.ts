@@ -5,6 +5,7 @@ import { db } from "@/db/client";
 import { accounts, importBatches, institutions, requisitions, transactions } from "@/db/schema";
 import { categorizeBatchByRules } from "@/lib/categorize";
 import { encrypt } from "@/lib/crypto";
+import { formatIban } from "@/lib/format/iban";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { ParsedCsvRow } from "./csv";
 
@@ -36,9 +37,16 @@ export interface EnsureImportedAccountResult {
  * Idempotent: finds the Imported institution / requisition / account if they
  * already exist, otherwise creates them. Encrypts the placeholder IDs with the
  * session key so decrypt() stays uniform across the codebase.
+ *
+ * When `iban` is supplied, the account is keyed by the formatted IBAN so
+ * imports from different banks/cards land in distinct accounts. When omitted,
+ * a single shared "Imported Transactions" fallback is used (for files that
+ * don't expose any account identifier).
  */
 export async function ensureImportedAccount(opts: {
   encryptionKey: Buffer;
+  iban?: string | null;
+  currency?: string | null;
 }): Promise<EnsureImportedAccountResult> {
   const existingInst = await db
     .select({ id: institutions.id })
@@ -91,10 +99,17 @@ export async function ensureImportedAccount(opts: {
 
   if (!requisitionRowId) throw new Error("failed to ensure imported requisition");
 
+  const accountName = opts.iban ? formatIban(opts.iban) : "Imported Transactions";
+  const ibanLast4 = opts.iban ? opts.iban.slice(-4) : null;
+
+  // Match an existing account by the user-visible name within the imported
+  // requisition. Names are deterministic (formatted IBAN or the fallback
+  // string), so this gives us a stable, plaintext-searchable key without
+  // needing to decrypt every `gocardlessAccountId` cipher.
   const existingAcc = await db
     .select({ id: accounts.id })
     .from(accounts)
-    .where(eq(accounts.requisitionId, requisitionRowId))
+    .where(and(eq(accounts.requisitionId, requisitionRowId), eq(accounts.name, accountName)))
     .limit(1);
 
   const accountRowId =
@@ -104,12 +119,15 @@ export async function ensureImportedAccount(opts: {
         .insert(accounts)
         .values({
           requisitionId: requisitionRowId,
-          gocardlessAccountId: encrypt(IMPORTED_ACCOUNT_PLACEHOLDER, opts.encryptionKey),
-          ibanLast4: null,
-          name: "Imported Transactions",
+          gocardlessAccountId: encrypt(
+            opts.iban ?? IMPORTED_ACCOUNT_PLACEHOLDER,
+            opts.encryptionKey,
+          ),
+          ibanLast4,
+          name: accountName,
           ownerName: null,
           balanceCents: 0,
-          currency: "EUR",
+          currency: opts.currency ?? "EUR",
         })
         .returning({ id: accounts.id })
     )[0]?.id;
@@ -189,6 +207,14 @@ export async function importParsedRows(
      * mistakenly flagging as duplicates.
      */
     forceReimport?: boolean;
+    /**
+     * Authoritative current balance pulled from the export's metadata header
+     * (e.g. Santander's "Saldo: 2.832,29 EUR"). When set, we trust it as the
+     * account's current balance rather than recomputing from the sum of
+     * imported transactions — bank exports usually contain only a recent
+     * window of activity, so summing rows produces a meaningless number.
+     */
+    accountBalanceCents?: number | null;
   },
 ): Promise<ImportParsedRowsResult> {
   // Always create a batch record so import history is complete, even if all rows
@@ -291,15 +317,22 @@ export async function importParsedRows(
 
   const ruleMatched = await categorizeBatchByRules(insertedIds);
 
-  // Recompute balance from the sum of transactions on this account. Imported
-  // accounts have no authoritative balance source, so the sum is it.
-  const totalRow = await db
-    .select({
-      sum: sql<number>`coalesce(sum(${transactions.amountCents}), 0)`,
-    })
-    .from(transactions)
-    .where(eq(transactions.accountId, opts.accountRowId));
-  const newBalance = Number(totalRow[0]?.sum ?? 0);
+  // Prefer the export's own balance header (a real "current balance" snapshot
+  // from the bank). Fall back to summing transactions only when the file
+  // didn't carry one — that path produces a sensible number only when the
+  // import is the user's full ledger, but it's the best we can do.
+  let newBalance: number;
+  if (opts.accountBalanceCents != null) {
+    newBalance = opts.accountBalanceCents;
+  } else {
+    const totalRow = await db
+      .select({
+        sum: sql<number>`coalesce(sum(${transactions.amountCents}), 0)`,
+      })
+      .from(transactions)
+      .where(eq(transactions.accountId, opts.accountRowId));
+    newBalance = Number(totalRow[0]?.sum ?? 0);
+  }
 
   const updateSet: { balanceCents: number; lastSyncedAt: Date; currency?: string } = {
     balanceCents: newBalance,

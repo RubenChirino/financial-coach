@@ -7,11 +7,12 @@ import { getUser } from "@/lib/auth/user";
 import { getAccountsTotal, listInstitutionGroups } from "@/lib/dashboard/summary";
 import { formatAmount } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
-import { Landmark, Plus, Settings2, Wallet } from "lucide-react";
+import { Landmark, Plus, Settings2 } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SyncButton } from "../settings/bank/sync-button";
+import { AccountRow } from "./account-row";
 
 export const dynamic = "force-dynamic";
 
@@ -126,32 +127,19 @@ export default async function BanksPage() {
 
                   {/* Account rows */}
                   <ul className="divide-y divide-[color:var(--border-default)]">
-                    {group.accounts.map((acc) => {
-                      const balFormatted = formatAmount(acc.balanceCents, acc.currency, intlLocale);
-                      return (
-                        <li key={acc.id}>
-                          <Link
-                            href={`/transactions?accountId=${acc.id}`}
-                            className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-[color:var(--brand-primary-soft)]"
-                          >
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[color:var(--surface-app)] text-[color:var(--text-tertiary)]">
-                              <Wallet className="h-4 w-4" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-[13.5px] font-medium">{acc.name}</div>
-                              {acc.ibanLast4 ? (
-                                <div className="text-[11px] text-[color:var(--text-tertiary)]">
-                                  ••{acc.ibanLast4}
-                                </div>
-                              ) : null}
-                            </div>
-                            <div className="tnum shrink-0 text-[14px] font-semibold">
-                              <PrivacyAmount value={balFormatted} />
-                            </div>
-                          </Link>
-                        </li>
-                      );
-                    })}
+                    {group.accounts.map((acc) => (
+                      <AccountRow
+                        key={acc.id}
+                        id={acc.id}
+                        name={acc.name}
+                        ibanLast4={acc.ibanLast4}
+                        balanceFormatted={formatAmount(
+                          acc.balanceCents,
+                          acc.currency,
+                          intlLocale,
+                        )}
+                      />
+                    ))}
                   </ul>
                 </section>
               );
