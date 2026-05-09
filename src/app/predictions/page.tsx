@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
+import { PrivacyAmount } from "@/components/privacy-amount";
 import { TourButton } from "@/components/tour-button";
 import { Button } from "@/components/ui/button";
 import { getCurrentSession } from "@/lib/auth/session";
@@ -80,7 +81,7 @@ export default async function PredictionsPage({
                     </div>
                   </div>
                   <div className="tnum text-[13.5px] font-medium">
-                    {formatAmount(acc.balanceCents, acc.currency, intlLocale)}
+                    <PrivacyAmount value={formatAmount(acc.balanceCents, acc.currency, intlLocale)} />
                   </div>
                 </Link>
               </li>
@@ -195,8 +196,9 @@ export default async function PredictionsPage({
                 : "text-red-600 dark:text-red-400"
             }`}
           >
-            {cumulativePositive ? "+" : ""}
-            {fmt(forecast.cumulativeNetCents)}
+            <PrivacyAmount
+              value={`${cumulativePositive ? "+" : ""}${fmt(forecast.cumulativeNetCents)}`}
+            />
           </div>
           <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-default)] px-2 py-0.5 text-[11px] text-[color:var(--text-secondary)]">
             <span
@@ -234,20 +236,21 @@ export default async function PredictionsPage({
                       : "text-red-600 dark:text-red-400"
                   }`}
                 >
-                  {positive ? "+" : ""}
-                  {fmt(m.projectedNetCents)}
+                  <PrivacyAmount
+                    value={`${positive ? "+" : ""}${fmt(m.projectedNetCents)}`}
+                  />
                 </div>
                 <dl className="mt-3 space-y-1 text-[12px]">
                   <div className="flex items-center justify-between">
                     <dt className="text-[color:var(--text-tertiary)]">{t("incomeLine")}</dt>
                     <dd className="tabular-nums text-emerald-600 dark:text-emerald-400">
-                      +{fmt(m.projectedIncomeCents)}
+                      <PrivacyAmount value={`+${fmt(m.projectedIncomeCents)}`} />
                     </dd>
                   </div>
                   <div className="flex items-center justify-between">
                     <dt className="text-[color:var(--text-tertiary)]">{t("expenseLine")}</dt>
                     <dd className="tabular-nums text-red-600 dark:text-red-400">
-                      −{fmt(m.projectedExpenseCents)}
+                      <PrivacyAmount value={`−${fmt(m.projectedExpenseCents)}`} />
                     </dd>
                   </div>
                 </dl>
@@ -310,8 +313,7 @@ export default async function PredictionsPage({
                   >
                     <span className="truncate">{s.source}</span>
                     <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
-                      +{fmt(s.monthlyEquivCents)}
-                      {t("monthlySuffix")}
+                      <PrivacyAmount value={`+${fmt(s.monthlyEquivCents)}${t("monthlySuffix")}`} />
                     </span>
                   </li>
                 ))}
@@ -326,8 +328,7 @@ export default async function PredictionsPage({
                         {t("monthsSeenSuffix", { n: s.monthsSeen })}
                       </span>
                       <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
-                        +{fmt(s.monthlyMedianCents)}
-                        {t("monthlySuffix")}
+                        <PrivacyAmount value={`+${fmt(s.monthlyMedianCents)}${t("monthlySuffix")}`} />
                       </span>
                     </span>
                   </li>
@@ -355,8 +356,7 @@ export default async function PredictionsPage({
                   >
                     <span className="truncate">{s.merchant}</span>
                     <span className="tabular-nums text-[color:var(--text-secondary)]">
-                      {fmt(s.monthlyEquivCents)}
-                      {t("monthlySuffix")}
+                      <PrivacyAmount value={`${fmt(s.monthlyEquivCents)}${t("monthlySuffix")}`} />
                     </span>
                   </li>
                 ))}
@@ -384,8 +384,7 @@ export default async function PredictionsPage({
                         {t("monthsSeenSuffix", { n: h.monthsSeen })}
                       </span>
                       <span className="tabular-nums text-[color:var(--text-secondary)]">
-                        {fmt(h.monthlyMedianCents)}
-                        {t("monthlySuffix")}
+                        <PrivacyAmount value={`${fmt(h.monthlyMedianCents)}${t("monthlySuffix")}`} />
                       </span>
                     </span>
                   </li>
@@ -411,9 +410,11 @@ export default async function PredictionsPage({
                   <span className="text-[13px] font-medium">{fmtMonth(m.month)}</span>
                   <div className="flex items-center gap-4 text-[12px] tabular-nums">
                     <span className="text-emerald-600 dark:text-emerald-400">
-                      +{fmt(m.incomeCents)}
+                      <PrivacyAmount value={`+${fmt(m.incomeCents)}`} />
                     </span>
-                    <span className="text-red-600 dark:text-red-400">−{fmt(m.expenseCents)}</span>
+                    <span className="text-red-600 dark:text-red-400">
+                      <PrivacyAmount value={`−${fmt(m.expenseCents)}`} />
+                    </span>
                     <span
                       className={`font-medium ${
                         m.netCents >= 0
@@ -421,8 +422,9 @@ export default async function PredictionsPage({
                           : "text-red-600 dark:text-red-400"
                       }`}
                     >
-                      {m.netCents >= 0 ? "+" : ""}
-                      {fmt(m.netCents)}
+                      <PrivacyAmount
+                        value={`${m.netCents >= 0 ? "+" : ""}${fmt(m.netCents)}`}
+                      />
                     </span>
                   </div>
                 </li>
@@ -449,7 +451,9 @@ function InputRow({
   return (
     <div className="flex items-center justify-between">
       <dt className="text-[color:var(--text-tertiary)]">{label}</dt>
-      <dd className={`tabular-nums font-medium ${valueColor}`}>{value}</dd>
+      <dd className={`tabular-nums font-medium ${valueColor}`}>
+        <PrivacyAmount value={value} />
+      </dd>
     </div>
   );
 }
