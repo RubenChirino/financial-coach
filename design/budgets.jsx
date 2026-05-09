@@ -307,7 +307,7 @@ function BudgetsPage({ ctx }) {
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>
               {sel.spent > sel.budget
-                ? `You're over on ${sel.name.toLowerCase()} — biggest driver is €${Math.max(...selTxs.map((t) => Math.abs(t.amount))).toFixed(2)} at ${selTxs[0]?.merchant}. Want me to suggest[...]
+                ? `You're over on ${sel.name.toLowerCase()} — biggest driver is €${Math.max(...selTxs.map((t) => Math.abs(t.amount))).toFixed(2)} at ${selTxs[0]?.merchant}. Want me to suggest a cap for next month?`
                 : `You have €${(sel.budget - sel.spent).toFixed(2)} left for ${sel.name.toLowerCase()} this month. At your current pace, you'll finish 8% under budget.`}
             </div>
             <button
