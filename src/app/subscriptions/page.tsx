@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/app-shell";
+import { CategoryIcon } from "@/components/category-icon";
 import { EmptyState } from "@/components/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentSession } from "@/lib/auth/session";
@@ -147,7 +148,7 @@ function Section({ title, rows, locale, intlLocale, currency, t, muted }: Sectio
                     }}
                     aria-hidden
                   >
-                    {s.categoryIcon ?? "🔁"}
+                    <CategoryIcon icon={s.categoryIcon ?? "Repeat"} className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
                     <div className="truncate font-medium">{s.merchantName}</div>
