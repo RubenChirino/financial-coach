@@ -22,11 +22,11 @@ function BudgetsPage({ ctx }) {
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <div className="seg">
-            <button className="on">Month</button>
-            <button>Quarter</button>
-            <button>Year</button>
+            <button type="button" className="on">Month</button>
+            <button type="button">Quarter</button>
+            <button type="button">Year</button>
           </div>
-          <button className="btn btn-primary">
+          <button type="button" className="btn btn-primary">
             <Icon name="plus" size={14} /> New category
           </button>
         </div>
@@ -110,6 +110,7 @@ function BudgetsPage({ ctx }) {
               const selected = cat.id === selectedId;
               return (
                 <button
+                  type="button"
                   key={cat.id}
                   onClick={() => setSelectedId(cat.id)}
                   style={{
@@ -190,7 +191,7 @@ function BudgetsPage({ ctx }) {
                 </div>
                 <div className="caption">April 2026</div>
               </div>
-              <button className="btn btn-outline" style={{ padding: "6px 10px" }}>
+              <button type="button" className="btn btn-outline" style={{ padding: "6px 10px" }}>
                 <Icon name="settings-2" size={13} /> Edit
               </button>
             </div>
@@ -306,10 +307,11 @@ function BudgetsPage({ ctx }) {
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>
               {sel.spent > sel.budget
-                ? `You're over on ${sel.name.toLowerCase()} — biggest driver is €${Math.max(...selTxs.map((t) => Math.abs(t.amount))).toFixed(2)} at ${selTxs[0]?.merchant}. Want me to suggest a cap for next month?`
+                ? `You're over on ${sel.name.toLowerCase()} — biggest driver is €${Math.max(...selTxs.map((t) => Math.abs(t.amount))).toFixed(2)} at ${selTxs[0]?.merchant}. Want me to suggest[...]
                 : `You have €${(sel.budget - sel.spent).toFixed(2)} left for ${sel.name.toLowerCase()} this month. At your current pace, you'll finish 8% under budget.`}
             </div>
             <button
+              type="button"
               className="btn"
               style={{ background: "var(--text-primary)", color: "#fff", marginTop: 12 }}
             >
