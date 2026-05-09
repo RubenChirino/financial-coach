@@ -111,10 +111,13 @@ export default async function PredictionsPage({
   }
 
   const cumulativePositive = forecast.cumulativeNetCents >= 0;
+  const detectedFixedIncomeCents =
+    forecast.inputs.recurringMonthlyInCents + forecast.inputs.habitualMonthlyInCents;
   const fixedIncomeCents =
-    forecast.inputs.recurringMonthlyInCents > 0
-      ? forecast.inputs.recurringMonthlyInCents
-      : forecast.inputs.avgMonthlyIncomeCents;
+    detectedFixedIncomeCents > 0
+      ? detectedFixedIncomeCents
+      : forecast.months[0]?.projectedIncomeCents ?? 0;
+  const incomeIsDetected = detectedFixedIncomeCents > 0;
 
   return (
     <AppShell title={t("title")} subtitle={t("subtitle")}>
@@ -284,7 +287,7 @@ export default async function PredictionsPage({
             />
             <InputRow
               label={t("inputVariableOut")}
-              value={`−${fmt(forecast.inputs.avgMonthlyVariableExpenseCents)}`}
+              value={`−${fmt(forecast.inputs.variableMonthlyExpenseCents)}`}
               valueColor="text-[color:var(--text-secondary)]"
             />
             <InputRow
@@ -294,7 +297,7 @@ export default async function PredictionsPage({
             />
           </dl>
 
-          {forecast.inputs.recurringInflows.length > 0 ? (
+          {incomeIsDetected ? (
             <div className="mt-5 border-t border-[color:var(--border-default)] pt-4">
               <h3 className="text-[12px] font-medium uppercase tracking-wide text-[color:var(--text-tertiary)]">
                 {t("topRecurringInflowsTitle")}
@@ -302,13 +305,30 @@ export default async function PredictionsPage({
               <ul className="mt-2 space-y-1.5">
                 {forecast.inputs.recurringInflows.map((s) => (
                   <li
-                    key={s.source}
+                    key={`r-${s.source}`}
                     className="flex items-center justify-between text-[13px]"
                   >
                     <span className="truncate">{s.source}</span>
                     <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
                       +{fmt(s.monthlyEquivCents)}
                       {t("monthlySuffix")}
+                    </span>
+                  </li>
+                ))}
+                {forecast.inputs.habitualIncomes.map((s) => (
+                  <li
+                    key={`h-${s.source}`}
+                    className="flex items-center justify-between text-[13px]"
+                  >
+                    <span className="truncate">{s.source}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="text-[11px] text-[color:var(--text-tertiary)]">
+                        {t("monthsSeenSuffix", { n: s.monthsSeen })}
+                      </span>
+                      <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
+                        +{fmt(s.monthlyMedianCents)}
+                        {t("monthlySuffix")}
+                      </span>
                     </span>
                   </li>
                 ))}

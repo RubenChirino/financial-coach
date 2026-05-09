@@ -12,30 +12,34 @@ import { and, eq, gte, lt, sql } from "drizzle-orm";
  * We deliberately avoid ML/regression here — with only a few months of
  * personal banking data the variance is too high for any fancy model to add
  * real signal, and the user has to *trust* the number. Instead we layer
- * three transparent components the UI can explain in one paragraph:
+ * transparent components the UI can explain in one paragraph:
  *
  *   Fixed income
- *     Detected recurring inflows (payroll-style deposits with stable
- *     amount + monthly cadence). When nothing was detected we fall back to
- *     the trailing-3-month average, but we keep the two figures separate
- *     so the user can see how "predictable" their income is.
+ *     (a) recurring inflows from the strict detector (payroll with stable
+ *     amount + monthly cadence) PLUS (b) habitual income — a payer seen in
+ *     2+ months whose monthly total is stable. The habitual layer catches
+ *     salary that varies a few % month-to-month (variable bonuses, taxes
+ *     adjustments) which the strict detector rejects.
  *
- *   Fixed outflows
+ *   Fixed outflows (recurring)
  *     Detected recurring outflows from the subscriptions table — Netflix,
- *     gym, mortgage. These are the most certain part of next month's bill.
+ *     gym, mortgage. The most certain part of next month's bill.
  *
  *   Habitual outflows
- *     Merchants the user pays often (e.g. groceries) where each charge
- *     varies but the *monthly total* at that merchant is stable across
- *     several months. We use the median monthly total as the predictable
- *     baseline. This is what catches the Mercadona pattern that the
- *     per-transaction recurring detector cannot.
+ *     Merchants the user pays often (groceries, fuel) where each charge
+ *     varies but the monthly total at that merchant is stable. Median of
+ *     monthly totals is the predictable baseline. This catches the
+ *     Mercadona pattern that the per-transaction detector misses.
  *
  *   Variable outflows
- *     Trailing-average residual = avg monthly spend − fixed − habitual,
- *     floored at 0.
+ *     Per-month residual = monthly spend − recurring − habitual, floored
+ *     at 0. The MEDIAN of those residuals is what we project. Median (not
+ *     mean) keeps a single high-spend month — moving deposit, holiday,
+ *     emergency — from inflating the projection for unrelated future months.
  *
- *   Projected spending = fixed + habitual + variable.
+ *   Projected income   = fixed income (or median monthly income if nothing
+ *                                       habitual detected).
+ *   Projected spending = recurring + habitual + variable median.
  *   Projected savings  = projected income − projected spending.
  *
  * The function returns the per-month projection AND every input that fed
@@ -45,6 +49,12 @@ import { and, eq, gte, lt, sql } from "drizzle-orm";
 
 export interface HabitualMerchant {
   merchant: string;
+  monthlyMedianCents: number;
+  monthsSeen: number;
+}
+
+export interface HabitualIncomeSource {
+  source: string;
   monthlyMedianCents: number;
   monthsSeen: number;
 }
@@ -59,10 +69,12 @@ export interface ForecastInputs {
   trailingMonths: number;
   avgMonthlyIncomeCents: number;
   avgMonthlyExpenseCents: number;
-  avgMonthlyVariableExpenseCents: number;
+  /** Median of (monthly_expense − recurring − habitual), floored at 0. */
+  variableMonthlyExpenseCents: number;
   recurringMonthlyOutCents: number;
   recurringMonthlyInCents: number;
   habitualMonthlyOutCents: number;
+  habitualMonthlyInCents: number;
   /** Per-historical-month breakdown so the UI can show the trend. */
   history: { month: string; incomeCents: number; expenseCents: number; netCents: number }[];
   /** Top recurring outflows (already monthly-normalized). */
@@ -75,6 +87,8 @@ export interface ForecastInputs {
   recurringInflows: RecurringInflow[];
   /** Habitual variable merchants — frequent but per-tx amount fluctuates. */
   habitualMerchants: HabitualMerchant[];
+  /** Habitual income sources — payer present in ≥ 2 months with stable monthly totals. */
+  habitualIncomes: HabitualIncomeSource[];
 }
 
 export interface ForecastMonth {
@@ -170,26 +184,39 @@ async function getCurrency(accountId?: number): Promise<string> {
   return r[0]?.c ?? "EUR";
 }
 
+interface HabitualEntry {
+  display: string;
+  monthlyMedianCents: number;
+  monthsSeen: number;
+}
+
 /**
- * Find merchants the user spends at often where each charge varies but the
- * monthly total is stable. Examples: groceries, fuel, restaurants.
+ * Generic "habitual party" detector — works for both outflows (merchants we
+ * pay) and inflows (payers we receive from). For each party, build a
+ * per-month total over the window. Keep the party if it's seen in
+ * ≥ HABITUAL_MIN_MONTHS with a median monthly total ≥ HABITUAL_MIN_MONTHLY_CENTS
+ * and a CoV across monthly totals ≤ HABITUAL_MAX_COV. The predictable amount
+ * per month is the MEDIAN of monthly totals — resistant to one-off outliers
+ * like a big restock or a one-time bonus payment.
  *
- * Algorithm: for each merchant, build a per-month total over the trailing
- * window. Keep the merchant if it's seen in ≥ HABITUAL_MIN_MONTHS, the median
- * monthly total ≥ HABITUAL_MIN_MONTHLY_CENTS, and the CoV across monthly
- * totals ≤ HABITUAL_MAX_COV. The "predictable" amount per month is the median
- * (resistant to one-off outliers like a big restock).
+ * Pass `direction = "out"` for spending merchants (negative tx), `"in"` for
+ * income sources (positive tx).
  */
-async function detectHabitualMerchants(
+async function detectHabitualParties(
+  direction: "in" | "out",
   windowStart: Date,
   windowEnd: Date,
-  excludeMerchantKeys: Set<string>,
+  excludeKeys: Set<string>,
   accountId?: number,
-): Promise<HabitualMerchant[]> {
+): Promise<HabitualEntry[]> {
+  const signFilter =
+    direction === "out"
+      ? lt(transactions.amountCents, 0)
+      : sql`${transactions.amountCents} > 0`;
   const conditions = [
     gte(transactions.bookingDate, windowStart),
     lt(transactions.bookingDate, windowEnd),
-    lt(transactions.amountCents, 0),
+    signFilter,
   ];
   const accountFilter = buildAccountFilter(accountId);
   if (accountFilter) conditions.push(accountFilter);
@@ -197,32 +224,36 @@ async function detectHabitualMerchants(
   const rows = await db
     .select({
       merchant: transactions.merchantName,
+      rawDescription: transactions.rawDescription,
       bookingDate: transactions.bookingDate,
       amountCents: transactions.amountCents,
     })
     .from(transactions)
     .where(and(...conditions));
 
-  // Group: merchant → month → total cents (positive)
-  const byMerchant = new Map<string, { display: string; perMonth: Map<string, number> }>();
+  // Group: party → month → total cents (always positive in the map)
+  const byParty = new Map<string, { display: string; perMonth: Map<string, number> }>();
   for (const r of rows) {
-    if (!r.merchant) continue;
-    const display = r.merchant.trim();
-    const key = normalizeMerchant(display);
+    // For income, merchant_name is often null (the bank stores the payer in
+    // the description); fall back to the raw description so we don't lose
+    // payroll deposits with no merchant_name.
+    const displayRaw = (r.merchant ?? r.rawDescription ?? "").trim();
+    if (!displayRaw) continue;
+    const key = normalizeMerchant(displayRaw);
     if (!key) continue;
-    if (excludeMerchantKeys.has(key)) continue;
+    if (excludeKeys.has(key)) continue;
 
     const ym = `${r.bookingDate.getUTCFullYear()}-${String(r.bookingDate.getUTCMonth() + 1).padStart(2, "0")}`;
-    let entry = byMerchant.get(key);
+    let entry = byParty.get(key);
     if (!entry) {
-      entry = { display, perMonth: new Map() };
-      byMerchant.set(key, entry);
+      entry = { display: displayRaw, perMonth: new Map() };
+      byParty.set(key, entry);
     }
     entry.perMonth.set(ym, (entry.perMonth.get(ym) ?? 0) + Math.abs(r.amountCents));
   }
 
-  const detected: HabitualMerchant[] = [];
-  for (const { display, perMonth } of byMerchant.values()) {
+  const detected: HabitualEntry[] = [];
+  for (const { display, perMonth } of byParty.values()) {
     const totals = [...perMonth.values()];
     if (totals.length < HABITUAL_MIN_MONTHS) continue;
     const med = median(totals);
@@ -230,7 +261,7 @@ async function detectHabitualMerchants(
     const cov = stdDev(totals) / mean(totals);
     if (cov > HABITUAL_MAX_COV) continue;
     detected.push({
-      merchant: display,
+      display,
       monthlyMedianCents: Math.round(med),
       monthsSeen: totals.length,
     });
@@ -334,17 +365,29 @@ export async function getSpendingForecast(opts?: {
   recurringTopList.sort((a, b) => b.monthlyEquivCents - a.monthlyEquivCents);
   recurringInflows.sort((a, b) => b.monthlyEquivCents - a.monthlyEquivCents);
 
-  // Habitual variable merchants (groceries-style). Look at the same trailing
-  // window as the income/expense averages so the math stays consistent.
+  // Habitual outflows + inflows. Look at the same trailing window as the
+  // income/expense averages so the math stays consistent.
   const trailingStart = monthRange(-TRAILING_WINDOW_MONTHS).start;
   const trailingEnd = monthRange(0).start;
-  const habitualMerchants = await detectHabitualMerchants(
-    trailingStart,
-    trailingEnd,
-    recurringMerchantKeys,
-    accountId,
-  );
+  const [habitualOutEntries, habitualInEntries] = await Promise.all([
+    detectHabitualParties("out", trailingStart, trailingEnd, recurringMerchantKeys, accountId),
+    detectHabitualParties("in", trailingStart, trailingEnd, recurringMerchantKeys, accountId),
+  ]);
+  const habitualMerchants: HabitualMerchant[] = habitualOutEntries.map((e) => ({
+    merchant: e.display,
+    monthlyMedianCents: e.monthlyMedianCents,
+    monthsSeen: e.monthsSeen,
+  }));
+  const habitualIncomes: HabitualIncomeSource[] = habitualInEntries.map((e) => ({
+    source: e.display,
+    monthlyMedianCents: e.monthlyMedianCents,
+    monthsSeen: e.monthsSeen,
+  }));
   const habitualMonthlyOutCents = habitualMerchants.reduce(
+    (s, h) => s + h.monthlyMedianCents,
+    0,
+  );
+  const habitualMonthlyInCents = habitualIncomes.reduce(
     (s, h) => s + h.monthlyMedianCents,
     0,
   );
@@ -355,27 +398,32 @@ export async function getSpendingForecast(opts?: {
   const avgMonthlyExpenseCents =
     months > 0 ? Math.round(history.reduce((s, m) => s + m.expenseCents, 0) / months) : 0;
 
-  // Variable = total expense − recurring − habitual baselines (per month,
-  // floored at 0 so a noisy detection doesn't push it negative).
+  // Variable = monthly expense − recurring − habitual baselines (floored at 0
+  // so a noisy detection can't push it negative). Use MEDIAN, not mean, so a
+  // single outlier month — moving deposit, holiday, emergency — doesn't
+  // inflate the projection for unrelated future months. The user's complaint
+  // about an unusual high-spend April skewing the next-month projection is
+  // exactly the case median solves.
   const variableExpenseSamples = history.map((m) =>
     Math.max(0, m.expenseCents - recurringMonthlyOutCents - habitualMonthlyOutCents),
   );
-  const avgMonthlyVariableExpenseCents =
-    variableExpenseSamples.length > 0
-      ? Math.round(
-          variableExpenseSamples.reduce((s, v) => s + v, 0) / variableExpenseSamples.length,
-        )
-      : 0;
+  const variableMonthlyExpenseCents =
+    variableExpenseSamples.length > 0 ? Math.round(median(variableExpenseSamples)) : 0;
 
   const projectedExpenseCents =
-    recurringMonthlyOutCents + habitualMonthlyOutCents + avgMonthlyVariableExpenseCents;
-  // Income projection: prefer the detected recurring inflows when they exist
-  // (they're the "predictable" floor); otherwise fall back to the historical
-  // average so the forecast still works for users without a stable salary.
+    recurringMonthlyOutCents + habitualMonthlyOutCents + variableMonthlyExpenseCents;
+
+  // Income projection: sum of detected recurring inflows + habitual income
+  // sources is the "predictable floor" and is what we project. Fall back to
+  // the MEDIAN (not mean) of monthly income when nothing was detected — same
+  // outlier-robustness rationale as the spending side.
+  const fixedIncomeFromDetection = recurringMonthlyInCents + habitualMonthlyInCents;
   const projectedIncomeCents =
-    recurringMonthlyInCents > 0
-      ? Math.max(recurringMonthlyInCents, avgMonthlyIncomeCents)
-      : avgMonthlyIncomeCents;
+    fixedIncomeFromDetection > 0
+      ? fixedIncomeFromDetection
+      : months > 0
+        ? Math.round(median(history.map((m) => m.incomeCents)))
+        : 0;
 
   const projectedMonths: ForecastMonth[] = [];
   let cumulative = 0;
@@ -406,14 +454,16 @@ export async function getSpendingForecast(opts?: {
       trailingMonths: months,
       avgMonthlyIncomeCents,
       avgMonthlyExpenseCents,
-      avgMonthlyVariableExpenseCents,
+      variableMonthlyExpenseCents,
       recurringMonthlyOutCents,
       recurringMonthlyInCents,
       habitualMonthlyOutCents,
+      habitualMonthlyInCents,
       history,
       recurringSubscriptions: recurringTopList.slice(0, 8),
       recurringInflows: recurringInflows.slice(0, 8),
       habitualMerchants: habitualMerchants.slice(0, 8),
+      habitualIncomes: habitualIncomes.slice(0, 8),
     },
   };
 }
@@ -429,6 +479,7 @@ export interface ForecastSummary {
   recurringMonthlyOut: number;
   habitualMonthlyOut: number;
   recurringMonthlyIn: number;
+  habitualMonthlyIn: number;
   projectedMonthlyNet: number;
   cumulativeNet: number;
   confidence: "low" | "medium" | "high";
@@ -443,6 +494,7 @@ export function summarizeForecast(f: SpendingForecast): ForecastSummary {
     recurringMonthlyOut: Math.round(f.inputs.recurringMonthlyOutCents) / 100,
     habitualMonthlyOut: Math.round(f.inputs.habitualMonthlyOutCents) / 100,
     recurringMonthlyIn: Math.round(f.inputs.recurringMonthlyInCents) / 100,
+    habitualMonthlyIn: Math.round(f.inputs.habitualMonthlyInCents) / 100,
     projectedMonthlyNet: Math.round(monthly) / 100,
     cumulativeNet: Math.round(f.cumulativeNetCents) / 100,
     confidence: f.confidence,
