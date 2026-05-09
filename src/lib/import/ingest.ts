@@ -6,6 +6,7 @@ import { accounts, importBatches, institutions, requisitions, transactions } fro
 import { categorizeBatchByRules } from "@/lib/categorize";
 import { encrypt } from "@/lib/crypto";
 import { formatIban } from "@/lib/format/iban";
+import { detectRecurringSubscriptions } from "@/lib/recurring/detect";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { ParsedCsvRow } from "./csv";
 
@@ -316,6 +317,19 @@ export async function importParsedRows(
   }
 
   const ruleMatched = await categorizeBatchByRules(insertedIds);
+
+  // Re-run the recurring detector after each import. Without this the
+  // subscriptions table stays empty until the user manually triggers
+  // detection from /subscriptions, which means the predictions page reports
+  // "€0 recurring" right after the user just imported a year of payroll +
+  // Netflix charges. Best-effort: a failure here shouldn't fail the import.
+  if (insertedIds.length > 0) {
+    try {
+      await detectRecurringSubscriptions();
+    } catch (err) {
+      console.warn("post-import recurring detection failed (non-fatal)", err);
+    }
+  }
 
   // Prefer the export's own balance header (a real "current balance" snapshot
   // from the bank). Fall back to summing transactions only when the file

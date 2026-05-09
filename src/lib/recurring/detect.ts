@@ -2,24 +2,32 @@ import "server-only";
 
 import { db } from "@/db/client";
 import { recurringSubscriptions, transactions } from "@/db/schema";
-import { and, gte, isNotNull, lt } from "drizzle-orm";
+import { and, gte, isNotNull } from "drizzle-orm";
 
 /**
  * Recurring-subscription detector.
  *
- * Walks the last `lookbackDays` of expense transactions, groups them by a
- * normalized merchant key, and for each merchant with enough samples decides
- * whether the cadence + amount stability look like a subscription.
+ * Walks the last `lookbackDays` of transactions, groups them by a normalized
+ * merchant key (separately for inflows and outflows so the same name can hold
+ * both), and for each group with enough samples decides whether the cadence +
+ * amount stability look like a recurring charge or recurring deposit.
  *
  * Heuristics (intentionally conservative to keep false positives low):
  *   - At least 3 occurrences in the lookback window.
  *   - Inter-transaction gap median sits within ±15% of a known cadence
  *     (weekly, biweekly, monthly, quarterly, yearly).
- *   - Amount coefficient-of-variation ≤ 0.15 (i.e. amounts cluster tightly).
+ *   - Amount coefficient-of-variation ≤ 0.15 for outflows, ≤ 0.05 for
+ *     inflows (payroll deposits are exceptionally stable; we don't want to
+ *     accidentally mark "received cash from a friend" as a salary).
  *
- * Persistence is idempotent — the function upserts on `merchantName` so the
- * caller can re-run safely. Subscriptions whose `lastSeenAt` is older than
- * `1.5 * frequencyDays` get marked `isActive = false` (likely cancelled).
+ * Sign convention in the persisted row (preserved for backwards-compat with
+ * the original "expense subscription" model): `averageAmountCents` is
+ * POSITIVE for recurring outflows (e.g. Netflix) and NEGATIVE for recurring
+ * inflows (e.g. payroll). The forecast layer reads the sign to bucket each
+ * row into income vs spending.
+ *
+ * Persistence is idempotent — the function delete-and-reinserts under a
+ * single transaction so the table reflects the latest pass.
  */
 
 export interface DetectedSubscription {
@@ -40,7 +48,10 @@ interface CandidateTx {
 
 const KNOWN_CADENCES_DAYS = [7, 14, 30, 90, 365] as const;
 const CADENCE_TOLERANCE = 0.15;
-const MAX_AMOUNT_COV = 0.15;
+const MAX_AMOUNT_COV_OUT = 0.15;
+// Salary-style deposits are very stable; tighter CoV avoids classifying ad-hoc
+// transfers from friends/family as "recurring income".
+const MAX_AMOUNT_COV_IN = 0.05;
 const MIN_OCCURRENCES = 3;
 
 /**
@@ -105,8 +116,13 @@ function modeCategoryId(txs: CandidateTx[]): number | null {
 /**
  * Pure analysis step — used by tests so we don't need to seed the DB.
  *
- * Caller groups transactions by merchant; this evaluates a single merchant's
- * series and returns either a detected subscription or null.
+ * Caller groups transactions by merchant AND sign (don't mix inflows with
+ * outflows — they're independent series); this evaluates a single series and
+ * returns either a detected subscription or null.
+ *
+ * The returned `averageAmountCents` is POSITIVE for outflow series and
+ * NEGATIVE for inflow series (this is the existing storage convention; the
+ * forecast layer reads the sign to know which bucket to add the value to).
  */
 export function evaluateMerchant(
   merchantDisplayName: string,
@@ -127,12 +143,19 @@ export function evaluateMerchant(
   const cadence = snapCadence(medianGap);
   if (cadence == null) return null;
 
-  // Amount stability: coefficient of variation = stddev / mean.
+  // The series is single-signed per the caller contract. Persisted convention:
+  // positive = outflow, negative = inflow — so we flip the source sign.
+  const isInflow = sorted[0]!.amountCents > 0;
+  const storedSign = isInflow ? -1 : 1;
+
+  // Amount stability: coefficient of variation = stddev / mean (on absolute
+  // values so the sign convention doesn't break the math).
   const amounts = sorted.map((t) => Math.abs(t.amountCents));
   const meanAmount = mean(amounts);
   if (meanAmount <= 0) return null;
   const cov = stdDev(amounts) / meanAmount;
-  if (cov > MAX_AMOUNT_COV) return null;
+  const maxCov = isInflow ? MAX_AMOUNT_COV_IN : MAX_AMOUNT_COV_OUT;
+  if (cov > maxCov) return null;
 
   const lastSeenAt = sorted[sorted.length - 1]!.date;
   const ageDays = (now.getTime() - lastSeenAt.getTime()) / (1000 * 60 * 60 * 24);
@@ -141,7 +164,7 @@ export function evaluateMerchant(
 
   return {
     merchantName: merchantDisplayName,
-    averageAmountCents: Math.round(meanAmount),
+    averageAmountCents: Math.round(meanAmount) * storedSign,
     frequencyDays: cadence,
     lastSeenAt,
     categoryId: modeCategoryId(sorted),
@@ -180,22 +203,19 @@ export async function detectRecurringSubscriptions(
       categoryId: transactions.categoryId,
     })
     .from(transactions)
-    .where(
-      and(
-        gte(transactions.bookingDate, since),
-        lt(transactions.amountCents, 0),
-        isNotNull(transactions.merchantName),
-      ),
-    );
+    .where(and(gte(transactions.bookingDate, since), isNotNull(transactions.merchantName)));
 
-  // Group by normalized name; keep a "display" name (the most-recent merchant
-  // string) so the UI shows the casing the bank used.
+  // Group by normalized merchant name AND sign — a series mixing inflows and
+  // outflows under the same merchant (e.g. a refund) would corrupt the cadence
+  // / stability stats. Keying with a sign suffix keeps them independent.
   type Group = { display: string; latestDate: number; txs: CandidateTx[] };
   const groups = new Map<string, Group>();
   for (const r of rows) {
+    if (r.amountCents === 0) continue;
     const display = (r.merchantName ?? r.rawDescription).trim();
-    const key = normalize(display);
-    if (!key) continue;
+    const baseKey = normalize(display);
+    if (!baseKey) continue;
+    const key = `${r.amountCents >= 0 ? "+" : "-"}${baseKey}`;
     const existing = groups.get(key);
     const tx: CandidateTx = {
       date: r.bookingDate,

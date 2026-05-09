@@ -677,7 +677,17 @@
     "inputVariableOut": "Variable monthly spending",
     "topRecurringTitle": "Top recurring outflows",
     "historyTitle": "Recent months",
-    "disclaimer": "These projections assume your recent pattern continues. Big life changes — a new job, a move, a baby — will shift the numbers."
+    "disclaimer": "These projections assume your recent pattern continues. Big life changes — a new job, a move, a baby — will shift the numbers.",
+    "inputFixedIncome": "Fixed monthly income",
+    "inputHabitualOut": "Habitual monthly outflows",
+    "topRecurringInflowsTitle": "Detected recurring income",
+    "topHabitualTitle": "Habitual merchants",
+    "habitualHint": "Merchants where each charge varies but the monthly total stays in a predictable range — e.g. groceries.",
+    "noRecurringIncomeDetected": "We haven't spotted a stable monthly deposit yet. Once we see 3 payroll-style transfers, this will read as fixed income instead of an average.",
+    "monthlySuffix": "/mo",
+    "monthsSeenSuffix": "{n} mo",
+    "accountSelectorLabel": "Account",
+    "accountSelectorAll": "All accounts"
   },
   "opportunities": {
     "title": "Opportunities",

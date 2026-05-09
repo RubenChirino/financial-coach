@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/db/client";
 import { categories, recurringSubscriptions } from "@/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt } from "drizzle-orm";
 
 export interface SubscriptionRow {
   id: number;
@@ -35,6 +35,11 @@ export async function listRecurringSubscriptions(): Promise<SubscriptionRow[]> {
     })
     .from(recurringSubscriptions)
     .leftJoin(categories, eq(categories.id, recurringSubscriptions.categoryId))
+    // Subscriptions UI is for spending only — recurring inflows (payroll etc.)
+    // are stored with negative `averageAmountCents` and feed the forecast,
+    // but they don't belong in the "subscriptions" list which the user reads
+    // as "things charging me". Filter them out here.
+    .where(gt(recurringSubscriptions.averageAmountCents, 0))
     // Active first, then by amount-per-month descending.
     .orderBy(
       desc(recurringSubscriptions.isActive),
@@ -69,7 +74,13 @@ export async function getActiveSubscriptionsTotals(): Promise<SubscriptionsTotal
       isActive: recurringSubscriptions.isActive,
     })
     .from(recurringSubscriptions)
-    .where(eq(recurringSubscriptions.isActive, true));
+    .where(
+      and(
+        eq(recurringSubscriptions.isActive, true),
+        // Outflows only — see comment in `listRecurringSubscriptions`.
+        gt(recurringSubscriptions.averageAmountCents, 0),
+      ),
+    );
   let total = 0;
   for (const r of rows) total += monthlyEquivalentCents(r.averageAmountCents, r.frequencyDays);
   return { activeCount: rows.length, monthlyTotalCents: total };

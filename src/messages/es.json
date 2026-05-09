@@ -677,7 +677,17 @@
     "inputVariableOut": "Gasto variable mensual",
     "topRecurringTitle": "Principales suscripciones",
     "historyTitle": "Meses recientes",
-    "disclaimer": "Estas proyecciones asumen que tu patrón reciente continuará. Cambios grandes (nuevo trabajo, mudanza, hijo) moverán los números."
+    "disclaimer": "Estas proyecciones asumen que tu patrón reciente continuará. Cambios grandes (nuevo trabajo, mudanza, hijo) moverán los números.",
+    "inputFixedIncome": "Ingresos fijos mensuales",
+    "inputHabitualOut": "Gastos habituales mensuales",
+    "topRecurringInflowsTitle": "Ingresos recurrentes detectados",
+    "topHabitualTitle": "Comercios habituales",
+    "habitualHint": "Comercios donde cada cargo varía pero el total del mes se mantiene en un rango predecible — por ejemplo el supermercado.",
+    "noRecurringIncomeDetected": "Todavía no hemos detectado un ingreso mensual estable. Cuando registremos 3 transferencias tipo nómina, aparecerán aquí como ingreso fijo en vez de un promedio.",
+    "monthlySuffix": "/mes",
+    "monthsSeenSuffix": "{n} mes",
+    "accountSelectorLabel": "Cuenta",
+    "accountSelectorAll": "Todas las cuentas"
   },
   "opportunities": {
     "title": "Oportunidades",
