@@ -88,9 +88,16 @@ interface UserPrefs {
  *
  * This lets users switch providers in-app without touching .env.local, as long
  * as the corresponding API key is already configured there.
+ *
+ * Hosted-mode caveat: when AUTH_MODE=oauth (the app is running on Vercel /
+ * any serverless host), Ollama is unreachable — the daemon would have to
+ * live in the function sandbox, which it doesn't. Treat any "ollama"
+ * preference as if it were unset and fall through to the env-configured
+ * provider (which, in hosted mode, should be a cloud provider like Gemini).
  */
 function resolve(prefs?: UserPrefs): { provider: LlmProvider; model: string } {
   const e = env();
+  const isHosted = e.AUTH_MODE === "oauth";
 
   if (prefs?.provider) {
     const p = prefs.provider as LlmProvider;
@@ -106,12 +113,17 @@ function resolve(prefs?: UserPrefs): { provider: LlmProvider; model: string } {
         if (e.GOOGLE_GENERATIVE_AI_API_KEY) return { provider: p, model: m ?? e.GOOGLE_MODEL };
         break;
       case "ollama":
-        return { provider: p, model: m ?? e.OLLAMA_MODEL };
+        if (!isHosted) return { provider: p, model: m ?? e.OLLAMA_MODEL };
+        // Hosted mode: ignore ollama preference, fall through to env fallback.
+        break;
     }
   }
 
-  // Fall back to env-configured provider.
-  switch (e.LLM_PROVIDER) {
+  // Fall back to env-configured provider. In hosted mode the default is
+  // Gemini (free tier, HTTP-only — works on serverless); locally it's
+  // Ollama unless explicitly overridden.
+  const envProvider = e.LLM_PROVIDER === "ollama" && isHosted ? "google" : e.LLM_PROVIDER;
+  switch (envProvider) {
     case "anthropic":
       return { provider: "anthropic", model: e.ANTHROPIC_MODEL };
     case "openai":
