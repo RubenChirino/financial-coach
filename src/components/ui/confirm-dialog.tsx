@@ -69,19 +69,16 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const handleClose = React.useCallback(
-    (ok: boolean) => {
-      // Snapshot the resolver before clearing — Radix may fire onOpenChange
-      // multiple times (Escape + close-button) and we don't want a double
-      // resolve. The promise is one-shot so a re-resolve would silently noop,
-      // but it's cleaner this way and avoids stale-state surprises.
-      setState((prev) => {
-        prev?.resolve(ok);
-        return null;
-      });
-    },
-    [],
-  );
+  const handleClose = React.useCallback((ok: boolean) => {
+    // Snapshot the resolver before clearing — Radix may fire onOpenChange
+    // multiple times (Escape + close-button) and we don't want a double
+    // resolve. The promise is one-shot so a re-resolve would silently noop,
+    // but it's cleaner this way and avoids stale-state surprises.
+    setState((prev) => {
+      prev?.resolve(ok);
+      return null;
+    });
+  }, []);
 
   const open = state !== null;
   const danger = state?.danger ?? false;

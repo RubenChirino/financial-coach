@@ -17,6 +17,7 @@
       "data",
       "public/sw.js",
       "src/db/migrations/**",
+      "design/**",
       "next-env.d.ts",
       "*.min.js"
     ]

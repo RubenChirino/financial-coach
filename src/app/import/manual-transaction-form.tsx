@@ -135,10 +135,10 @@ export function ManualTransactionForm({ labels, categories, locale }: Props) {
 
       {/* Row 1: date + amount + currency */}
       <div className="grid grid-cols-[1fr_1fr_80px] gap-3">
-        <div className="space-y-1">
-          <label className="block text-xs font-medium text-[color:var(--text-secondary)]">
+        <label className="block space-y-1">
+          <span className="block text-xs font-medium text-[color:var(--text-secondary)]">
             {labels.dateLabel}
-          </label>
+          </span>
           <input
             type="date"
             value={date}
@@ -147,11 +147,11 @@ export function ManualTransactionForm({ labels, categories, locale }: Props) {
             disabled={pending}
             className="w-full rounded-md border border-[color:var(--border-default)] bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
           />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-xs font-medium text-[color:var(--text-secondary)]">
+        </label>
+        <label className="block space-y-1">
+          <span className="block text-xs font-medium text-[color:var(--text-secondary)]">
             {labels.amountLabel}
-          </label>
+          </span>
           <input
             type="number"
             inputMode="decimal"
@@ -164,11 +164,11 @@ export function ManualTransactionForm({ labels, categories, locale }: Props) {
             disabled={pending}
             className="w-full rounded-md border border-[color:var(--border-default)] bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
           />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-xs font-medium text-[color:var(--text-secondary)]">
+        </label>
+        <label className="block space-y-1">
+          <span className="block text-xs font-medium text-[color:var(--text-secondary)]">
             {labels.currencyLabel}
-          </label>
+          </span>
           <input
             type="text"
             maxLength={3}
@@ -177,15 +177,15 @@ export function ManualTransactionForm({ labels, categories, locale }: Props) {
             disabled={pending}
             className="w-full rounded-md border border-[color:var(--border-default)] bg-background px-3 py-2 text-sm uppercase shadow-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
           />
-        </div>
+        </label>
       </div>
 
       {/* Row 2: merchant + description */}
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1">
-          <label className="block text-xs font-medium text-[color:var(--text-secondary)]">
+        <label className="block space-y-1">
+          <span className="block text-xs font-medium text-[color:var(--text-secondary)]">
             {labels.merchantLabel}
-          </label>
+          </span>
           <input
             type="text"
             placeholder={labels.merchantPlaceholder}
@@ -194,11 +194,11 @@ export function ManualTransactionForm({ labels, categories, locale }: Props) {
             disabled={pending}
             className="w-full rounded-md border border-[color:var(--border-default)] bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
           />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-xs font-medium text-[color:var(--text-secondary)]">
+        </label>
+        <label className="block space-y-1">
+          <span className="block text-xs font-medium text-[color:var(--text-secondary)]">
             {labels.descriptionLabel} <span className="text-red-500">*</span>
-          </label>
+          </span>
           <input
             type="text"
             placeholder={labels.descriptionPlaceholder}
@@ -208,14 +208,14 @@ export function ManualTransactionForm({ labels, categories, locale }: Props) {
             disabled={pending}
             className="w-full rounded-md border border-[color:var(--border-default)] bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
           />
-        </div>
+        </label>
       </div>
 
       {/* Row 3: category */}
-      <div className="space-y-1">
-        <label className="block text-xs font-medium text-[color:var(--text-secondary)]">
+      <label className="block space-y-1">
+        <span className="block text-xs font-medium text-[color:var(--text-secondary)]">
           {labels.categoryLabel}
-        </label>
+        </span>
         <select
           value={categoryId ?? ""}
           onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : null)}
@@ -229,7 +229,7 @@ export function ManualTransactionForm({ labels, categories, locale }: Props) {
             </option>
           ))}
         </select>
-      </div>
+      </label>
 
       {/* Feedback */}
       {error && (

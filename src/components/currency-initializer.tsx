@@ -13,13 +13,13 @@ import { useEffect } from "react";
 export function CurrencyInitializer({ baseCurrency }: { baseCurrency: string }) {
   const { displayCurrency, setDisplayCurrency } = useCurrencyStore();
 
+  // Only run on mount — silent re-fetch of the live rate without touching the
+  // user-selected display currency.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only
   useEffect(() => {
     if (displayCurrency && displayCurrency !== baseCurrency) {
-      // Silently re-fetch the rate; don't change the selected currency.
       setDisplayCurrency(displayCurrency, baseCurrency);
     }
-    // Only run on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return null;

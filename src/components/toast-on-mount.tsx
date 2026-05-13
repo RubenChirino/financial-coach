@@ -27,13 +27,13 @@ export function ToastOnMount({
   const toast = useToast();
   const fired = React.useRef(false);
 
+  // Intentionally only on mount — the toast itself is fire-and-forget; updating
+  // its content later isn't supported.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only
   React.useEffect(() => {
     if (fired.current) return;
     fired.current = true;
     toast.toast({ title, description, variant });
-    // Intentionally only on mount — the toast itself is fire-and-forget;
-    // updating its content later isn't supported.
-    // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only
   }, []);
 
   return null;

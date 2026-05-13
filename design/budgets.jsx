@@ -22,7 +22,9 @@ function BudgetsPage({ ctx }) {
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <div className="seg">
-            <button type="button" className="on">Month</button>
+            <button type="button" className="on">
+              Month
+            </button>
             <button type="button">Quarter</button>
             <button type="button">Year</button>
           </div>

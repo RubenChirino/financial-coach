@@ -1,6 +1,6 @@
 "use client";
 
-import type { SpendingHeatmap } from "@/lib/transactions/heatmap";
+import type { SpendingHeatmap as SpendingHeatmapData } from "@/lib/transactions/heatmap";
 import { ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -33,7 +33,7 @@ export function SpendingHeatmap({
   defaultOpen = false,
   initialSelectedDates = [],
 }: {
-  data: SpendingHeatmap;
+  data: SpendingHeatmapData;
   labels: SpendingHeatmapLabels;
   intlLocale: string;
   currency: string;
@@ -270,9 +270,7 @@ function MonthGrid({
 
   const isSavingMonth = netCents > 0;
   const monthIntensity =
-    isSavingMonth && maxMonthlySavingCents > 0
-      ? Math.min(1, netCents / maxMonthlySavingCents)
-      : 0;
+    isSavingMonth && maxMonthlySavingCents > 0 ? Math.min(1, netCents / maxMonthlySavingCents) : 0;
   const badgeStyle: React.CSSProperties = isSavingMonth
     ? { backgroundColor: `rgba(34, 197, 94, ${0.12 + monthIntensity * 0.35})` }
     : netCents < 0
@@ -306,6 +304,7 @@ function MonthGrid({
 
       <div className="grid grid-cols-7 gap-[3px] text-[9px] text-[color:var(--text-tertiary)]">
         {dayInitials.map((d, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: static labels, order is fixed
           <span key={i} className="text-center leading-none">
             {d}
           </span>
@@ -314,6 +313,7 @@ function MonthGrid({
 
       <div className="grid grid-cols-7 gap-[3px]">
         {Array.from({ length: leadBlanks }).map((_, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: pure padding cells
           <span key={`lead-${i}`} className="aspect-square" />
         ))}
         {days.map((d) => {
@@ -353,14 +353,13 @@ function MonthGrid({
 
           // Colors: selected = brand-primary ring + tint; spending = red fill;
           // future = outline only; idle = faint border.
-          const bgStyle: React.CSSProperties =
-            isSelected
-              ? { backgroundColor: "color-mix(in srgb, var(--brand-primary) 30%, transparent)" }
-              : isFuture
-                ? {}
-                : intensity > 0
-                  ? { backgroundColor: `rgba(239, 68, 68, ${0.15 + intensity * 0.8})` }
-                  : {};
+          const bgStyle: React.CSSProperties = isSelected
+            ? { backgroundColor: "color-mix(in srgb, var(--brand-primary) 30%, transparent)" }
+            : isFuture
+              ? {}
+              : intensity > 0
+                ? { backgroundColor: `rgba(239, 68, 68, ${0.15 + intensity * 0.8})` }
+                : {};
 
           const ringClass = isSelected
             ? "ring-2 ring-[color:var(--brand-primary)] ring-offset-1 ring-offset-[color:var(--bg-elevated)]"
@@ -400,6 +399,7 @@ function MonthGrid({
           );
         })}
         {Array.from({ length: trailBlanks }).map((_, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: pure padding cells
           <span key={`trail-${i}`} className="aspect-square" />
         ))}
       </div>

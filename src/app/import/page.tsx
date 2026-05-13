@@ -47,32 +47,36 @@ export default async function ImportPage() {
             steps={[
               {
                 title: locale === "es" ? "Importar transacciones" : "Import transactions",
-                description: locale === "es"
-                  ? "Puedes importar transacciones desde cualquier banco aunque no esté conectado directamente. Solo necesitas un fichero CSV o Excel (.xls/.xlsx) exportado desde tu banco."
-                  : "You can import transactions from any bank even if it isn't directly connected. You just need a CSV or Excel (.xls/.xlsx) file exported from your bank.",
+                description:
+                  locale === "es"
+                    ? "Puedes importar transacciones desde cualquier banco aunque no esté conectado directamente. Solo necesitas un fichero CSV o Excel (.xls/.xlsx) exportado desde tu banco."
+                    : "You can import transactions from any bank even if it isn't directly connected. You just need a CSV or Excel (.xls/.xlsx) file exported from your bank.",
               },
               {
                 element: "#import-format-card",
                 title: locale === "es" ? "Formato canónico" : "Canonical format",
-                description: locale === "es"
-                  ? "Si tu CSV ya tiene estos 5 campos, se importa directamente sin IA. Pero no te preocupes si tu banco usa un formato diferente — el modo Auto lo detecta solo."
-                  : "If your CSV already has these 5 fields, it imports directly without AI. But don't worry if your bank uses a different format — Auto mode detects it automatically.",
+                description:
+                  locale === "es"
+                    ? "Si tu CSV ya tiene estos 5 campos, se importa directamente sin IA. Pero no te preocupes si tu banco usa un formato diferente — el modo Auto lo detecta solo."
+                    : "If your CSV already has these 5 fields, it imports directly without AI. But don't worry if your bank uses a different format — Auto mode detects it automatically.",
                 side: "bottom",
               },
               {
                 element: "#import-upload-card",
                 title: locale === "es" ? "Subir el fichero" : "Upload the file",
-                description: locale === "es"
-                  ? "Pega el CSV directamente, o pulsa 'Elegir fichero' para subir un CSV o Excel. Hay tres modos: Auto (recomendado), Siempre IA (para formatos muy raros), y Solo estricto (sin IA)."
-                  : "Paste the CSV directly, or click 'Pick a file' to upload a CSV or Excel file. Three modes: Auto (recommended), Always AI (for unusual formats), and Strict only (no AI).",
+                description:
+                  locale === "es"
+                    ? "Pega el CSV directamente, o pulsa 'Elegir fichero' para subir un CSV o Excel. Hay tres modos: Auto (recomendado), Siempre IA (para formatos muy raros), y Solo estricto (sin IA)."
+                    : "Paste the CSV directly, or click 'Pick a file' to upload a CSV or Excel file. Three modes: Auto (recommended), Always AI (for unusual formats), and Strict only (no AI).",
                 side: "bottom",
               },
               {
                 element: "#import-sample-card",
                 title: locale === "es" ? "Datos de ejemplo" : "Sample data",
-                description: locale === "es"
-                  ? "¿Quieres explorar la app sin tus datos reales? Importa las transacciones de ejemplo para ver cómo funciona todo con datos ficticios."
-                  : "Want to explore the app without your real data? Import the sample transactions to see how everything works with fictional data.",
+                description:
+                  locale === "es"
+                    ? "¿Quieres explorar la app sin tus datos reales? Importa las transacciones de ejemplo para ver cómo funciona todo con datos ficticios."
+                    : "Want to explore the app without your real data? Import the sample transactions to see how everything works with fictional data.",
                 side: "top",
               },
             ]}

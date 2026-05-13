@@ -47,8 +47,7 @@ const toastVariants = cva(
       variant: {
         default:
           "border-[color:var(--border-default)] bg-[color:var(--surface-card)] text-foreground",
-        success:
-          "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100",
+        success: "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100",
         error: "border-destructive/40 bg-destructive/10 text-destructive-foreground",
       },
     },
@@ -60,12 +59,15 @@ export interface ToastProps
   extends React.ComponentPropsWithoutRef<typeof ToastPrimitive.Root>,
     VariantProps<typeof toastVariants> {}
 
-export const Toast = React.forwardRef<
-  React.ElementRef<typeof ToastPrimitive.Root>,
-  ToastProps
->(({ className, variant, ...props }, ref) => (
-  <ToastPrimitive.Root ref={ref} className={cn(toastVariants({ variant }), className)} {...props} />
-));
+export const Toast = React.forwardRef<React.ElementRef<typeof ToastPrimitive.Root>, ToastProps>(
+  ({ className, variant, ...props }, ref) => (
+    <ToastPrimitive.Root
+      ref={ref}
+      className={cn(toastVariants({ variant }), className)}
+      {...props}
+    />
+  ),
+);
 Toast.displayName = ToastPrimitive.Root.displayName;
 
 export const ToastClose = React.forwardRef<

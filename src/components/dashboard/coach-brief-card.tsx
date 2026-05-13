@@ -68,10 +68,7 @@ export function CoachBriefCard({
             {highlight ? (
               <>
                 {headline}{" "}
-                <span
-                  className="rounded-md bg-white px-1.5 py-0.5"
-                  style={{ color: FG }}
-                >
+                <span className="rounded-md bg-white px-1.5 py-0.5" style={{ color: FG }}>
                   {highlight}
                 </span>
               </>

@@ -6,7 +6,6 @@ import { AlertTriangle, CheckCircle2, Loader2, Sparkles, Upload } from "lucide-r
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ChangeEvent, useRef, useState, useTransition } from "react";
-import * as XLSX from "xlsx";
 
 export interface ImportFormLabels {
   pasteLabel: string;
@@ -71,6 +70,46 @@ interface SuccessState {
 type Mode = "auto" | "ai" | "strict";
 
 /**
+ * Convert an ExcelJS worksheet to a CSV string. Mirrors what the previous
+ * `xlsx`-based pipeline produced — one row per non-empty sheet row, fields
+ * separated by `,`, fields containing `"`, `,`, `\r`, or `\n` are quoted with
+ * inner `"` doubled.
+ */
+function sheetToCsv(sheet: import("exceljs").Worksheet): string {
+  const lines: string[] = [];
+  sheet.eachRow({ includeEmpty: false }, (row) => {
+    const cells: string[] = [];
+    const last = row.cellCount;
+    for (let i = 1; i <= last; i++) {
+      cells.push(csvEscape(extractCellText(row.getCell(i).value)));
+    }
+    lines.push(cells.join(","));
+  });
+  return lines.join("\n");
+}
+
+function extractCellText(value: import("exceljs").CellValue): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "object") {
+    if ("richText" in value && Array.isArray(value.richText)) {
+      return value.richText.map((rt) => rt.text).join("");
+    }
+    if ("text" in value && typeof value.text === "string") return value.text;
+    if ("result" in value && value.result != null) return extractCellText(value.result);
+    if ("formula" in value) return "";
+    if ("error" in value && typeof value.error === "string") return value.error;
+  }
+  return String(value);
+}
+
+function csvEscape(s: string): string {
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
  * Three import modes:
  *  - "auto" (default) — try the strict parser first; fall back to AI when the
  *    header doesn't look canonical. Best for most users — they paste a CSV
@@ -99,16 +138,17 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
     const isExcel = /\.(xls|xlsx)$/i.test(file.name);
     const reader = new FileReader();
     if (isExcel) {
-      reader.onload = () => {
+      reader.onload = async () => {
         const data = reader.result;
         if (!(data instanceof ArrayBuffer)) return;
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheetName = workbook.SheetNames[0];
-        if (!sheetName) return;
-        const sheet = workbook.Sheets[sheetName];
+        // Dynamic import: exceljs is only loaded when the user picks an Excel
+        // file. Keeps the import-page initial bundle light.
+        const ExcelJS = (await import("exceljs")).default;
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(data);
+        const sheet = workbook.worksheets[0];
         if (!sheet) return;
-        const csv = XLSX.utils.sheet_to_csv(sheet);
-        setText(csv);
+        setText(sheetToCsv(sheet));
       };
       reader.readAsArrayBuffer(file);
     } else {

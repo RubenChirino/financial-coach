@@ -143,11 +143,7 @@ export function SidebarShell({
               collapsed ? "mt-auto" : "mt-2 self-end",
             )}
           >
-            {collapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
-            )}
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </button>
         </aside>
 
