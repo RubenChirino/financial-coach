@@ -2,7 +2,25 @@ import { SESSION_COOKIE } from "@/lib/auth/constants";
 import { type NextRequest, NextResponse } from "next/server";
 
 const PUBLIC_PATHS = ["/onboarding", "/lock"];
-const ASSET_PREFIXES = ["/_next", "/api/health", "/icons", "/manifest.json", "/sw.js"];
+const ASSET_PREFIXES = [
+  "/_next",
+  "/api/health",
+  // Auth.js routes must be reachable without a session — the user hits them
+  // *to* obtain a session via OAuth handshake.
+  "/api/auth",
+  "/icons",
+  "/manifest.json",
+  "/sw.js",
+];
+
+// Auth.js cookie names (env-dependent — `__Secure-` prefix only over HTTPS).
+// Checking both is cheap and avoids guessing NODE_ENV from middleware.
+const OAUTH_SESSION_COOKIES = ["authjs.session-token", "__Secure-authjs.session-token"];
+
+function hasAuthCookie(req: NextRequest): boolean {
+  if (req.cookies.get(SESSION_COOKIE)?.value) return true;
+  return OAUTH_SESSION_COOKIES.some((name) => Boolean(req.cookies.get(name)?.value));
+}
 
 /**
  * Build a per-request Content-Security-Policy.
@@ -60,7 +78,7 @@ export function proxy(req: NextRequest) {
     return withSecurityHeaders(NextResponse.next(), req);
   }
 
-  const hasSessionCookie = Boolean(req.cookies.get(SESSION_COOKIE)?.value);
+  const hasSessionCookie = hasAuthCookie(req);
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
   if (!hasSessionCookie && !isPublic) {

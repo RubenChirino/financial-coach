@@ -5,6 +5,33 @@ const EnvSchema = z.object({
   APP_SECRET: z
     .string()
     .min(32, "APP_SECRET must be at least 32 chars (use `openssl rand -hex 32`)"),
+  /**
+   * Which authentication mode the app runs in.
+   *  - "local"  (default): single-user PIN flow, local-first. No Auth.js.
+   *  - "oauth": multi-user, Google + Microsoft sign-in via Auth.js. PIN
+   *    onboarding/unlock pages are bypassed; users are created on first
+   *    successful OAuth sign-in.
+   */
+  AUTH_MODE: z.enum(["local", "oauth"]).default("local"),
+  /**
+   * Required when AUTH_MODE=oauth. Auth.js uses this to sign the JWT session
+   * cookie. Same `openssl rand -hex 32` trick as APP_SECRET — but a different
+   * value (rotating APP_SECRET invalidates encrypted-at-rest data; rotating
+   * AUTH_SECRET only invalidates active sessions).
+   */
+  AUTH_SECRET: z.string().min(32).optional(),
+  /** Required when AUTH_MODE=oauth. Google Cloud OAuth client. */
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  /** Required when AUTH_MODE=oauth. Microsoft Entra (Azure AD) OAuth client. */
+  MICROSOFT_CLIENT_ID: z.string().optional(),
+  MICROSOFT_CLIENT_SECRET: z.string().optional(),
+  /**
+   * Entra tenant: "common" (default) accepts any Microsoft personal/work
+   * account; a tenant GUID restricts sign-in to that org only. For
+   * friends/family use, "common" is what you want.
+   */
+  MICROSOFT_TENANT_ID: z.string().default("common"),
   GOCARDLESS_SECRET_ID: z.string().optional(),
   GOCARDLESS_SECRET_KEY: z.string().optional(),
   TRUELAYER_CLIENT_ID: z.string().optional(),
@@ -39,6 +66,24 @@ export function env(): Env {
     throw new Error(`Invalid environment configuration:\n${issues}\n\nSee .env.example`);
   }
   cached = parsed.data;
+
+  // OAuth-mode coherence check: fail fast at boot rather than at first sign-in.
+  if (cached.AUTH_MODE === "oauth") {
+    const missing: string[] = [];
+    if (!cached.AUTH_SECRET) missing.push("AUTH_SECRET");
+    if (!cached.GOOGLE_CLIENT_ID && !cached.MICROSOFT_CLIENT_ID) {
+      missing.push("at least one of GOOGLE_CLIENT_ID / MICROSOFT_CLIENT_ID");
+    }
+    if (cached.GOOGLE_CLIENT_ID && !cached.GOOGLE_CLIENT_SECRET) {
+      missing.push("GOOGLE_CLIENT_SECRET");
+    }
+    if (cached.MICROSOFT_CLIENT_ID && !cached.MICROSOFT_CLIENT_SECRET) {
+      missing.push("MICROSOFT_CLIENT_SECRET");
+    }
+    if (missing.length > 0) {
+      throw new Error(`AUTH_MODE=oauth requires:\n${missing.map((m) => `  - ${m}`).join("\n")}\n`);
+    }
+  }
 
   if (cached.HOST === "0.0.0.0") {
     console.warn(

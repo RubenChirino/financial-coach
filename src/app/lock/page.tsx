@@ -1,6 +1,8 @@
 import { LockForm } from "@/app/lock/form";
+import { OAuthSignin } from "@/app/lock/oauth-signin";
 import { getCurrentSession } from "@/lib/auth/session";
 import { userExists } from "@/lib/auth/user";
+import { env } from "@/lib/env";
 import { Sparkles } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
@@ -10,7 +12,12 @@ export default async function LockPage({
 }: {
   searchParams: Promise<{ from?: string }>;
 }) {
-  if (!(await userExists())) redirect("/onboarding");
+  const isOAuth = env().AUTH_MODE === "oauth";
+
+  // In local (PIN) mode, redirect to onboarding when no user exists yet. In
+  // OAuth mode users are auto-provisioned on first sign-in, so there's no
+  // onboarding step — the /lock page IS the entry point for everyone.
+  if (!isOAuth && !(await userExists())) redirect("/onboarding");
   if (await getCurrentSession()) redirect("/");
 
   const { from } = await searchParams;
@@ -49,10 +56,23 @@ export default async function LockPage({
           <h1 className="text-[22px] font-semibold leading-tight tracking-tight">
             {tLock("title")}
           </h1>
-          <p className="text-[14px] text-[color:var(--text-secondary)]">{tLock("subtitle")}</p>
+          <p className="text-[14px] text-[color:var(--text-secondary)]">
+            {isOAuth ? tLock("oauthSubtitle") : tLock("subtitle")}
+          </p>
         </header>
 
-        <LockForm redirectTo={safeFrom} />
+        {isOAuth ? (
+          <OAuthSignin
+            redirectTo={safeFrom}
+            labels={{
+              withGoogle: tLock("withGoogle"),
+              withMicrosoft: tLock("withMicrosoft"),
+              legal: tLock("oauthLegal"),
+            }}
+          />
+        ) : (
+          <LockForm redirectTo={safeFrom} />
+        )}
       </div>
     </div>
   );

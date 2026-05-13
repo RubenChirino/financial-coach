@@ -84,13 +84,17 @@
   "lock": {
     "title": "Introduce tu PIN",
     "subtitle": "Desbloquea Coin para ver tus saldos e insights más recientes.",
+    "oauthSubtitle": "Inicia sesión para ver tus saldos e insights más recientes.",
     "welcomeBack": "Bienvenido de nuevo",
     "unlock": "Desbloquear",
     "wrongPin": "PIN incorrecto. Inténtalo de nuevo.",
     "triesLeft": "PIN incorrecto. {count, plural, =1 {Queda 1 intento.} other {Quedan # intentos.}}",
     "lockedOut": "Demasiados intentos. Cierra y vuelve a abrir la app.",
     "forgotPin": "¿Has olvidado tu PIN?",
-    "forgotBody": "No hay recuperación de PIN — tus datos están cifrados con él. Necesitarás reiniciar la app y empezar de cero. Todos los datos locales se borrarán."
+    "forgotBody": "No hay recuperación de PIN — tus datos están cifrados con él. Necesitarás reiniciar la app y empezar de cero. Todos los datos locales se borrarán.",
+    "withGoogle": "Continuar con Google",
+    "withMicrosoft": "Continuar con Microsoft",
+    "oauthLegal": "Al continuar aceptas que tus datos de transacciones se guarden en el servidor, cifrados en reposo. El inicio de sesión lo gestionan Google / Microsoft — nunca vemos tu contraseña."
   },
   "dashboard": {
     "title": "Resumen",

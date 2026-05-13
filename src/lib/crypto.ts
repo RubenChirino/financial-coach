@@ -88,3 +88,19 @@ export function deriveEncryptionKey(
 ): Buffer {
   return deriveKey(`${pin}::${appSecret}`, encryptionSalt);
 }
+
+/**
+ * OAuth-mode counterpart of {@link deriveEncryptionKey}. With OAuth there's no
+ * user-known secret to mix in, so the key derives from `APP_SECRET` and the
+ * per-user `encryptionSalt` alone. The `oauth::` prefix gives domain
+ * separation from the PIN-mode derivation — same APP_SECRET + same salt yields
+ * a different key in each mode, so swapping modes can't accidentally reuse
+ * material.
+ *
+ * Threat-model: a full server compromise (DB + APP_SECRET) decrypts all
+ * OAuth-mode users' data. This is the documented tradeoff in the deployment
+ * plan; PIN mode remains strictly stronger.
+ */
+export function deriveOAuthEncryptionKey(appSecret: string, encryptionSalt: string): Buffer {
+  return deriveKey(`oauth::${appSecret}`, encryptionSalt);
+}

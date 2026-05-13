@@ -22,23 +22,44 @@ export const encryptedText = customType<{ data: string; driverData: string }>({
 const timestamp = (name: string) =>
   integer(name, { mode: "timestamp_ms" }).notNull().default(sql`(unixepoch() * 1000)`);
 
-export const users = sqliteTable("users", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  pinHash: text("pin_hash").notNull(),
-  pinSalt: text("pin_salt").notNull(),
-  encryptionSalt: text("encryption_salt").notNull(),
-  language: text("language", { enum: ["es", "en"] })
-    .notNull()
-    .default("es"),
-  currency: text("currency").notNull().default("EUR"),
-  llmProvider: text("llm_provider", { enum: ["ollama", "anthropic", "openai", "google"] })
-    .notNull()
-    .default("ollama"),
-  llmModel: text("llm_model").notNull().default("qwen2.5:14b-instruct-q4_K_M"),
-  cloudLlmConsentAt: integer("cloud_llm_consent_at", { mode: "timestamp_ms" }),
-  createdAt: timestamp("created_at"),
-  updatedAt: timestamp("updated_at"),
-});
+export const users = sqliteTable(
+  "users",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    // pin_hash / pin_salt are nullable so the same `users` table holds:
+    //   - local-mode users  → both columns populated, no email
+    //   - oauth-mode users  → both columns NULL, email populated
+    // The auth code picks the path based on AUTH_MODE env, never on which
+    // columns happen to be set on a given row.
+    pinHash: text("pin_hash"),
+    pinSalt: text("pin_salt"),
+    // Still required for both modes: it seeds the per-user AES key. For PIN
+    // users the key derivation also mixes the PIN; for OAuth users only the
+    // salt + APP_SECRET feed it (so loss of APP_SECRET, in OAuth mode, is the
+    // only thing standing between a compromised DB and plaintext).
+    encryptionSalt: text("encryption_salt").notNull(),
+    // OAuth identity (populated only when AUTH_MODE=oauth and the user came
+    // through Google/Microsoft). `email` is the canonical lookup key — same
+    // user signing in with both providers gets the same `users` row as long
+    // as both providers expose the same verified email.
+    email: text("email"),
+    emailVerifiedAt: integer("email_verified_at", { mode: "timestamp_ms" }),
+    name: text("name"),
+    image: text("image"),
+    language: text("language", { enum: ["es", "en"] })
+      .notNull()
+      .default("es"),
+    currency: text("currency").notNull().default("EUR"),
+    llmProvider: text("llm_provider", { enum: ["ollama", "anthropic", "openai", "google"] })
+      .notNull()
+      .default("ollama"),
+    llmModel: text("llm_model").notNull().default("qwen2.5:14b-instruct-q4_K_M"),
+    cloudLlmConsentAt: integer("cloud_llm_consent_at", { mode: "timestamp_ms" }),
+    createdAt: timestamp("created_at"),
+    updatedAt: timestamp("updated_at"),
+  },
+  (t) => [uniqueIndex("users_email_idx").on(t.email)],
+);
 
 /**
  * Persistent session store. Tokens are hashed at rest (SHA-256 of the raw
