@@ -210,9 +210,7 @@ async function detectHabitualParties(
   accountId?: number,
 ): Promise<HabitualEntry[]> {
   const signFilter =
-    direction === "out"
-      ? lt(transactions.amountCents, 0)
-      : sql`${transactions.amountCents} > 0`;
+    direction === "out" ? lt(transactions.amountCents, 0) : sql`${transactions.amountCents} > 0`;
   const conditions = [
     gte(transactions.bookingDate, windowStart),
     lt(transactions.bookingDate, windowEnd),
@@ -318,9 +316,7 @@ export async function getSpendingForecast(opts?: {
   // imported transactions before the auto-detect-on-import wiring landed),
   // run detection once so the forecast surfaces fixed income / subscriptions
   // immediately. Subsequent calls skip this because the table is populated.
-  const subCount = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(recurringSubscriptions);
+  const subCount = await db.select({ n: sql<number>`count(*)` }).from(recurringSubscriptions);
   if (Number(subCount[0]?.n ?? 0) === 0) {
     try {
       await detectRecurringSubscriptions();
@@ -383,14 +379,8 @@ export async function getSpendingForecast(opts?: {
     monthlyMedianCents: e.monthlyMedianCents,
     monthsSeen: e.monthsSeen,
   }));
-  const habitualMonthlyOutCents = habitualMerchants.reduce(
-    (s, h) => s + h.monthlyMedianCents,
-    0,
-  );
-  const habitualMonthlyInCents = habitualIncomes.reduce(
-    (s, h) => s + h.monthlyMedianCents,
-    0,
-  );
+  const habitualMonthlyOutCents = habitualMerchants.reduce((s, h) => s + h.monthlyMedianCents, 0);
+  const habitualMonthlyInCents = habitualIncomes.reduce((s, h) => s + h.monthlyMedianCents, 0);
 
   const months = history.length;
   const avgMonthlyIncomeCents =

@@ -8,8 +8,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
  * `DELETE FROM sessions`.
  */
 
-const fixture = createTestDb();
-vi.mock("@/db/client", () => ({ db: fixture.db, sqlite: fixture.sqlite }));
+const fixture = await createTestDb();
+vi.mock("@/db/client", () => ({ db: fixture.db, client: fixture.client }));
 vi.mock("@/lib/env", () => ({
   env: () => ({
     APP_SECRET: "test-app-secret-0123456789abcdef0123456789abcdef",
@@ -24,16 +24,16 @@ const { createSession, destroyAllSessions, destroySession, getSessionByToken, IN
 const USER_ID = 42;
 const ENCRYPTION_KEY = Buffer.alloc(32, 7);
 
-beforeAll(() => {
+beforeAll(async () => {
   // Minimal user row so the FK is satisfiable. We bypass Drizzle here because
   // the users table has many required columns and we only need the id to exist.
-  fixture.sqlite.exec(
+  await fixture.client.execute(
     `INSERT INTO users (id, pin_hash, pin_salt, encryption_salt, language, currency, llm_provider, llm_model) VALUES (${USER_ID}, 'h', 's', 's', 'es', 'EUR', 'ollama', 'test')`,
   );
 });
 
-beforeEach(() => {
-  fixture.sqlite.exec("DELETE FROM sessions");
+beforeEach(async () => {
+  await fixture.client.execute("DELETE FROM sessions");
 });
 
 afterEach(() => {
@@ -78,7 +78,10 @@ describe("session store", () => {
     const token = await createSession(USER_ID, ENCRYPTION_KEY);
     // Backdate last_activity_at so the record looks stale.
     const stale = Date.now() - INACTIVITY_MS - 1000;
-    fixture.sqlite.prepare("UPDATE sessions SET last_activity_at = ? WHERE 1=1").run(stale);
+    await fixture.client.execute({
+      sql: "UPDATE sessions SET last_activity_at = ? WHERE 1=1",
+      args: [stale],
+    });
 
     expect(await getSessionByToken(token)).toBeNull();
     // Stale row gets cleaned up on access.
@@ -90,7 +93,10 @@ describe("session store", () => {
     const token = await createSession(USER_ID, ENCRYPTION_KEY);
     // Backdate to just inside the window.
     const inWindow = Date.now() - INACTIVITY_MS + 60_000;
-    fixture.sqlite.prepare("UPDATE sessions SET last_activity_at = ? WHERE 1=1").run(inWindow);
+    await fixture.client.execute({
+      sql: "UPDATE sessions SET last_activity_at = ? WHERE 1=1",
+      args: [inWindow],
+    });
 
     await getSessionByToken(token);
     const row = (await fixture.db.select().from(sessions))[0];

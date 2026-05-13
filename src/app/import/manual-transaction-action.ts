@@ -1,11 +1,11 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { db } from "@/db/client";
 import { accounts, transactions } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { ensureImportedAccount } from "@/lib/import/ingest";
 import { eq, sql } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 export interface AddManualTransactionResult {
@@ -20,11 +20,11 @@ export interface AddManualTransactionResult {
  * `amountCents` must be signed: negative = expense, positive = income.
  */
 export async function addManualTransactionAction(input: {
-  date: string;         // ISO YYYY-MM-DD
-  amountCents: number;  // signed integer, in cents
-  currency: string;     // 3-letter ISO code
-  merchant: string;     // optional, empty string → stored as null
-  description: string;  // required
+  date: string; // ISO YYYY-MM-DD
+  amountCents: number; // signed integer, in cents
+  currency: string; // 3-letter ISO code
+  merchant: string; // optional, empty string → stored as null
+  description: string; // required
   categoryId: number | null;
 }): Promise<AddManualTransactionResult> {
   const session = await getCurrentSession();

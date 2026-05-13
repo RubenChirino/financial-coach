@@ -239,10 +239,9 @@ export async function detectRecurringSubscriptions(
     if (result) detected.push(result);
   }
 
-  // Persist atomically — clear table and reinsert the fresh snapshot.
-  // SQLite's better-sqlite3 driver doesn't support async work inside
-  // `db.transaction`, but the operations here are synchronous from the driver's
-  // perspective so awaiting them in sequence is functionally equivalent.
+  // Persist — clear table and reinsert the fresh snapshot. Sequenced rather
+  // than wrapped in a transaction; libSQL's HTTP-mode client treats individual
+  // statements as autocommitting, and the delete-then-insert window is short.
   await db.delete(recurringSubscriptions);
   if (detected.length > 0) {
     await db.insert(recurringSubscriptions).values(

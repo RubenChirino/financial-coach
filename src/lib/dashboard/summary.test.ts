@@ -2,8 +2,8 @@ import { createTestDb } from "@/test/db-fixture";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Replace the real db before importing summary.ts.
-const fixture = createTestDb();
-vi.mock("@/db/client", () => ({ db: fixture.db, sqlite: fixture.sqlite }));
+const fixture = await createTestDb();
+vi.mock("@/db/client", () => ({ db: fixture.db, client: fixture.client }));
 
 const { accounts, categories, institutions, requisitions, transactions } = await import(
   "@/db/schema"
@@ -148,11 +148,11 @@ async function seed() {
 
 describe("dashboard/summary", () => {
   beforeEach(async () => {
-    fixture.sqlite.exec("DELETE FROM transactions");
-    fixture.sqlite.exec("DELETE FROM accounts");
-    fixture.sqlite.exec("DELETE FROM requisitions");
-    fixture.sqlite.exec("DELETE FROM institutions");
-    fixture.sqlite.exec("DELETE FROM categories");
+    await fixture.client.execute("DELETE FROM transactions");
+    await fixture.client.execute("DELETE FROM accounts");
+    await fixture.client.execute("DELETE FROM requisitions");
+    await fixture.client.execute("DELETE FROM institutions");
+    await fixture.client.execute("DELETE FROM categories");
     await seed();
   });
   afterEach(() => {

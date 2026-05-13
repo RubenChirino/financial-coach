@@ -1,8 +1,8 @@
 import { createTestDb } from "@/test/db-fixture";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const fixture = createTestDb();
-vi.mock("@/db/client", () => ({ db: fixture.db, sqlite: fixture.sqlite }));
+const fixture = await createTestDb();
+vi.mock("@/db/client", () => ({ db: fixture.db, client: fixture.client }));
 
 const { accounts, categories, institutions, recurringSubscriptions, requisitions, transactions } =
   await import("@/db/schema");
@@ -135,13 +135,13 @@ describe("evaluateMerchant (pure)", () => {
 });
 
 describe("detectRecurringSubscriptions (DB)", () => {
-  beforeEach(() => {
-    fixture.sqlite.exec("DELETE FROM recurring_subscriptions");
-    fixture.sqlite.exec("DELETE FROM transactions");
-    fixture.sqlite.exec("DELETE FROM accounts");
-    fixture.sqlite.exec("DELETE FROM requisitions");
-    fixture.sqlite.exec("DELETE FROM institutions");
-    fixture.sqlite.exec("DELETE FROM categories");
+  beforeEach(async () => {
+    await fixture.client.execute("DELETE FROM recurring_subscriptions");
+    await fixture.client.execute("DELETE FROM transactions");
+    await fixture.client.execute("DELETE FROM accounts");
+    await fixture.client.execute("DELETE FROM requisitions");
+    await fixture.client.execute("DELETE FROM institutions");
+    await fixture.client.execute("DELETE FROM categories");
   });
   afterEach(() => {
     vi.restoreAllMocks();

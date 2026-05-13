@@ -2,36 +2,65 @@ import "server-only";
 
 import fs from "node:fs";
 import path from "node:path";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { type Client, createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
 import * as schema from "./schema";
 
 const DATA_DIR = path.resolve(process.cwd(), "data");
-const DB_PATH = process.env.DATABASE_URL ?? path.join(DATA_DIR, "financial-coach.db");
+const RAW_URL = process.env.DATABASE_URL ?? path.join(DATA_DIR, "financial-coach.db");
+
+/**
+ * Normalize the configured DATABASE_URL into a libSQL-acceptable URL.
+ * - `libsql://...` / `http(s)://...`  → remote Turso, used as-is
+ * - `file:...`                        → explicit local file, used as-is
+ * - any other value                   → assumed to be a filesystem path
+ */
+function resolveUrl(url: string): string {
+  if (
+    url.startsWith("libsql:") ||
+    url.startsWith("file:") ||
+    url.startsWith("http:") ||
+    url.startsWith("https:") ||
+    url === ":memory:"
+  ) {
+    return url;
+  }
+  return `file:${url}`;
+}
+
+const DB_URL = resolveUrl(RAW_URL);
+const IS_LOCAL_FILE = DB_URL.startsWith("file:");
 
 function ensureDataDir() {
+  if (!IS_LOCAL_FILE) return;
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
   }
 }
 
 declare global {
-  var __sqlite: Database.Database | undefined;
+  var __libsqlClient: Client | undefined;
 }
 
-function createConnection(): Database.Database {
+function createConnection(): Client {
   ensureDataDir();
-  const sqlite = new Database(DB_PATH);
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
-  sqlite.pragma("synchronous = NORMAL");
-  sqlite.pragma("busy_timeout = 5000");
-  return sqlite;
+  const client = createClient({
+    url: DB_URL,
+    authToken: process.env.TURSO_AUTH_TOKEN,
+  });
+  if (IS_LOCAL_FILE) {
+    void client.executeMultiple(
+      "PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;",
+    );
+  }
+  return client;
 }
 
-const sqlite = globalThis.__sqlite ?? createConnection();
-if (process.env.NODE_ENV !== "production") globalThis.__sqlite = sqlite;
+const libsqlClient = globalThis.__libsqlClient ?? createConnection();
+if (process.env.NODE_ENV !== "production") globalThis.__libsqlClient = libsqlClient;
 
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle(libsqlClient, { schema });
 export type DB = typeof db;
-export { sqlite };
+export { libsqlClient as client };
+/** Local-file path when DATABASE_URL points at a file, otherwise null. */
+export const localDbPath: string | null = IS_LOCAL_FILE ? DB_URL.replace(/^file:/, "") : null;

@@ -1,9 +1,9 @@
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { PullToRefresh } from "@/components/pull-to-refresh";
+import { TourButton } from "@/components/tour-button";
 import { SpendingHeatmap } from "@/components/transactions/spending-heatmap";
 import { TransactionsView } from "@/components/transactions/transactions-view";
-import { TourButton } from "@/components/tour-button";
 import { Button } from "@/components/ui/button";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getAccountsTotal } from "@/lib/dashboard/summary";
@@ -84,23 +84,26 @@ export default async function TransactionsPage({
                 steps={[
                   {
                     title: locale === "es" ? "Tus transacciones" : "Your transactions",
-                    description: locale === "es"
-                      ? "Aquí verás todas tus transacciones ordenadas por fecha. Puedes buscar, filtrar por banco o categoría, y revisar las pendientes de categorizar."
-                      : "Here you'll see all your transactions sorted by date. You can search, filter by bank or category, and review ones pending categorisation.",
+                    description:
+                      locale === "es"
+                        ? "Aquí verás todas tus transacciones ordenadas por fecha. Puedes buscar, filtrar por banco o categoría, y revisar las pendientes de categorizar."
+                        : "Here you'll see all your transactions sorted by date. You can search, filter by bank or category, and review ones pending categorisation.",
                   },
                   {
                     element: "#heatmap",
                     title: locale === "es" ? "Mapa de calor de gasto" : "Spending heatmap",
-                    description: locale === "es"
-                      ? "El calendario muestra cuánto gastaste cada día del año. Días más rojos = más gasto. Meses verdes = ahorraste ese mes. Haz clic en un día para ver solo sus transacciones."
-                      : "The calendar shows how much you spent each day of the year. Darker red = more spending. Green months = you saved that month. Click a day to filter transactions to just that day.",
+                    description:
+                      locale === "es"
+                        ? "El calendario muestra cuánto gastaste cada día del año. Días más rojos = más gasto. Meses verdes = ahorraste ese mes. Haz clic en un día para ver solo sus transacciones."
+                        : "The calendar shows how much you spent each day of the year. Darker red = more spending. Green months = you saved that month. Click a day to filter transactions to just that day.",
                     side: "bottom",
                   },
                   {
                     title: locale === "es" ? "Selección de días" : "Day selection",
-                    description: locale === "es"
-                      ? "Puedes seleccionar varios días a la vez — pulsa para activar/desactivar. La lista de abajo se filtrará automáticamente. Para volver a ver todo, pulsa 'Limpiar' en el banner azul."
-                      : "You can select multiple days at once — click to toggle. The list below filters automatically. To see all transactions again, click 'Clear' in the blue banner.",
+                    description:
+                      locale === "es"
+                        ? "Puedes seleccionar varios días a la vez — pulsa para activar/desactivar. La lista de abajo se filtrará automáticamente. Para volver a ver todo, pulsa 'Limpiar' en el banner azul."
+                        : "You can select multiple days at once — click to toggle. The list below filters automatically. To see all transactions again, click 'Clear' in the blue banner.",
                   },
                 ]}
               />
@@ -182,48 +185,48 @@ export default async function TransactionsPage({
                   }}
                 />
               </div>
-            {selectedDates.length > 0 && (
-              <div className="flex items-center justify-between rounded-lg border border-[color:var(--brand-primary)]/30 bg-[color:var(--brand-primary-soft)] px-3 py-2 text-[12.5px]">
-                <span className="text-[color:var(--brand-primary)]">
-                  {t("heatmapDateFilter").replace("{n}", String(selectedDates.length))}
-                </span>
-                <Link
-                  href={`/transactions${reviewOnly ? "?review=1" : ""}${searchQuery ? `${reviewOnly ? "&" : "?"}q=${encodeURIComponent(searchQuery)}` : ""}`}
-                  className="font-medium text-[color:var(--brand-primary)] hover:underline"
-                >
-                  {t("heatmapClearSelection")}
-                </Link>
-              </div>
-            )}
-            <TransactionsView
-              rows={rows}
-              initialNextCursor={nextCursor}
-              categoryOptions={options}
-              locale={locale}
-              intlLocale={intlLocale}
-              fallbackCurrency={accountsTotal.currency}
-              reviewOnly={reviewOnly}
-              initialSearch={searchQuery}
-              labels={{
-                searchPlaceholder: t("searchPlaceholder"),
-                allBanks: t("allBanks"),
-                allCategories: t("allCategories"),
-                clear: t("clear"),
-                moneyIn: t("moneyIn"),
-                moneyOut: t("moneyOut"),
-                netFlow: t("netFlow"),
-                today: t("today"),
-                yesterday: t("yesterday"),
-                uncategorized: t("uncategorized"),
-                reviewBadge: t("needsReviewBadge"),
-                noMatch: t("noMatch"),
-                filterAll: t("filterAll"),
-                filterReview: t("filterReview"),
-                loadMore: t("loadMore"),
-                loadingMore: t("loadingMore"),
-                endOfList: t("endOfList"),
-              }}
-            />
+              {selectedDates.length > 0 && (
+                <div className="flex items-center justify-between rounded-lg border border-[color:var(--brand-primary)]/30 bg-[color:var(--brand-primary-soft)] px-3 py-2 text-[12.5px]">
+                  <span className="text-[color:var(--brand-primary)]">
+                    {t("heatmapDateFilter").replace("{n}", String(selectedDates.length))}
+                  </span>
+                  <Link
+                    href={`/transactions${reviewOnly ? "?review=1" : ""}${searchQuery ? `${reviewOnly ? "&" : "?"}q=${encodeURIComponent(searchQuery)}` : ""}`}
+                    className="font-medium text-[color:var(--brand-primary)] hover:underline"
+                  >
+                    {t("heatmapClearSelection")}
+                  </Link>
+                </div>
+              )}
+              <TransactionsView
+                rows={rows}
+                initialNextCursor={nextCursor}
+                categoryOptions={options}
+                locale={locale}
+                intlLocale={intlLocale}
+                fallbackCurrency={accountsTotal.currency}
+                reviewOnly={reviewOnly}
+                initialSearch={searchQuery}
+                labels={{
+                  searchPlaceholder: t("searchPlaceholder"),
+                  allBanks: t("allBanks"),
+                  allCategories: t("allCategories"),
+                  clear: t("clear"),
+                  moneyIn: t("moneyIn"),
+                  moneyOut: t("moneyOut"),
+                  netFlow: t("netFlow"),
+                  today: t("today"),
+                  yesterday: t("yesterday"),
+                  uncategorized: t("uncategorized"),
+                  reviewBadge: t("needsReviewBadge"),
+                  noMatch: t("noMatch"),
+                  filterAll: t("filterAll"),
+                  filterReview: t("filterReview"),
+                  loadMore: t("loadMore"),
+                  loadingMore: t("loadingMore"),
+                  endOfList: t("endOfList"),
+                }}
+              />
             </>
           )}
         </div>

@@ -125,8 +125,7 @@ function detectSubscriptionOverlap(
     );
     const minMonthly = Math.min(...monthlies);
     if (!best || group.length > best.group.length || minMonthly > best.minMonthly) {
-      const categoryName =
-        group[0]?.categoryNameEn ?? group[0]?.categoryNameEs ?? key;
+      const categoryName = group[0]?.categoryNameEn ?? group[0]?.categoryNameEs ?? key;
       best = { category: categoryName, group, minMonthly };
     }
   }

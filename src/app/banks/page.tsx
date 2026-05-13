@@ -133,11 +133,7 @@ export default async function BanksPage() {
                         id={acc.id}
                         name={acc.name}
                         ibanLast4={acc.ibanLast4}
-                        balanceFormatted={formatAmount(
-                          acc.balanceCents,
-                          acc.currency,
-                          intlLocale,
-                        )}
+                        balanceFormatted={formatAmount(acc.balanceCents, acc.currency, intlLocale)}
                       />
                     ))}
                   </ul>

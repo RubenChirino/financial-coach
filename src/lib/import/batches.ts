@@ -38,7 +38,9 @@ export async function deleteImportBatch(batchId: number): Promise<{ deleted: num
 
   // Recompute and persist the balance for every affected account.
   // The balance field is a cached sum — it doesn't auto-update when rows are deleted.
-  const affectedAccountIds = [...new Set(result.map((r) => r.accountId).filter(Boolean))] as number[];
+  const affectedAccountIds = [
+    ...new Set(result.map((r) => r.accountId).filter(Boolean)),
+  ] as number[];
   for (const accountId of affectedAccountIds) {
     const sumRow = await db
       .select({ total: sql<number>`coalesce(sum(amount_cents), 0)` })

@@ -29,9 +29,7 @@ export interface SaveProfileResult {
   error?: string;
 }
 
-export async function saveInvestorProfileAction(
-  raw: unknown,
-): Promise<SaveProfileResult> {
+export async function saveInvestorProfileAction(raw: unknown): Promise<SaveProfileResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
 

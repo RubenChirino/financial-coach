@@ -54,10 +54,7 @@ export async function getInvestorProfile(userId: number): Promise<InvestorProfil
  * Upsert by userId. We don't merge partial updates — the form always submits
  * the full profile, so a missing field is intentional and should clobber.
  */
-export async function saveInvestorProfile(
-  userId: number,
-  data: InvestorProfile,
-): Promise<void> {
+export async function saveInvestorProfile(userId: number, data: InvestorProfile): Promise<void> {
   await db
     .insert(investorProfiles)
     .values({

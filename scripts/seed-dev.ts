@@ -1,8 +1,8 @@
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
 import { accounts, institutions, requisitions, transactions } from "../src/db/schema";
 
 const MERCHANTS = [
@@ -17,15 +17,36 @@ const MERCHANTS = [
   { name: "Nómina", category: "income", amount: () => 180000 + Math.random() * 50000 },
 ];
 
-async function main() {
-  const dbPath = process.env.DATABASE_URL ?? path.join(process.cwd(), "data", "financial-coach.db");
-  if (!fs.existsSync(dbPath)) {
-    console.error("Database does not exist. Run `pnpm db:migrate` first.");
-    process.exit(1);
+function resolveUrl(url: string): string {
+  if (
+    url.startsWith("libsql:") ||
+    url.startsWith("file:") ||
+    url.startsWith("http:") ||
+    url.startsWith("https:")
+  ) {
+    return url;
   }
-  const sqlite = new Database(dbPath);
-  sqlite.pragma("foreign_keys = ON");
-  const db = drizzle(sqlite);
+  return `file:${url}`;
+}
+
+async function main() {
+  const rawUrl = process.env.DATABASE_URL ?? path.join(process.cwd(), "data", "financial-coach.db");
+  const url = resolveUrl(rawUrl);
+
+  // For local files, require they already exist (created by migrate).
+  if (url.startsWith("file:")) {
+    const filePath = url.replace(/^file:/, "");
+    if (!fs.existsSync(filePath)) {
+      console.error("Database does not exist. Run `pnpm db:migrate` first.");
+      process.exit(1);
+    }
+  }
+
+  const client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
+  if (url.startsWith("file:")) {
+    await client.execute("PRAGMA foreign_keys = ON");
+  }
+  const db = drizzle(client);
 
   console.info(
     "⚠️  seeding synthetic data — this will add a fake institution & account to your db.",
@@ -81,7 +102,7 @@ async function main() {
   }
   await db.insert(transactions).values(txs).onConflictDoNothing();
   console.info(`✓ seeded ${txs.length} transactions`);
-  sqlite.close();
+  client.close();
 }
 
 main().catch((err) => {

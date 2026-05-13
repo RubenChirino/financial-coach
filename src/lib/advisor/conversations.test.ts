@@ -1,8 +1,8 @@
 import { createTestDb } from "@/test/db-fixture";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const fixture = createTestDb();
-vi.mock("@/db/client", () => ({ db: fixture.db, sqlite: fixture.sqlite }));
+const fixture = await createTestDb();
+vi.mock("@/db/client", () => ({ db: fixture.db, client: fixture.client }));
 
 const { advisorConversations, advisorMessages } = await import("@/db/schema");
 const {
@@ -15,9 +15,9 @@ const {
 } = await import("./conversations");
 
 describe("advisor/conversations", () => {
-  beforeEach(() => {
-    fixture.sqlite.exec("DELETE FROM advisor_messages");
-    fixture.sqlite.exec("DELETE FROM advisor_conversations");
+  beforeEach(async () => {
+    await fixture.client.execute("DELETE FROM advisor_messages");
+    await fixture.client.execute("DELETE FROM advisor_conversations");
   });
   afterEach(() => {
     vi.restoreAllMocks();

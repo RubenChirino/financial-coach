@@ -8,15 +8,15 @@ import {
   getTopCategoriesThisMonth,
 } from "@/lib/dashboard/summary";
 import {
-  type ForecastSummary,
-  getSpendingForecast,
-  summarizeForecast,
-} from "@/lib/predictions/forecast";
-import {
   type InvestorProfile,
   getInvestorProfile,
   summarizeProfileForLlm,
 } from "@/lib/opportunities/profile";
+import {
+  type ForecastSummary,
+  getSpendingForecast,
+  summarizeForecast,
+} from "@/lib/predictions/forecast";
 import { listRecurringSubscriptions, monthlyEquivalentCents } from "@/lib/recurring/list";
 import { redactPII } from "@/lib/redact";
 import { and, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
@@ -122,15 +122,18 @@ export async function buildAdvisorContext(opts?: {
     });
   }
 
-  const [topMerchants, budgets, subscriptions, advisorGoals, profile, forecast] =
-    await Promise.all([
+  const [topMerchants, budgets, subscriptions, advisorGoals, profile, forecast] = await Promise.all(
+    [
       selectTopMerchants(topMerchantLimit),
       selectBudgets(),
       selectSubscriptions(),
       selectGoals(),
-      opts?.userId != null ? getInvestorProfile(opts.userId) : Promise.resolve<InvestorProfile | null>(null),
+      opts?.userId != null
+        ? getInvestorProfile(opts.userId)
+        : Promise.resolve<InvestorProfile | null>(null),
       getSpendingForecast({ horizonMonths: 3 }).catch(() => null),
-    ]);
+    ],
+  );
 
   return {
     generatedAt: new Date().toISOString(),

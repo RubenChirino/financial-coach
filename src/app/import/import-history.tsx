@@ -131,17 +131,13 @@ function ResetAllButton({ labels }: { labels: ImportHistoryLabels }) {
       if (!res.ok) {
         setError(res.error ?? "Unknown error");
       } else {
-        setResult(
-          labels.resetAllSuccess.replace("{n}", String(res.deletedTransactions ?? 0)),
-        );
+        setResult(labels.resetAllSuccess.replace("{n}", String(res.deletedTransactions ?? 0)));
       }
     });
   }
 
   if (result) {
-    return (
-      <p className="text-[11.5px] text-emerald-600 dark:text-emerald-400">{result}</p>
-    );
+    return <p className="text-[11.5px] text-emerald-600 dark:text-emerald-400">{result}</p>;
   }
 
   return (

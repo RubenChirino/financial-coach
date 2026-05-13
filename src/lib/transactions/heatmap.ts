@@ -45,9 +45,7 @@ function daysInMonth(year: number, monthIndex0: number): number {
  * Pass `"auto"` to pick the most recent year that has transactions (falling back
  * to the current year if the table is empty).
  */
-export async function getSpendingHeatmap(
-  yearArg: number | "auto",
-): Promise<SpendingHeatmap> {
+export async function getSpendingHeatmap(yearArg: number | "auto"): Promise<SpendingHeatmap> {
   const availableYears = await getYearsWithTransactions();
   const currentYear = new Date().getUTCFullYear();
   const year =
