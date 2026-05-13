@@ -84,13 +84,17 @@
   "lock": {
     "title": "Enter your PIN",
     "subtitle": "Unlock Coin to see your latest balances and insights.",
+    "oauthSubtitle": "Sign in to see your latest balances and insights.",
     "welcomeBack": "Welcome back",
     "unlock": "Unlock",
     "wrongPin": "Incorrect PIN. Please try again.",
     "triesLeft": "Incorrect PIN. {count, plural, =1 {1 try left.} other {# tries left.}}",
     "lockedOut": "Too many attempts. Close and reopen the app.",
     "forgotPin": "Forgot PIN?",
-    "forgotBody": "There's no PIN recovery — your data is encrypted with it. You'll need to reset the app and start over. All local data will be wiped."
+    "forgotBody": "There's no PIN recovery — your data is encrypted with it. You'll need to reset the app and start over. All local data will be wiped.",
+    "withGoogle": "Continue with Google",
+    "withMicrosoft": "Continue with Microsoft",
+    "oauthLegal": "By continuing you agree that your transaction data is stored on the server, encrypted at rest. Sign-in is handled by Google / Microsoft — we never see your password."
   },
   "dashboard": {
     "title": "Dashboard",

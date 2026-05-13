@@ -2,8 +2,8 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 import { db } from "@/db/client";
-import { sessions } from "@/db/schema";
-import { CryptoError, decrypt, deriveKey, encrypt } from "@/lib/crypto";
+import { sessions, users } from "@/db/schema";
+import { CryptoError, decrypt, deriveKey, deriveOAuthEncryptionKey, encrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
@@ -158,7 +158,53 @@ export async function clearSessionCookie(): Promise<void> {
 }
 
 export async function getCurrentSession(): Promise<SessionData | null> {
+  // OAuth mode: defer to Auth.js's JWT session. The userId travels on the
+  // token; we derive the encryption key on-demand from APP_SECRET + the
+  // user's stored encryptionSalt (no PIN, no DB session row).
+  if (env().AUTH_MODE === "oauth") {
+    return getOAuthSession();
+  }
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   return getSessionByToken(token);
+}
+
+/**
+ * OAuth-mode equivalent of `getSessionByToken`. Reads Auth.js's JWT-decoded
+ * session, fetches the user's `encryptionSalt` from the DB, derives the
+ * per-user AES key, and returns a `SessionData` shaped identically to the
+ * PIN-mode path so downstream callers (server actions, API routes, pages)
+ * don't need to branch.
+ *
+ * Returns null when:
+ *   - no Auth.js session cookie / unauthenticated
+ *   - the JWT carries no `userId` (shouldn't happen if signIn callback ran)
+ *   - the referenced user row was deleted between JWT issue and now
+ */
+async function getOAuthSession(): Promise<SessionData | null> {
+  // Lazy import: the oauth-config module triggers Auth.js initialization and
+  // requires AUTH_SECRET + provider creds. Importing it at module top would
+  // crash local-mode boot.
+  const { auth } = await import("./oauth-config");
+  const authSession = await auth();
+  const userId = authSession?.user?.userId;
+  if (typeof userId !== "number") return null;
+
+  const row = await db
+    .select({ encryptionSalt: users.encryptionSalt })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const userRow = row[0];
+  if (!userRow) return null;
+
+  const { APP_SECRET } = env();
+  const encryptionKey = deriveOAuthEncryptionKey(APP_SECRET, userRow.encryptionSalt);
+  const now = Date.now();
+  return {
+    userId,
+    encryptionKey,
+    createdAt: now,
+    lastActivityAt: now,
+  };
 }

@@ -112,6 +112,13 @@ export async function unlockWithPinAction(formData: FormData): Promise<ActionRes
   const user = await getUser();
   if (!user) return { ok: false, error: "notSetup" };
 
+  // OAuth-only users have no PIN — bail with the same generic "wrongPin"
+  // error to avoid leaking which auth mode the user signed up under.
+  if (!user.pinHash || !user.pinSalt) {
+    recordFailure(PIN_UNLOCK_BUCKET);
+    return { ok: false, error: "wrongPin" };
+  }
+
   if (!verifyPin(pin, user.pinSalt, user.pinHash)) {
     recordFailure(PIN_UNLOCK_BUCKET);
     return { ok: false, error: "wrongPin" };
@@ -128,6 +135,15 @@ export async function unlockWithPinAction(formData: FormData): Promise<ActionRes
 }
 
 export async function lockAction(): Promise<void> {
+  // OAuth-mode sign-out goes through Auth.js so it can clear the JWT cookie
+  // and (in providers that support it) the upstream session. PIN-mode
+  // sign-out destroys our DB session row and clears `fc_session`.
+  if (env().AUTH_MODE === "oauth") {
+    const { signOut } = await import("./oauth-config");
+    await signOut({ redirectTo: "/lock" });
+    return;
+  }
+
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   await destroySession(token);

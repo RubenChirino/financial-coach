@@ -64,6 +64,13 @@ export async function changePinAction(formData: FormData): Promise<SecurityActio
   const user = await getUser();
   if (!user) return { ok: false, error: "notAuthenticated" };
 
+  // OAuth users don't have a PIN to change. This action is only wired into
+  // the PIN settings UI which is hidden in oauth mode, but be defensive in
+  // case it's ever called directly.
+  if (!user.pinHash || !user.pinSalt) {
+    return { ok: false, error: "pinNotConfigured" };
+  }
+
   if (!verifyPin(currentPin, user.pinSalt, user.pinHash)) {
     return { ok: false, error: "wrongPin" };
   }
@@ -106,6 +113,12 @@ export async function deleteAllDataAction(formData: FormData): Promise<SecurityA
 
   const user = await getUser();
   if (!user) return { ok: false, error: "notAuthenticated" };
+
+  // OAuth users have no PIN — this delete-everything action is gated behind
+  // the PIN settings UI which is hidden in oauth mode. Defensive check.
+  if (!user.pinHash || !user.pinSalt) {
+    return { ok: false, error: "pinNotConfigured" };
+  }
 
   if (!verifyPin(pin, user.pinSalt, user.pinHash)) {
     return { ok: false, error: "wrongPin" };
