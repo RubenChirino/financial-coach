@@ -19,7 +19,6 @@ const withNextIntl = createNextIntlPlugin("./src/lib/i18n/request.ts");
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  serverExternalPackages: ["better-sqlite3"],
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",
