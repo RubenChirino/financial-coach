@@ -1,13 +1,12 @@
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
-export type DashboardVariant = "default" | "command" | "focus";
+export type DashboardVariant = "default" | "focus";
 
 /**
- * Tiny segmented-control linking between the three dashboard layouts.
+ * Tiny segmented-control linking between the two dashboard layouts.
  *
  * - **default**: balanced bento (current app).
- * - **command**: dense power-user view — everything visible, less whitespace.
  * - **focus**: a single-question view — coach brief + top insight only.
  *
  * Server-rendered as plain `<Link>`s so state lives in the URL, survives
@@ -18,11 +17,10 @@ export function VariantSwitcher({
   labels,
 }: {
   active: DashboardVariant;
-  labels: { default: string; command: string; focus: string };
+  labels: { default: string; focus: string };
 }) {
   const items: Array<{ key: DashboardVariant; href: string; label: string }> = [
     { key: "default", href: "/", label: labels.default },
-    { key: "command", href: "/?variant=command", label: labels.command },
     { key: "focus", href: "/?variant=focus", label: labels.focus },
   ];
   return (
