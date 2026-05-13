@@ -6,7 +6,8 @@ const withNextIntl = createNextIntlPlugin("./src/lib/i18n/request.ts");
 /**
  * Static security headers.
  *
- * Note: `Content-Security-Policy` is set in `src/middleware.ts` instead of
+ * Note: `Content-Security-Policy` is set in `src/proxy.ts` (Next 16's renamed
+ * middleware convention) instead of
  * here because Next.js App Router emits inline bootstrap scripts on every
  * request and we follow the official recommendation of binding them to a
  * per-request nonce + `'strict-dynamic'`. A static CSP without a nonce would
