@@ -57,8 +57,7 @@ export default async function DashboardPage({
   if (!session) redirect("/lock");
 
   const sp = (await searchParams) ?? {};
-  const variant: DashboardVariant =
-    sp.variant === "command" ? "command" : sp.variant === "focus" ? "focus" : "default";
+  const variant: DashboardVariant = sp.variant === "focus" ? "focus" : "default";
 
   const [t, locale] = await Promise.all([getTranslations("dashboard"), getLocale()]);
   const intlLocale = locale === "es" ? "es-ES" : "en-US";
@@ -241,7 +240,6 @@ export default async function DashboardPage({
       active={variant}
       labels={{
         default: t("variantDefault"),
-        command: t("variantCommand"),
         focus: t("variantFocus"),
       }}
     />
@@ -284,24 +282,12 @@ export default async function DashboardPage({
     );
   }
 
-  // ── Command variant: dense power-user layout ──────────────────────────
-  const gapClass = variant === "command" ? "gap-2.5" : "gap-4";
-
+  // ── Default variant: balanced bento layout ────────────────────────────
   return (
     <AppShell title={t("title")} subtitle={t("subtitleGreeting")}>
       <div className="mx-auto max-w-6xl">
         <div className="mb-3 flex justify-end">{variantSwitcher}</div>
-        <div className={`grid grid-cols-12 ${gapClass}`}>
-          {/* Command variant: insights ribbon first so alerts take priority */}
-          {variant === "command" && activeInsights.length > 0 ? (
-            <div className="col-span-12">
-              <InsightsList
-                insights={activeInsights}
-                titleLabel={t("insightsTitle")}
-                dismissLabel={t("dismissInsight")}
-              />
-            </div>
-          ) : null}
+        <div className="grid grid-cols-12 gap-4">
           {/* Hero row: net worth + coach brief */}
           <div className="col-span-12 lg:col-span-8">
             <TotalBalanceCard
@@ -402,8 +388,8 @@ export default async function DashboardPage({
             />
           </div>
 
-          {/* Insights list (Phase 7h) — shown at bottom in default variant only */}
-          {variant === "default" && activeInsights.length > 0 ? (
+          {/* Insights list (Phase 7h) */}
+          {activeInsights.length > 0 ? (
             <div className="col-span-12">
               <InsightsList
                 insights={activeInsights}
