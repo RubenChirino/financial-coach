@@ -1,0 +1,9 @@
+# Default reviewer for everything until co-maintainers are added.
+*                 @rubenchirino
+
+# Security-sensitive paths get an explicit owner for visibility.
+/src/lib/crypto.ts         @rubenchirino
+/src/lib/redact.ts         @rubenchirino
+/src/lib/auth/**           @rubenchirino
+/src/lib/gocardless.ts     @rubenchirino
+/SECURITY.md               @rubenchirino

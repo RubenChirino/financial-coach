@@ -1,0 +1,1 @@
+ALTER TABLE `requisitions` ADD `provider` text DEFAULT 'gocardless' NOT NULL;

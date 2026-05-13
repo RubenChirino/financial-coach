@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -e
+
+printf "\n● gitleaks…\n"
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact --verbose
+else
+  printf "  \033[33m!\033[0m gitleaks not installed — skipping. Install with:\n"
+  printf "    brew install gitleaks   (macOS)\n"
+  printf "    https://github.com/gitleaks/gitleaks  (other platforms)\n"
+fi
+
+printf "\n● biome check…\n"
+pnpm biome check --staged --no-errors-on-unmatched
+
+printf "\n● typecheck…\n"
+pnpm typecheck

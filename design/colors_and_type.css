@@ -1,0 +1,187 @@
+/* Airtable Design System — tokens
+ * Import into any HTML file: <link rel="stylesheet" href="/colors_and_type.css">
+ * Or from a subfolder: <link rel="stylesheet" href="../../colors_and_type.css">
+ */
+
+@font-face {
+  font-family: "Inter";
+  src: url("fonts/Inter-VariableFont_opsz_wght.ttf") format("truetype-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("fonts/Inter-Italic-VariableFont_opsz_wght.ttf") format("truetype-variations");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* ─── Colors: base palette ─────────────────────────── */
+  --brand-primary: #5389ff; /* Action blue */
+  --brand-primary-hover: #3e76f2; /* 8% darker */
+  --brand-primary-soft: #d4e6ff; /* Secondary fills, dividers */
+  --brand-primary-border: #86adff; /* Borders, subtle accents */
+
+  --creative-pink: #ffd1dc; /* Creative accent */
+  --creative-pink-hover: #ffbdcd;
+  --creative-pink-text: #8b2d43; /* Dark text on pink */
+
+  --surface-app: #eff5fe; /* Main app background */
+  --surface-sidebar: #e2eefe; /* Sidebar, hover states */
+  --surface-card: #ffffff; /* Bento card fill */
+
+  --text-primary: #0f1421; /* High-contrast charcoal */
+  --text-secondary: rgba(15, 20, 33, 0.7);
+  --text-tertiary: rgba(15, 20, 33, 0.55);
+  --text-on-primary: #ffffff;
+
+  --border-default: #d4e6ff;
+  --border-strong: #86adff;
+
+  /* ─── Colors: semantic ────────────────────────────── */
+  --fg1: var(--text-primary);
+  --fg2: var(--text-secondary);
+  --fg3: var(--text-tertiary);
+  --bg-app: var(--surface-app);
+  --bg-card: var(--surface-card);
+  --bg-nav: var(--surface-sidebar);
+  --accent: var(--brand-primary);
+  --accent-creative: var(--creative-pink);
+
+  /* ─── Typography ──────────────────────────────────── */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Type scale — size / line-height / weight */
+  --display-size: 32px;
+  --display-lh: 40px;
+  --display-weight: 600;
+  --h1-size: 24px;
+  --h1-lh: 32px;
+  --h1-weight: 600;
+  --h2-size: 18px;
+  --h2-lh: 24px;
+  --h2-weight: 600;
+  --h3-size: 16px;
+  --h3-lh: 22px;
+  --h3-weight: 600;
+  --body-size: 14px;
+  --body-lh: 20px;
+  --body-weight: 400;
+  --label-size: 13px;
+  --label-lh: 16px;
+  --label-weight: 500;
+  --caption-size: 12px;
+  --caption-lh: 16px;
+  --caption-weight: 400;
+
+  /* ─── Spacing (4px base) ──────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ─── Radii ───────────────────────────────────────── */
+  --radius-sm: 6px; /* small badges, tags */
+  --radius-md: 8px; /* buttons, inputs, menu items (rounded-lg) */
+  --radius-lg: 12px; /* cards, modals (rounded-xl) */
+  --radius-pill: 999px; /* avatars, circular icon buttons */
+
+  /* ─── Shadows ─────────────────────────────────────── */
+  --shadow-sm: 0 1px 2px rgba(15, 20, 33, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 20, 33, 0.08), 0 2px 4px rgba(15, 20, 33, 0.04);
+  --shadow-focus: 0 0 0 2px rgba(83, 137, 255, 0.4);
+
+  /* ─── Motion ──────────────────────────────────────── */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+}
+
+/* ─── Base element styles ────────────────────────────── */
+html,
+body {
+  font-family: var(--font-sans);
+  font-size: var(--body-size);
+  line-height: var(--body-lh);
+  color: var(--fg1);
+  background: var(--bg-app);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1 {
+  font-size: var(--h1-size);
+  line-height: var(--h1-lh);
+  font-weight: var(--h1-weight);
+  color: var(--fg1);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+h2 {
+  font-size: var(--h2-size);
+  line-height: var(--h2-lh);
+  font-weight: var(--h2-weight);
+  color: var(--fg1);
+  margin: 0;
+  letter-spacing: -0.005em;
+}
+h3 {
+  font-size: var(--h3-size);
+  line-height: var(--h3-lh);
+  font-weight: var(--h3-weight);
+  color: var(--fg1);
+  margin: 0;
+}
+p {
+  font-size: var(--body-size);
+  line-height: var(--body-lh);
+  font-weight: var(--body-weight);
+  color: var(--fg1);
+  margin: 0;
+}
+
+.display {
+  font-size: var(--display-size);
+  line-height: var(--display-lh);
+  font-weight: var(--display-weight);
+  letter-spacing: -0.015em;
+}
+.label {
+  font-size: var(--label-size);
+  line-height: var(--label-lh);
+  font-weight: var(--label-weight);
+}
+.caption {
+  font-size: var(--caption-size);
+  line-height: var(--caption-lh);
+  font-weight: var(--caption-weight);
+  color: var(--fg3);
+}
+.mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+/* ─── Base utility classes ───────────────────────────── */
+.card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--duration-normal) var(--ease-standard);
+}
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}

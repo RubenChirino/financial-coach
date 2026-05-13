@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/rubenchirino/financial-coach/blob/main/SECURITY.md
+    about: Do not file security issues in public. See SECURITY.md for disclosure.
+  - name: Question / discussion
+    url: https://github.com/rubenchirino/financial-coach/discussions
+    about: For open-ended questions, ideas, and community discussion.
