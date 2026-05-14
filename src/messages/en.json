@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "Financial Coach",
-    "tagline": "Your personal financial coach, private and local"
+    "tagline": "Your personal financial coach"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -50,7 +50,7 @@
   "onboarding": {
     "welcome": {
       "title": "Welcome",
-      "subtitle": "A financial coach that runs on your computer. Your data never leaves without your consent.",
+      "subtitle": "Your financial data, analyzed with AI. Import transactions from any bank and get personalized insights.",
       "features": {
         "local": "Everything stored locally and encrypted",
         "banks": "Connect your bank via Open Banking (PSD2)",

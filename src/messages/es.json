@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "Coach Financiero",
-    "tagline": "Tu coach financiero personal, privado y local"
+    "tagline": "Tu coach financiero personal"
   },
   "nav": {
     "dashboard": "Resumen",
@@ -50,7 +50,7 @@
   "onboarding": {
     "welcome": {
       "title": "Bienvenido/a",
-      "subtitle": "Un coach financiero que vive en tu ordenador. Tus datos nunca salen de aquí sin tu permiso.",
+      "subtitle": "Tus finanzas analizadas con IA. Importa movimientos de cualquier banco y obtén insights personalizados.",
       "features": {
         "local": "Todo se guarda local y cifrado",
         "banks": "Conecta tu banco vía Open Banking (PSD2)",
