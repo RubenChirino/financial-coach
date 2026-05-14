@@ -35,6 +35,23 @@ async function main() {
   }
 
   const db = drizzle(client);
+
+  // drizzle-orm@0.45.2 has a bug in its libSQL migrator: it emits
+  //   CREATE TABLE __drizzle_migrations (id SERIAL PRIMARY KEY, ...)
+  // which is Postgres syntax. Local SQLite silently ignores the unknown type,
+  // but remote Turso's HTTP API correctly rejects it with HTTP 400.
+  //
+  // Work-around: pre-create the table ourselves with correct SQLite syntax.
+  // drizzle's migrate() will see it already exists (IF NOT EXISTS) and skip
+  // the broken statement, then proceed to apply our actual migrations.
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS __drizzle_migrations (
+      id    INTEGER PRIMARY KEY AUTOINCREMENT,
+      hash  TEXT    NOT NULL,
+      created_at NUMERIC
+    )
+  `);
+
   await migrate(db, { migrationsFolder: "./src/db/migrations" });
   await seedDefaultCategories(db as unknown as Parameters<typeof seedDefaultCategories>[0]);
   await seedDefaultRules(db as unknown as Parameters<typeof seedDefaultRules>[0]);
