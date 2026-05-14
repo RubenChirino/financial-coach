@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { AddBankTile, BankTile } from "@/components/dashboard/bank-tile";
+import { env } from "@/lib/env";
 import { CategoriesCard, type CategorySpendRow } from "@/components/dashboard/categories-card";
 import { CoachBriefCard } from "@/components/dashboard/coach-brief-card";
 import { DonutCard } from "@/components/dashboard/donut-card";
@@ -52,7 +53,10 @@ export default async function DashboardPage({
 }: {
   searchParams?: Promise<{ variant?: string }>;
 }) {
-  if (!(await userExists())) redirect("/onboarding");
+  // In oauth mode there is no onboarding — users are provisioned on first
+  // Google/Microsoft sign-in. Send unauthenticated visitors straight to /lock.
+  const isOAuth = env().AUTH_MODE === "oauth";
+  if (!isOAuth && !(await userExists())) redirect("/onboarding");
   const session = await getCurrentSession();
   if (!session) redirect("/lock");
 
