@@ -83,6 +83,7 @@
   },
   "lock": {
     "title": "Introduce tu PIN",
+    "oauthTitle": "Bienvenido",
     "subtitle": "Desbloquea Coin para ver tus saldos e insights más recientes.",
     "oauthSubtitle": "Inicia sesión para ver tus saldos e insights más recientes.",
     "welcomeBack": "Bienvenido de nuevo",

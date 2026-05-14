@@ -83,6 +83,7 @@
   },
   "lock": {
     "title": "Enter your PIN",
+    "oauthTitle": "Welcome",
     "subtitle": "Unlock Coin to see your latest balances and insights.",
     "oauthSubtitle": "Sign in to see your latest balances and insights.",
     "welcomeBack": "Welcome back",

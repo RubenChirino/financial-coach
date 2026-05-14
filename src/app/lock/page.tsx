@@ -54,7 +54,7 @@ export default async function LockPage({
 
         <header className="space-y-1">
           <h1 className="text-[22px] font-semibold leading-tight tracking-tight">
-            {tLock("title")}
+            {isOAuth ? tLock("oauthTitle") : tLock("title")}
           </h1>
           <p className="text-[14px] text-[color:var(--text-secondary)]">
             {isOAuth ? tLock("oauthSubtitle") : tLock("subtitle")}
