@@ -10,6 +10,7 @@ import {
 } from "@/lib/advisor/digest";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getAccountsTotal } from "@/lib/dashboard/summary";
+import { env } from "@/lib/env";
 import { formatAmount } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
 import { listActiveInsights } from "@/lib/insights/engine";
@@ -98,14 +99,16 @@ export default async function AdvisorPage({
           <header className="mb-4 flex items-center justify-between gap-2">
             <div>
               <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-              <p className="text-xs text-muted-foreground">
-                {providerState.isLocal
-                  ? t("providerLocal", { model: providerState.model })
-                  : t("providerCloud", {
-                      provider: providerState.provider,
-                      model: providerState.model,
-                    })}
-              </p>
+              {env().AUTH_MODE !== "oauth" && (
+                <p className="text-xs text-muted-foreground">
+                  {providerState.isLocal
+                    ? t("providerLocal", { model: providerState.model })
+                    : t("providerCloud", {
+                        provider: providerState.provider,
+                        model: providerState.model,
+                      })}
+                </p>
+              )}
             </div>
           </header>
           {tabs}

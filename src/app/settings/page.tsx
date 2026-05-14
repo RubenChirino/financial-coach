@@ -5,6 +5,7 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { getUser } from "@/lib/auth/user";
 import { listBankConnectionsAction } from "@/lib/gocardless/actions";
 import { getLocale } from "@/lib/i18n/locale";
+import { env } from "@/lib/env";
 import { getAvailableProviders } from "@/lib/llm/provider";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
@@ -22,6 +23,7 @@ export default async function SettingsPage() {
     getLocale(),
     listBankConnectionsAction(),
   ]);
+  const isOAuth = env().AUTH_MODE === "oauth";
   const availableProviders = getAvailableProviders();
   const linked = connections.filter((c) => c.status === "linked").length;
 
@@ -56,30 +58,32 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("llm")}</CardTitle>
-            <CardDescription>{t("llmDescription")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <LlmSelector
-              currentProvider={user?.llmProvider ?? "ollama"}
-              currentModel={user?.llmModel ?? "qwen2.5:14b-instruct-q4_K_M"}
-              available={availableProviders}
-              labels={{
-                providerLabel: t("llmProviderLabel"),
-                modelLabel: t("llmModelLabel"),
-                customModelLabel: t("llmCustomModelLabel"),
-                customModelPlaceholder: t("llmCustomModelPlaceholder"),
-                notConfigured: t("llmNotConfigured"),
-                localBadge: t("llmLocalBadge"),
-                cloudBadge: t("llmCloudBadge"),
-                save: t("llmSave"),
-                saved: t("llmSaved"),
-              }}
-            />
-          </CardContent>
-        </Card>
+        {!isOAuth && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("llm")}</CardTitle>
+              <CardDescription>{t("llmDescription")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <LlmSelector
+                currentProvider={user?.llmProvider ?? "ollama"}
+                currentModel={user?.llmModel ?? "qwen2.5:14b-instruct-q4_K_M"}
+                available={availableProviders}
+                labels={{
+                  providerLabel: t("llmProviderLabel"),
+                  modelLabel: t("llmModelLabel"),
+                  customModelLabel: t("llmCustomModelLabel"),
+                  customModelPlaceholder: t("llmCustomModelPlaceholder"),
+                  notConfigured: t("llmNotConfigured"),
+                  localBadge: t("llmLocalBadge"),
+                  cloudBadge: t("llmCloudBadge"),
+                  save: t("llmSave"),
+                  saved: t("llmSaved"),
+                }}
+              />
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="flex-row items-start justify-between gap-4">
