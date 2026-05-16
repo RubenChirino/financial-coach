@@ -112,25 +112,17 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
     if (!file) return;
     setFilename(file.name);
     setError(null);
-    // Old Excel 97-2003 binary format (.xls) is not supported — exceljs only
-    // handles the modern XML-based .xlsx. Reject upfront with a clear message
-    // rather than letting the server return a cryptic 'noSheet'.
-    if (/\.xls$/i.test(file.name)) {
-      setError(
-        "Old .xls format not supported. Open the file in Excel/Numbers and save as .xlsx or .csv.",
-      );
-      return;
-    }
-    const isExcel = /\.xlsx$/i.test(file.name);
+    const isExcel = /\.(xls|xlsx)$/i.test(file.name);
     const reader = new FileReader();
     reader.onerror = () => {
       console.error("file read failed", reader.error);
       setError(labels.genericError);
     };
     if (isExcel) {
-      // Parse Excel server-side — exceljs has Node.js dependencies that fight
-      // browser bundling in production. The round-trip is fine; payload is
-      // capped at 2MB on the server.
+      // Parse Excel server-side — the libs (ExcelJS / SheetJS) have Node.js
+      // dependencies that fight browser bundling in production. The
+      // round-trip is fine; payload is capped at 2MB on the server. The
+      // filename hint lets the server pick the right parser (.xls vs .xlsx).
       reader.onload = () => {
         const data = reader.result;
         if (!(data instanceof ArrayBuffer)) {
@@ -140,7 +132,7 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
         startTransition(async () => {
           try {
             const base64 = arrayBufferToBase64(data);
-            const res = await excelToCsvAction(base64);
+            const res = await excelToCsvAction(base64, file.name);
             if (!res.ok) {
               setError(humanizeError(res.error));
               return;
