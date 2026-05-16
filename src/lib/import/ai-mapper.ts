@@ -78,8 +78,15 @@ export const CsvMappingSchema = z.object({
   amountSign: z.enum(["negative-out", "positive-out"]),
   /** Character used as the decimal mark inside an amount cell. */
   decimalSeparator: z.enum([".", ","]),
-  /** Optional thousands separator. Empty string means none. */
-  thousandsSeparator: z.enum(["", ".", ",", " "]),
+  /**
+   * Optional thousands separator. "none" means no separator.
+   *
+   * Why "none" instead of "": Gemini's structured-output API rejects empty
+   * strings in enum values (`enum[0]: cannot be empty`), so the schema-level
+   * sentinel for "no thousands separator" must be a non-empty token. We
+   * translate to `""` at the parse boundary via `normalizeThousands()`.
+   */
+  thousandsSeparator: z.enum(["none", ".", ",", " "]),
   /** Column carrying ISO-4217 currency. -1 if absent — we use defaultCurrency. */
   currencyColumn: z.number().int().min(-1),
   defaultCurrency: z.string().regex(/^[A-Z]{3}$/),
@@ -207,8 +214,10 @@ Rules:
   AMOUNT VALUES IN THE SAMPLE — never from the language of the merchant text.
   Look at the rightmost separator in each amount: if amounts look like
   "-4.50" or "-21.00" or "1,234.56" the decimal is "." and thousands is ","
-  (or empty). If amounts look like "-4,50" or "-21,00" or "1.234,56" the
-  decimal is "," and thousands is "." (or empty). When in doubt, count
+  (or "none" if no thousands separator appears). If amounts look like "-4,50"
+  or "-21,00" or "1.234,56" the decimal is "," and thousands is "." (or
+  "none"). Use the literal string "none" — NOT an empty string — when there
+  is no thousands separator. When in doubt, count
   fractional digits — exactly 2 digits after a separator means that's the
   decimal mark. XLS files converted to CSV typically use "." decimal even
   for European banks, because the spreadsheet stored them as numbers.
@@ -276,6 +285,15 @@ const CURRENCY_RE = /^[A-Z]{3}$/;
  * Returns NaN if it can't be parsed cleanly — the caller turns that into a
  * `CsvRowError` so the row is skipped, not silently zeroed.
  */
+/**
+ * Translate the schema-level sentinel back to the runtime token that
+ * `parseAmountWithSpec` expects internally. See the comment on
+ * `CsvMappingSchema.thousandsSeparator` for why this exists.
+ */
+function normalizeThousands(t: CsvMappingSpec["thousandsSeparator"]): "" | "." | "," | " " {
+  return t === "none" ? "" : t;
+}
+
 export function parseAmountWithSpec(
   raw: string,
   decimal: "." | ",",
@@ -393,15 +411,20 @@ function extractAmount(cells: string[], spec: CsvMappingSpec): number | RowFailu
     const col = spec.amountColumn ?? -1;
     if (col < 0) return "missing amount column in mapping";
     const raw = cells[col] ?? "";
-    const cents = parseAmountWithSpec(raw, spec.decimalSeparator, spec.thousandsSeparator);
+    const cents = parseAmountWithSpec(
+      raw,
+      spec.decimalSeparator,
+      normalizeThousands(spec.thousandsSeparator),
+    );
     if (!Number.isFinite(cents)) return `invalid amount "${raw}"`;
     return spec.amountSign === "positive-out" ? -cents : cents;
   }
 
   const debitRaw = cells[spec.debitColumn ?? -1] ?? "";
   const creditRaw = cells[spec.creditColumn ?? -1] ?? "";
-  const debit = parseAmountWithSpec(debitRaw, spec.decimalSeparator, spec.thousandsSeparator);
-  const credit = parseAmountWithSpec(creditRaw, spec.decimalSeparator, spec.thousandsSeparator);
+  const thousands = normalizeThousands(spec.thousandsSeparator);
+  const debit = parseAmountWithSpec(debitRaw, spec.decimalSeparator, thousands);
+  const credit = parseAmountWithSpec(creditRaw, spec.decimalSeparator, thousands);
   const debitVal = Number.isFinite(debit) ? Math.abs(debit) : 0;
   const creditVal = Number.isFinite(credit) ? Math.abs(credit) : 0;
   if (debitVal === 0 && creditVal === 0) {
@@ -508,7 +531,7 @@ export interface ParseCsvWithAiResult extends ParseCsvResult {
  */
 function detectSeparatorsFromSamples(
   samples: string[],
-): { decimal: "." | ","; thousands: "" | "." | "," | " " } | null {
+): { decimal: "." | ","; thousands: CsvMappingSpec["thousandsSeparator"] } | null {
   let dotDecimal = 0;
   let commaDecimal = 0;
   let dotThousands = 0;
@@ -557,8 +580,8 @@ function detectSeparatorsFromSamples(
 
   if (dotDecimal + commaDecimal === 0) return null;
   const decimal: "." | "," = dotDecimal >= commaDecimal ? "." : ",";
-  const thousands: "" | "." | "," =
-    decimal === "." ? (commaThousands > 0 ? "," : "") : dotThousands > 0 ? "." : "";
+  const thousands: CsvMappingSpec["thousandsSeparator"] =
+    decimal === "." ? (commaThousands > 0 ? "," : "none") : dotThousands > 0 ? "." : "none";
   return { decimal, thousands };
 }
 
