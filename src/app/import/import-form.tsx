@@ -166,7 +166,9 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
     if (raw.startsWith("header:")) {
       return `${labels.headerErrorPrefix} ${raw.slice("header:".length)}`;
     }
-    return labels.genericError;
+    // Surface the raw server-side error message instead of swallowing it.
+    // Helps diagnose issues like DB writes failing, encryption errors, etc.
+    return raw ? `${labels.genericError} (${raw})` : labels.genericError;
   }
 
   function handleSubmit() {
