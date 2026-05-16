@@ -6,6 +6,7 @@ import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { providerInfo } from "@/lib/llm/provider";
+import { consumeQuota } from "@/lib/security/rate-limit";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { type CsvMappingSpec, parseCsvWithAi } from "./ai-mapper";
@@ -138,6 +139,12 @@ async function resolveParse(
     const prefs = await loadLlmPrefs(userId);
     const consentError = checkCloudConsent(prefs);
     if (consentError) return { kind: "error", error: consentError };
+    // Rate-limit AI calls per user. Each AI import call is a paid roundtrip
+    // (Gemini) and the LLM context can be a few KB of redacted bank data,
+    // so abuse here is more expensive than chat. 10 attempts / 5 min is
+    // generous (a real user re-imports occasionally; a bot would saturate).
+    const quota = consumeQuota(`csv-ai:${userId}`, 10, 5 * 60_000);
+    if (!quota.allowed) return { kind: "error", error: "rateLimited" };
     const aiResult = await parseCsvWithAi(text, prefs);
     const ai: AiDetectionInfo = {
       used: true,

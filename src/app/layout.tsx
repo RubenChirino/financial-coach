@@ -1,5 +1,6 @@
 import { CurrencyInitializer } from "@/components/currency-initializer";
 import { PwaRegister } from "@/components/pwa-register";
+import { RouteProgress } from "@/components/route-progress";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/toaster";
 import { ConfirmProvider } from "@/components/ui/confirm-dialog";
@@ -8,7 +9,7 @@ import type { Metadata, Viewport } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages } from "next-intl/server";
 import { headers } from "next/headers";
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -55,6 +56,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <ConfirmProvider>
                 <CurrencyInitializer baseCurrency="EUR" />
                 <PwaRegister />
+                {/* Top progress bar during route navigation. Wrapped in
+                    Suspense because it calls `useSearchParams`, which Next
+                    requires be Suspense-bound to avoid bailing the whole
+                    tree out of static generation. */}
+                <Suspense fallback={null}>
+                  <RouteProgress />
+                </Suspense>
                 {children}
               </ConfirmProvider>
             </Toaster>

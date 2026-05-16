@@ -96,3 +96,78 @@ export function recordSuccess(bucket: string): void {
 export function _resetAll(): void {
   state.clear();
 }
+
+// ────────────────────────────────────────────────────────────────────────
+//  Token-bucket: fixed-window quota for hot endpoints.
+//
+//  Different shape from the lockout above — we don't want exponential
+//  backoff on chat or import (a user will retry repeatedly and learn the
+//  product is broken). We want a flat "you've made N calls in the last
+//  T seconds; come back later" gate.
+//
+//  Per-process Map again — fine for a single Vercel function instance.
+//  For multi-instance correctness (when traffic grows) this needs a
+//  shared store (Upstash, Turso row, etc.), but at our scale (<= ~20
+//  friends/family) one instance covers the load.
+// ────────────────────────────────────────────────────────────────────────
+
+interface Window {
+  /** Window start (ms epoch). */
+  start: number;
+  /** Calls counted inside this window. */
+  count: number;
+}
+
+const windows = new Map<string, Window>();
+
+export interface QuotaResult {
+  allowed: boolean;
+  /** How many more requests fit in the current window. */
+  remaining: number;
+  /** ms until the window rolls over. */
+  resetInMs: number;
+}
+
+/**
+ * Fixed-window quota check. Each call counts against the bucket regardless
+ * of whether it's allowed — i.e. callers should branch on `allowed` and
+ * short-circuit when false. There is no "check without consuming" mode
+ * because we want abuse-style hammering to extend the lockout, not get
+ * cheap "is it ready yet" peeks.
+ *
+ * @param bucket  Unique key. Combine endpoint + user id, e.g. `chat:42`.
+ * @param limit   Max calls per window.
+ * @param windowMs  Window length in ms.
+ */
+export function consumeQuota(bucket: string, limit: number, windowMs: number): QuotaResult {
+  const t = now();
+  const w = windows.get(bucket);
+  if (!w || t - w.start >= windowMs) {
+    windows.set(bucket, { start: t, count: 1 });
+    return { allowed: true, remaining: limit - 1, resetInMs: windowMs };
+  }
+  w.count += 1;
+  const remaining = Math.max(0, limit - w.count);
+  const resetInMs = Math.max(0, windowMs - (t - w.start));
+  return { allowed: w.count <= limit, remaining, resetInMs };
+}
+
+/**
+ * Periodically prune expired windows. Called opportunistically from
+ * `consumeQuota` callers' hot paths via the `if (Math.random() < 0.01)`
+ * idiom — keeps the Map from growing unbounded under spam, without paying
+ * a cleanup cost on every call.
+ *
+ * Exposed for tests and for any future cron-driven cleanup.
+ */
+export function pruneExpiredWindows(maxAgeMs: number): number {
+  const cutoff = now() - maxAgeMs;
+  let dropped = 0;
+  for (const [k, v] of windows) {
+    if (v.start < cutoff) {
+      windows.delete(k);
+      dropped++;
+    }
+  }
+  return dropped;
+}

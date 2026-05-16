@@ -39,6 +39,7 @@ export interface ImportFormLabels {
   allRowsFailedError: string;
   aiSpecLabel: string;
   cloudConsentRequiredError: string;
+  rateLimitedError: string;
   /** Force-reimport toggle */
   forceReimportLabel: string;
   forceReimportHint: string;
@@ -163,6 +164,7 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
     if (raw === "fileTooLarge") return labels.fileTooLargeError;
     if (raw === "aiUnavailable") return labels.aiUnavailableError;
     if (raw === "cloudConsentRequired") return labels.cloudConsentRequiredError;
+    if (raw === "rateLimited") return labels.rateLimitedError;
     if (raw === "allRowsFailed") return labels.allRowsFailedError;
     if (raw.startsWith("header:")) {
       return `${labels.headerErrorPrefix} ${raw.slice("header:".length)}`;

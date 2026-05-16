@@ -66,7 +66,22 @@ if (e.MICROSOFT_CLIENT_ID && e.MICROSOFT_CLIENT_SECRET) {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: e.AUTH_SECRET ?? "auth-mode-not-enabled",
-  session: { strategy: "jwt", maxAge: 60 * 60 * 24 * 7 },
+  // Session lifetime: 24 hours with sliding renewal every 6 hours.
+  //
+  // Why shorter than the Auth.js default (30d) and our previous 7d:
+  //   - This app reads encrypted bank data. A stolen session JWT is enough
+  //     to view all transactions until expiry.
+  //   - Trade-off: users who don't open the app daily will be asked to
+  //     sign in again. That's the right default for financial data — same
+  //     posture as banks themselves.
+  //   - `updateAge` controls sliding: once a user is active inside a 24h
+  //     window, the session is silently refreshed (no re-login) every 6h.
+  //     Idle for >24h → next visit requires sign-in.
+  session: {
+    strategy: "jwt",
+    maxAge: 60 * 60 * 24, // 24 hours
+    updateAge: 60 * 60 * 6, // sliding refresh every 6h of activity
+  },
   pages: {
     signIn: "/lock",
     signOut: "/lock",

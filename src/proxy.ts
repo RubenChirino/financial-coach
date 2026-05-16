@@ -42,9 +42,44 @@ function hasAuthCookie(req: NextRequest): boolean {
  */
 function buildCsp(nonce: string): string {
   const isDev = process.env.NODE_ENV !== "production";
+  const isOAuth = process.env.AUTH_MODE === "oauth";
   const scriptSrc = isDev
     ? `'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval'`
     : `'self' 'nonce-${nonce}' 'strict-dynamic'`;
+
+  // connect-src:
+  //   - In oauth (hosted) mode, the browser never needs to call Ollama —
+  //     all LLM calls go server-side via the AI SDK route. Stripping the
+  //     localhost allowance closes a small data-exfil vector (a successful
+  //     XSS could POST to a victim's local Ollama daemon).
+  //   - In local mode the daemon is reachable on 127.0.0.1, so we keep it.
+  //   - `ws:`/`wss:` is required by Next dev's HMR socket. We drop the
+  //     plain-text `ws:` in production for the same defense-in-depth reason.
+  const connectParts: string[] = ["'self'"];
+  if (!isOAuth) {
+    connectParts.push("http://127.0.0.1:11434", "http://localhost:11434");
+  }
+  if (isDev) {
+    connectParts.push("ws:", "wss:");
+  } else {
+    connectParts.push("wss:");
+  }
+
+  // img-src:
+  //   - `https:` is too permissive (a stored-XSS payload could embed a
+  //     tracking pixel pointing anywhere). We tighten to: self for hosted
+  //     icons, data:/blob: for inline SVGs and generated previews, and a
+  //     small allow-list for third-party bank/institution logos.
+  //   - If you add a new logo source, append it here rather than reopening
+  //     the wildcard.
+  const imgSrc = [
+    "'self'",
+    "data:",
+    "blob:",
+    // Lucide-served institution logos (used by the bank tile when available).
+    "https://*.googleusercontent.com",
+    "https://lh3.googleusercontent.com",
+  ].join(" ");
 
   return [
     "default-src 'self'",
@@ -55,11 +90,9 @@ function buildCsp(nonce: string): string {
     "style-src 'self' 'unsafe-inline'",
     "style-src-elem 'self' 'unsafe-inline'",
     "style-src-attr 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
+    `img-src ${imgSrc}`,
     "font-src 'self' data:",
-    // Local Ollama daemon — needed when LLM_PROVIDER=ollama. Cloud providers
-    // are called from the server, never the browser, so they don't appear here.
-    "connect-src 'self' http://127.0.0.1:11434 http://localhost:11434 ws: wss:",
+    `connect-src ${connectParts.join(" ")}`,
     "frame-ancestors 'none'",
     "frame-src 'none'",
     "object-src 'none'",
