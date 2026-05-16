@@ -143,6 +143,7 @@ export default async function ImportPage() {
                 allRowsFailedError: t("allRowsFailedError"),
                 aiSpecLabel: t("aiSpecLabel"),
                 cloudConsentRequiredError: t("cloudConsentRequiredError"),
+                rateLimitedError: t("rateLimitedError"),
                 forceReimportLabel: t("forceReimportLabel"),
                 forceReimportHint: t("forceReimportHint"),
                 parsedSampleTitle: t("parsedSampleTitle"),

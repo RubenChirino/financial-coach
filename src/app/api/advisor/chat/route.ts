@@ -11,6 +11,7 @@ import { buildSystemPrompt } from "@/lib/advisor/prompt";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getLanguageModel, providerInfo } from "@/lib/llm/provider";
 import { guardCsrf } from "@/lib/security/csrf";
+import { consumeQuota } from "@/lib/security/rate-limit";
 import { streamText } from "ai";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
@@ -48,6 +49,27 @@ export async function POST(req: NextRequest): Promise<Response> {
   const session = await getCurrentSession();
   if (!session) return new Response("unauthenticated", { status: 401 });
 
+  // Rate limit BEFORE any DB read or LLM call. Caps per-user spend and
+  // contains worst-case abuse (e.g. session theft) to a known ceiling.
+  //
+  // Window sizing rationale:
+  //   - 20 chat turns / 60s is more than any human will sustain (one turn
+  //     per ~3s including read time is already fast), so legitimate use is
+  //     unaffected.
+  //   - At 20/min the Gemini free tier (15 RPM globally) is still the
+  //     binding limit if traffic ever concentrates, but this caps any
+  //     SINGLE user from exhausting it for everyone else.
+  const quota = consumeQuota(`chat:${session.userId}`, 20, 60_000);
+  if (!quota.allowed) {
+    return new Response(JSON.stringify({ error: "rateLimited" }), {
+      status: 429,
+      headers: {
+        "content-type": "application/json",
+        "retry-after": String(Math.ceil(quota.resetInMs / 1000)),
+      },
+    });
+  }
+
   const user = await db.query.users.findFirst({
     where: eq(users.id, session.userId),
   });
@@ -63,6 +85,12 @@ export async function POST(req: NextRequest): Promise<Response> {
     });
   }
 
+  // Bound request body before parsing to defend against a malformed
+  // Content-Length lie. 256 KB is generous for a chat turn (≈100k chars).
+  const contentLength = Number(req.headers.get("content-length") ?? 0);
+  if (contentLength > 256 * 1024) {
+    return new Response("payload too large", { status: 413 });
+  }
   const body = (await req.json()) as ChatBody;
   if (!Array.isArray(body.messages) || body.messages.length === 0) {
     return new Response("missing messages", { status: 400 });

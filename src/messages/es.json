@@ -316,6 +316,7 @@
     "aiUnavailableError": "No se pudo contactar la IA para detectar el formato. Comprueba que tu modelo local esté en marcha, o elige el modo \"Solo estricto\" si tu fichero ya usa la cabecera canónica.",
     "allRowsFailedError": "Todas las filas fallaron al procesarse. El formato detectado podría ser incorrecto — prueba con otro fichero.",
     "cloudConsentRequiredError": "La detección por IA llamaría a tu proveedor en la nube. Ve a Ajustes → Coach IA y aprueba el uso de la nube, o elige el modo \"Solo estricto\".",
+    "rateLimitedError": "Demasiadas peticiones a la IA. Espera unos minutos antes de volver a intentarlo, o usa el modo \"Solo estricto\" mientras tanto.",
     "sampleTitle": "Probar con datos de ejemplo",
     "sampleBody": "¿No tienes un CSV a mano? Importa 30 movimientos realistas a lo largo de 3 meses para explorar el dashboard, las suscripciones y el coach al momento.",
     "sampleCta": "Importar datos de ejemplo",

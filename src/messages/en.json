@@ -316,6 +316,7 @@
     "aiUnavailableError": "Couldn't reach the AI to detect the format. Check your local model is running, or pick \"Strict only\" mode if your file already matches the canonical header.",
     "allRowsFailedError": "Every row failed to parse. The detected format may be wrong — try a different file or contact support.",
     "cloudConsentRequiredError": "AI format detection would call your configured cloud provider. Open Settings → AI Coach and approve cloud-LLM use first, or pick \"Strict only\" mode.",
+    "rateLimitedError": "Too many AI requests. Please wait a few minutes before trying again, or use \"Strict only\" mode for now.",
     "sampleTitle": "Try with sample data",
     "sampleBody": "Don't have a CSV handy? Import 30 realistic transactions across 3 months so you can explore the dashboard, subscriptions, and coach immediately.",
     "sampleCta": "Import sample data",
