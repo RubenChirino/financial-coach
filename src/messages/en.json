@@ -95,7 +95,8 @@
     "forgotBody": "There's no PIN recovery — your data is encrypted with it. You'll need to reset the app and start over. All local data will be wiped.",
     "withGoogle": "Continue with Google",
     "withMicrosoft": "Continue with Microsoft",
-    "oauthLegal": "By continuing you agree that your transaction data is stored on the server, encrypted at rest. Sign-in is handled by Google / Microsoft — we never see your password."
+    "withGitHub": "Continue with GitHub",
+    "oauthLegal": "By continuing you agree that your transaction data is stored on the server, encrypted at rest. Sign-in is handled by your chosen provider — we never see your password."
   },
   "dashboard": {
     "title": "Dashboard",
