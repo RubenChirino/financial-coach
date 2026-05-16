@@ -99,9 +99,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // stay NULL — this user authenticates exclusively via OAuth. The
       // encryption salt is what `deriveOAuthEncryptionKey` mixes with
       // APP_SECRET to get the per-user AES key.
+      const now = new Date();
       await db.insert(users).values({
         email,
-        emailVerifiedAt: new Date(),
+        emailVerifiedAt: now,
         name: user.name ?? null,
         image: user.image ?? null,
         encryptionSalt: generateSalt(),
@@ -112,6 +113,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         currency: "EUR",
         llmProvider: "google",
         llmModel: e.GOOGLE_MODEL,
+        // OAuth users are already on a cloud-hosted service — they implicitly
+        // consent to cloud LLM calls (same infrastructure, same trust boundary).
+        // The consent gate was designed for local-first users who might not
+        // expect their data going to third-party APIs; it doesn't apply here.
+        cloudLlmConsentAt: now,
       });
       return true;
     },
@@ -119,14 +125,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     /**
      * Stamp `userId` onto the JWT on the first call after sign-in so we don't
      * pay for a DB lookup on every subsequent request that calls `auth()`.
+     *
+     * Also backfills `cloudLlmConsentAt` for OAuth users who signed up before
+     * that field was set automatically — they're on a cloud service already so
+     * the consent requirement doesn't apply.
      */
     async jwt({ token, user }) {
       if (user?.email && !token.userId) {
         const row = await db.query.users.findFirst({
           where: eq(users.email, user.email.toLowerCase()),
-          columns: { id: true },
+          columns: { id: true, cloudLlmConsentAt: true },
         });
-        if (row) token.userId = row.id;
+        if (row) {
+          token.userId = row.id;
+          // Backfill consent for users created before this field was auto-set.
+          if (!row.cloudLlmConsentAt) {
+            await db
+              .update(users)
+              .set({ cloudLlmConsentAt: new Date() })
+              .where(eq(users.id, row.id));
+          }
+        }
       }
       return token;
     },

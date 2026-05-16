@@ -19,7 +19,7 @@ const baseSpec: CsvMappingSpec = {
   creditColumn: null,
   amountSign: "negative-out",
   decimalSeparator: ".",
-  thousandsSeparator: "",
+  thousandsSeparator: "none",
   currencyColumn: 2,
   defaultCurrency: "EUR",
   merchantColumn: 3,
