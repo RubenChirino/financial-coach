@@ -67,6 +67,7 @@ export default async function LockPage({
             labels={{
               withGoogle: tLock("withGoogle"),
               withMicrosoft: tLock("withMicrosoft"),
+              withGitHub: tLock("withGitHub"),
               legal: tLock("oauthLegal"),
             }}
           />

@@ -26,6 +26,9 @@ const EnvSchema = z.object({
   /** Required when AUTH_MODE=oauth. Microsoft Entra (Azure AD) OAuth client. */
   MICROSOFT_CLIENT_ID: z.string().optional(),
   MICROSOFT_CLIENT_SECRET: z.string().optional(),
+  /** Optional when AUTH_MODE=oauth. GitHub OAuth app. */
+  GITHUB_CLIENT_ID: z.string().optional(),
+  GITHUB_CLIENT_SECRET: z.string().optional(),
   /**
    * Entra tenant: "common" (default) accepts any Microsoft personal/work
    * account; a tenant GUID restricts sign-in to that org only. For
@@ -71,14 +74,17 @@ export function env(): Env {
   if (cached.AUTH_MODE === "oauth") {
     const missing: string[] = [];
     if (!cached.AUTH_SECRET) missing.push("AUTH_SECRET");
-    if (!cached.GOOGLE_CLIENT_ID && !cached.MICROSOFT_CLIENT_ID) {
-      missing.push("at least one of GOOGLE_CLIENT_ID / MICROSOFT_CLIENT_ID");
+    if (!cached.GOOGLE_CLIENT_ID && !cached.MICROSOFT_CLIENT_ID && !cached.GITHUB_CLIENT_ID) {
+      missing.push("at least one of GOOGLE_CLIENT_ID / MICROSOFT_CLIENT_ID / GITHUB_CLIENT_ID");
     }
     if (cached.GOOGLE_CLIENT_ID && !cached.GOOGLE_CLIENT_SECRET) {
       missing.push("GOOGLE_CLIENT_SECRET");
     }
     if (cached.MICROSOFT_CLIENT_ID && !cached.MICROSOFT_CLIENT_SECRET) {
       missing.push("MICROSOFT_CLIENT_SECRET");
+    }
+    if (cached.GITHUB_CLIENT_ID && !cached.GITHUB_CLIENT_SECRET) {
+      missing.push("GITHUB_CLIENT_SECRET");
     }
     if (missing.length > 0) {
       throw new Error(`AUTH_MODE=oauth requires:\n${missing.map((m) => `  - ${m}`).join("\n")}\n`);

@@ -7,6 +7,7 @@ import { env } from "@/lib/env";
 import { eq } from "drizzle-orm";
 import NextAuth, { type DefaultSession } from "next-auth";
 import type { JWT } from "next-auth/jwt";
+import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
 import MicrosoftEntraId from "next-auth/providers/microsoft-entra-id";
 
@@ -60,6 +61,14 @@ if (e.MICROSOFT_CLIENT_ID && e.MICROSOFT_CLIENT_SECRET) {
       clientId: e.MICROSOFT_CLIENT_ID,
       clientSecret: e.MICROSOFT_CLIENT_SECRET,
       issuer: `https://login.microsoftonline.com/${e.MICROSOFT_TENANT_ID}/v2.0`,
+    }),
+  );
+}
+if (e.GITHUB_CLIENT_ID && e.GITHUB_CLIENT_SECRET) {
+  providers.push(
+    GitHub({
+      clientId: e.GITHUB_CLIENT_ID,
+      clientSecret: e.GITHUB_CLIENT_SECRET,
     }),
   );
 }

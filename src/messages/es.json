@@ -95,7 +95,8 @@
     "forgotBody": "No hay recuperación de PIN — tus datos están cifrados con él. Necesitarás reiniciar la app y empezar de cero. Todos los datos locales se borrarán.",
     "withGoogle": "Continuar con Google",
     "withMicrosoft": "Continuar con Microsoft",
-    "oauthLegal": "Al continuar aceptas que tus datos de transacciones se guarden en el servidor, cifrados en reposo. El inicio de sesión lo gestionan Google / Microsoft — nunca vemos tu contraseña."
+    "withGitHub": "Continuar con GitHub",
+    "oauthLegal": "Al continuar aceptas que tus datos de transacciones se guarden en el servidor, cifrados en reposo. El inicio de sesión lo gestiona el proveedor elegido — nunca vemos tu contraseña."
   },
   "dashboard": {
     "title": "Resumen",
