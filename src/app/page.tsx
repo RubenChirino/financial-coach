@@ -1,6 +1,5 @@
 import { AppShell } from "@/components/app-shell";
 import { AddBankTile, BankTile } from "@/components/dashboard/bank-tile";
-import { env } from "@/lib/env";
 import { CategoriesCard, type CategorySpendRow } from "@/components/dashboard/categories-card";
 import { CoachBriefCard } from "@/components/dashboard/coach-brief-card";
 import { DonutCard } from "@/components/dashboard/donut-card";
@@ -24,6 +23,7 @@ import {
   getTopCategoriesThisMonth,
   listAccountsWithInstitutions,
 } from "@/lib/dashboard/summary";
+import { env } from "@/lib/env";
 import { formatAmount } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
 import { listActiveInsights, runInsightEngine } from "@/lib/insights/engine";

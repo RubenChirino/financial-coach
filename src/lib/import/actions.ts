@@ -241,6 +241,87 @@ export async function importCsvAction(
 }
 
 /**
+ * Convert an uploaded Excel file (.xls/.xlsx) to CSV text on the server.
+ *
+ * We do this server-side instead of in the browser because exceljs is large,
+ * pulls Node.js builtins (stream, fs) that are awkward to polyfill in a
+ * client bundle, and is a frequent source of CSP / chunk-loading issues in
+ * production. The trade-off (one extra round-trip) is negligible vs. shipping
+ * ~250 KB of code to every browser that visits /import.
+ *
+ * Input is a base64-encoded buffer; output is a plain CSV string that the
+ * existing paste path can consume unchanged.
+ */
+export type ExcelToCsvResult = { ok: true; csv: string } | { ok: false; error: string };
+
+export async function excelToCsvAction(base64: string): Promise<ExcelToCsvResult> {
+  const session = await getCurrentSession();
+  if (!session) return { ok: false, error: "unauthenticated" };
+
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(base64, "base64");
+  } catch {
+    return { ok: false, error: "invalidEncoding" };
+  }
+  if (buffer.byteLength === 0) return { ok: false, error: "emptyFile" };
+  if (buffer.byteLength > MAX_CSV_BYTES) return { ok: false, error: "fileTooLarge" };
+
+  try {
+    const ExcelJS = await import("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    // ExcelJS's `load()` is typed for ArrayBuffer; in Node, Buffer is a
+    // subclass of Uint8Array whose .buffer may be SharedArrayBuffer per TS,
+    // so copy bytes into a fresh ArrayBuffer to satisfy the signature.
+    const ab = new ArrayBuffer(buffer.byteLength);
+    new Uint8Array(ab).set(buffer);
+    await workbook.xlsx.load(ab);
+    const sheet = workbook.worksheets[0];
+    if (!sheet) return { ok: false, error: "noSheet" };
+
+    const lines: string[] = [];
+    sheet.eachRow({ includeEmpty: false }, (row) => {
+      const cells: string[] = [];
+      const last = row.cellCount;
+      for (let i = 1; i <= last; i++) {
+        cells.push(csvEscape(extractCellText(row.getCell(i).value)));
+      }
+      lines.push(cells.join(","));
+    });
+    return { ok: true, csv: lines.join("\n") };
+  } catch (err) {
+    console.error("excelToCsv failed", err);
+    return { ok: false, error: "parseFailed" };
+  }
+}
+
+function extractCellText(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "object") {
+    const v = value as {
+      richText?: { text: string }[];
+      text?: unknown;
+      result?: unknown;
+      formula?: unknown;
+      error?: unknown;
+    };
+    if (Array.isArray(v.richText)) return v.richText.map((rt) => rt.text).join("");
+    if (typeof v.text === "string") return v.text;
+    if (v.result != null) return extractCellText(v.result);
+    if ("formula" in v) return "";
+    if (typeof v.error === "string") return v.error;
+  }
+  return String(value);
+}
+
+function csvEscape(s: string): string {
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
  * Onboarding shortcut: read the bundled `docs/sample-transactions.csv` from
  * disk and import it. Read from the repo root so it survives being run from
  * any cwd. Marked as best-effort — if the file is missing in a packaged
