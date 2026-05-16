@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { type AiDetectionInfo, importCsvAction } from "@/lib/import/actions";
+import { type AiDetectionInfo, excelToCsvAction, importCsvAction } from "@/lib/import/actions";
 import { AlertTriangle, CheckCircle2, Loader2, Sparkles, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -70,43 +70,19 @@ interface SuccessState {
 type Mode = "auto" | "ai" | "strict";
 
 /**
- * Convert an ExcelJS worksheet to a CSV string. Mirrors what the previous
- * `xlsx`-based pipeline produced — one row per non-empty sheet row, fields
- * separated by `,`, fields containing `"`, `,`, `\r`, or `\n` are quoted with
- * inner `"` doubled.
+ * Read an ArrayBuffer as a base64 string in chunks. The naive
+ * `btoa(String.fromCharCode(...new Uint8Array(buf)))` blows the call stack on
+ * files over a few hundred KB. 8 KB chunks are well below any browser's
+ * argument-count limit and still fast.
  */
-function sheetToCsv(sheet: import("exceljs").Worksheet): string {
-  const lines: string[] = [];
-  sheet.eachRow({ includeEmpty: false }, (row) => {
-    const cells: string[] = [];
-    const last = row.cellCount;
-    for (let i = 1; i <= last; i++) {
-      cells.push(csvEscape(extractCellText(row.getCell(i).value)));
-    }
-    lines.push(cells.join(","));
-  });
-  return lines.join("\n");
-}
-
-function extractCellText(value: import("exceljs").CellValue): string {
-  if (value == null) return "";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === "object") {
-    if ("richText" in value && Array.isArray(value.richText)) {
-      return value.richText.map((rt) => rt.text).join("");
-    }
-    if ("text" in value && typeof value.text === "string") return value.text;
-    if ("result" in value && value.result != null) return extractCellText(value.result);
-    if ("formula" in value) return "";
-    if ("error" in value && typeof value.error === "string") return value.error;
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x2000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)));
   }
-  return String(value);
-}
-
-function csvEscape(s: string): string {
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return btoa(binary);
 }
 
 /**
@@ -135,25 +111,46 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
     const file = e.target.files?.[0];
     if (!file) return;
     setFilename(file.name);
+    setError(null);
     const isExcel = /\.(xls|xlsx)$/i.test(file.name);
     const reader = new FileReader();
+    reader.onerror = () => {
+      console.error("file read failed", reader.error);
+      setError(labels.genericError);
+    };
     if (isExcel) {
-      reader.onload = async () => {
+      // Parse Excel server-side — exceljs has Node.js dependencies that fight
+      // browser bundling in production. The round-trip is fine; payload is
+      // capped at 2MB on the server.
+      reader.onload = () => {
         const data = reader.result;
-        if (!(data instanceof ArrayBuffer)) return;
-        // Dynamic import: exceljs is only loaded when the user picks an Excel
-        // file. Keeps the import-page initial bundle light.
-        const ExcelJS = (await import("exceljs")).default;
-        const workbook = new ExcelJS.Workbook();
-        await workbook.xlsx.load(data);
-        const sheet = workbook.worksheets[0];
-        if (!sheet) return;
-        setText(sheetToCsv(sheet));
+        if (!(data instanceof ArrayBuffer)) {
+          setError(labels.genericError);
+          return;
+        }
+        startTransition(async () => {
+          try {
+            const base64 = arrayBufferToBase64(data);
+            const res = await excelToCsvAction(base64);
+            if (!res.ok) {
+              setError(humanizeError(res.error));
+              return;
+            }
+            setText(res.csv);
+          } catch (err) {
+            console.error("excel parse failed", err);
+            setError(labels.genericError);
+          }
+        });
       };
       reader.readAsArrayBuffer(file);
     } else {
       reader.onload = () => {
         const content = typeof reader.result === "string" ? reader.result : "";
+        if (!content) {
+          setError(labels.emptyError);
+          return;
+        }
         setText(content);
       };
       reader.readAsText(file);
