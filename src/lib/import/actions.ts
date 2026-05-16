@@ -277,7 +277,15 @@ export async function excelToCsvAction(base64: string): Promise<ExcelToCsvResult
     new Uint8Array(ab).set(buffer);
     await workbook.xlsx.load(ab);
     const sheet = workbook.worksheets[0];
-    if (!sheet) return { ok: false, error: "noSheet" };
+    if (!sheet) {
+      // Vercel function logs will show this so the caller can diagnose.
+      console.error("excelToCsv: workbook parsed but had no sheets", {
+        sheetCount: workbook.worksheets.length,
+        creator: workbook.creator,
+        size: buffer.byteLength,
+      });
+      return { ok: false, error: "noSheet" };
+    }
 
     const lines: string[] = [];
     sheet.eachRow({ includeEmpty: false }, (row) => {

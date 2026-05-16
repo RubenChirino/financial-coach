@@ -112,7 +112,16 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
     if (!file) return;
     setFilename(file.name);
     setError(null);
-    const isExcel = /\.(xls|xlsx)$/i.test(file.name);
+    // Old Excel 97-2003 binary format (.xls) is not supported — exceljs only
+    // handles the modern XML-based .xlsx. Reject upfront with a clear message
+    // rather than letting the server return a cryptic 'noSheet'.
+    if (/\.xls$/i.test(file.name)) {
+      setError(
+        "Old .xls format not supported. Open the file in Excel/Numbers and save as .xlsx or .csv.",
+      );
+      return;
+    }
+    const isExcel = /\.xlsx$/i.test(file.name);
     const reader = new FileReader();
     reader.onerror = () => {
       console.error("file read failed", reader.error);
