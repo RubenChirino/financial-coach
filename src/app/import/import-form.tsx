@@ -200,6 +200,10 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
         ai: res.data.ai,
         sampleRow: res.data.sampleRow,
       });
+      // Clear the textarea and filename after a successful import so the
+      // user starts fresh for any follow-up file.
+      setText("");
+      setFilename(undefined);
       router.refresh();
     });
   }

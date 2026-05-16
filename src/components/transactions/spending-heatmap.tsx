@@ -2,9 +2,8 @@
 
 import type { SpendingHeatmap as SpendingHeatmapData } from "@/lib/transactions/heatmap";
 import { ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useTransition } from "react";
 
 export interface SpendingHeatmapLabels {
   title: string;
@@ -46,6 +45,9 @@ export function SpendingHeatmap({
   const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelectedDates));
   // Track the last individually-toggled date for shift-click range selection
   const lastClickedRef = useRef<string | null>(null);
+  // Track year navigation in-flight so the prev/next arrows disable while the
+  // new year's data is loading (the page re-renders server-side on navigate).
+  const [yearNavPending, startYearNavTransition] = useTransition();
 
   const today = new Date();
   const todayUTC = new Date(
@@ -135,13 +137,23 @@ export function SpendingHeatmap({
             </button>
           )}
           <div className="flex items-center gap-1.5">
-            <YearNavButton href={prevYearLink} ariaLabel={labels.prevYear}>
+            <YearNavButton
+              href={prevYearLink}
+              ariaLabel={labels.prevYear}
+              disabled={yearNavPending}
+              onNavigate={(href) => startYearNavTransition(() => { router.push(href); })}
+            >
               <ChevronLeft className="h-3.5 w-3.5" />
             </YearNavButton>
             <span className="min-w-[3.5rem] text-center text-sm font-medium tabular-nums">
               {data.year}
             </span>
-            <YearNavButton href={nextYearLink} ariaLabel={labels.nextYear}>
+            <YearNavButton
+              href={nextYearLink}
+              ariaLabel={labels.nextYear}
+              disabled={yearNavPending}
+              onNavigate={(href) => startYearNavTransition(() => { router.push(href); })}
+            >
               <ChevronRight className="h-3.5 w-3.5" />
             </YearNavButton>
           </div>
@@ -194,31 +206,32 @@ function buildYearLink(
 function YearNavButton({
   href,
   ariaLabel,
+  disabled,
+  onNavigate,
   children,
 }: {
   href: string | null;
   ariaLabel: string;
+  disabled: boolean;
+  onNavigate: (href: string) => void;
   children: React.ReactNode;
 }) {
-  if (!href) {
-    return (
-      <span
-        aria-label={ariaLabel}
-        aria-disabled
-        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-[color:var(--border-default)] text-[color:var(--text-tertiary)] opacity-40"
-      >
-        {children}
-      </span>
-    );
-  }
+  // No target year available (already at boundary) OR navigation is in-flight.
+  const isDisabled = !href || disabled;
   return (
-    <Link
-      href={href}
+    <button
+      type="button"
       aria-label={ariaLabel}
-      className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-[color:var(--border-default)] text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--bg-hover)] hover:text-[color:var(--text-primary)]"
+      disabled={isDisabled}
+      onClick={() => { if (href) onNavigate(href); }}
+      className={`inline-flex h-6 w-6 items-center justify-center rounded-md border border-[color:var(--border-default)] transition-colors
+        ${isDisabled
+          ? "cursor-not-allowed text-[color:var(--text-tertiary)] opacity-40"
+          : "text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-hover)] hover:text-[color:var(--text-primary)]"
+        }`}
     >
       {children}
-    </Link>
+    </button>
   );
 }
 
