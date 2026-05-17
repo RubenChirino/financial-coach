@@ -12,9 +12,14 @@ import { headers } from "next/headers";
 import { type ReactNode, Suspense } from "react";
 import "./globals.css";
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://financial-coach-ai.vercel.app";
+const SITE_TITLE = "Financial Coach";
+const SITE_DESCRIPTION = "Local-first personal AI financial coach";
+
 export const metadata: Metadata = {
-  title: "Financial Coach",
-  description: "Local-first personal AI financial coach",
+  metadataBase: new URL(SITE_URL),
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
   manifest: "/manifest.json",
   icons: {
     icon: [
@@ -24,7 +29,20 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
   },
-  robots: { index: false, follow: false },
+  openGraph: {
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: "/",
+    siteName: SITE_TITLE,
+    type: "website",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  robots: { index: true, follow: true },
 };
 
 export const viewport: Viewport = {

@@ -15,9 +15,10 @@ Estimated time: 20–30 minutes, most of it waiting for the LLM model to downloa
 3. [Install Ollama + the language model](#3-install-ollama--the-language-model)
 4. [Configure the app](#4-configure-the-app)
 5. [First run](#5-first-run)
-6. [Connect a bank (optional for Phase 2+)](#6-connect-a-bank-optional)
+6. [Connect a bank (optional)](#6-connect-a-bank-optional)
 7. [Using a cloud LLM instead of Ollama (optional)](#7-using-a-cloud-llm-optional)
-8. [Troubleshooting](#troubleshooting)
+8. [Deploying to Vercel (optional)](#8-deploying-to-vercel-optional)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -36,13 +37,13 @@ Estimated time: 20–30 minutes, most of it waiting for the LLM model to downloa
    ```
 4. Verify:
    ```sh
-   node --version   # should print v24.x.x
+   node --version   # should print v20.x.x or newer (v24 recommended)
    pnpm --version   # should print 9.x.x or 10.x.x
    ```
 
 ### Windows
 
-1. Download and run the Node.js 24 LTS installer from [nodejs.org](https://nodejs.org/). Accept all the defaults.
+1. Download and run the Node.js 20+ installer from [nodejs.org](https://nodejs.org/) (24 LTS recommended). Accept all the defaults.
 2. Open **PowerShell** (Start menu → type "PowerShell").
 3. Install pnpm:
    ```powershell
@@ -57,7 +58,7 @@ Estimated time: 20–30 minutes, most of it waiting for the LLM model to downloa
 ### Linux (Debian / Ubuntu)
 
 ```sh
-curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -   # or setup_20.x for Node 20
 sudo apt install -y nodejs
 sudo npm install -g pnpm
 ```
@@ -367,6 +368,87 @@ Full comparison: [`docs/llm-providers.md`](docs/llm-providers.md).
 
 ---
 
+## 8. Deploying to Vercel (optional)
+
+Want to share an instance with family or close friends without each of them
+installing Node + Ollama? You can deploy Financial Coach to Vercel with a
+hosted libSQL (Turso) database and OAuth sign-in.
+
+> Hosted mode is multi-user. Each OAuth identity gets its own isolated
+> account; no PIN is required.
+
+### 8a. Provision a Turso database
+
+1. Sign up at [turso.tech](https://turso.tech) (generous free tier).
+2. Install the CLI and create the DB:
+   ```sh
+   brew install tursodatabase/tap/turso     # or see turso.tech/docs for other OSes
+   turso auth login
+   turso db create financial-coach
+   turso db show financial-coach --url      # → DATABASE_URL
+   turso db tokens create financial-coach   # → TURSO_AUTH_TOKEN
+   ```
+3. Apply migrations against the remote DB:
+   ```sh
+   DATABASE_URL=libsql://... TURSO_AUTH_TOKEN=ey... pnpm db:migrate
+   ```
+
+### 8b. Generate `AUTH_SECRET` and set hosted-mode envs
+
+```sh
+openssl rand -hex 32   # AUTH_SECRET
+```
+
+In your Vercel project's **Environment Variables** panel:
+
+```
+AUTH_MODE=oauth
+AUTH_SECRET=...
+APP_SECRET=...                # same value as local mode; encrypts at-rest secrets
+DATABASE_URL=libsql://...
+TURSO_AUTH_TOKEN=ey...
+NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
+```
+
+### 8c. Create OAuth clients
+
+Pick whichever providers you want enabled — the sign-in page only shows
+providers whose client ID/secret are set.
+
+| Provider  | Console                                                            | Callback URL                                                  |
+| --------- | ------------------------------------------------------------------ | ------------------------------------------------------------- |
+| Google    | [Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials) | `https://{your-domain}/api/auth/callback/google`              |
+| Microsoft | [Microsoft Entra](https://entra.microsoft.com/) → App registrations | `https://{your-domain}/api/auth/callback/microsoft-entra-id`  |
+| GitHub    | [GitHub → Developer settings → OAuth Apps](https://github.com/settings/developers) | `https://{your-domain}/api/auth/callback/github`              |
+
+Paste the resulting `_CLIENT_ID` / `_CLIENT_SECRET` pairs into Vercel env
+vars (`GOOGLE_CLIENT_ID`, `MICROSOFT_CLIENT_ID` + `MICROSOFT_TENANT_ID=common`,
+`GITHUB_CLIENT_ID`, …).
+
+### 8d. LLM provider in hosted mode
+
+Vercel's serverless runtime can't reach a local Ollama daemon. The resolver
+automatically falls back to **Gemini** in hosted mode regardless of
+`LLM_PROVIDER`. Set:
+
+```
+GOOGLE_GENERATIVE_AI_API_KEY=...
+GOOGLE_MODEL=gemini-2.5-flash
+```
+
+Free Gemini tier is enough for personal use.
+
+### 8e. Deploy
+
+```sh
+vercel deploy --prod
+```
+
+Open the deployment URL, click **Sign in**, pick a provider, and you're in.
+Connect a bank from Settings exactly like in local mode.
+
+---
+
 ## Troubleshooting
 
 ### "command not found: pnpm"
@@ -436,34 +518,17 @@ PORT=3018 pnpm start:prod
 
 Then open [http://127.0.0.1:3018](http://127.0.0.1:3018).
 
-### "better_sqlite3.node was compiled against a different Node.js version"
-
-Full message looks like:
-
-> The module `.../better_sqlite3.node` was compiled against a different Node.js version using NODE_MODULE_VERSION 127. This version of Node.js requires NODE_MODULE_VERSION 137. Please try re-compiling or re-installing the module...
-
-`better-sqlite3` is a native C++ addon and gets ABI-compiled for one specific Node major version. You're seeing this because `node_modules` was populated under a different Node major than the one running the app now (e.g. you installed under Node 22 and upgraded to Node 24, or vice versa).
-
-Fix — in the same shell you'll run `npm run dev` from:
-
-```sh
-pnpm rebuild better-sqlite3
-```
-
-Or nuclear option if the rebuild errors out:
-
-```sh
-rm -rf node_modules
-pnpm install
-```
-
-The project pins `Node >= 24.15.0` in `package.json` and `.nvmrc`. If you use `nvm` or `fnm`, just run `nvm use` (or `fnm use`) in the project folder before `npm run dev` — they'll read `.nvmrc` automatically.
-
-Version ↔ NODE_MODULE_VERSION reference (most common): Node 18 = v108, Node 20 = v115, Node 22 = v127, Node 24 = v137.
-
 ### "SQLITE_BUSY: database is locked"
 
 Another copy of the app is still running. Close all terminal windows running `pnpm start`, wait a few seconds, then try again. If persistent, delete `data/financial-coach.db-wal` and `data/financial-coach.db-shm` (**not** the `.db` file itself) and restart.
+
+### "Could not connect to libSQL" (hosted mode)
+
+The app uses `@libsql/client` to talk to Turso. If you see connection errors after deploy:
+
+- Confirm `DATABASE_URL` starts with `libsql://` (not `https://`).
+- Confirm `TURSO_AUTH_TOKEN` is set and not expired (`turso db tokens create financial-coach` to mint a new one).
+- Re-run `DATABASE_URL=… TURSO_AUTH_TOKEN=… pnpm db:migrate` against the remote DB — a fresh Turso instance has no schema.
 
 ### "I enter my PIN but the page just reloads"
 
@@ -491,6 +556,6 @@ GoCardless requires re-authorization every 90 days (EU regulation, not an app li
 
 ## What next
 
-- **No bank yet?** Starting Phase 6 the app will ship a sample CSV + importer so you can try it without connecting anything. See [RESUME.md](RESUME.md) for the current roadmap.
+- **No bank yet?** Use **Demo mode** from the welcome screen — it loads synthetic transactions so you can poke around without any API keys. You can also import a real bank statement (`.csv` or `.xlsx`) from **Settings → Import**.
 - **Curious about the security model?** Read [`docs/security.md`](docs/security.md) — it covers threat model, encryption details, and what "local-first" actually means.
 - **Want to contribute?** Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [architecture overview](docs/architecture.md).
