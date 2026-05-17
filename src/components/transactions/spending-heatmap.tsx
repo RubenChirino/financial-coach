@@ -141,7 +141,11 @@ export function SpendingHeatmap({
               href={prevYearLink}
               ariaLabel={labels.prevYear}
               disabled={yearNavPending}
-              onNavigate={(href) => startYearNavTransition(() => { router.push(href); })}
+              onNavigate={(href) =>
+                startYearNavTransition(() => {
+                  router.push(href);
+                })
+              }
             >
               <ChevronLeft className="h-3.5 w-3.5" />
             </YearNavButton>
@@ -152,7 +156,11 @@ export function SpendingHeatmap({
               href={nextYearLink}
               ariaLabel={labels.nextYear}
               disabled={yearNavPending}
-              onNavigate={(href) => startYearNavTransition(() => { router.push(href); })}
+              onNavigate={(href) =>
+                startYearNavTransition(() => {
+                  router.push(href);
+                })
+              }
             >
               <ChevronRight className="h-3.5 w-3.5" />
             </YearNavButton>
@@ -223,11 +231,14 @@ function YearNavButton({
       type="button"
       aria-label={ariaLabel}
       disabled={isDisabled}
-      onClick={() => { if (href) onNavigate(href); }}
+      onClick={() => {
+        if (href) onNavigate(href);
+      }}
       className={`inline-flex h-6 w-6 items-center justify-center rounded-md border border-[color:var(--border-default)] transition-colors
-        ${isDisabled
-          ? "cursor-not-allowed text-[color:var(--text-tertiary)] opacity-40"
-          : "text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-hover)] hover:text-[color:var(--text-primary)]"
+        ${
+          isDisabled
+            ? "cursor-not-allowed text-[color:var(--text-tertiary)] opacity-40"
+            : "text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-hover)] hover:text-[color:var(--text-primary)]"
         }`}
     >
       {children}
