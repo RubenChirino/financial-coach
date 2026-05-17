@@ -69,10 +69,7 @@ export function RouteProgress() {
         const url = new URL(href, window.location.href);
         if (url.origin !== window.location.origin) return;
         // Same path + same search means it's effectively a no-op — don't show.
-        if (
-          url.pathname === window.location.pathname &&
-          url.search === window.location.search
-        ) {
+        if (url.pathname === window.location.pathname && url.search === window.location.search) {
           return;
         }
       } catch {
