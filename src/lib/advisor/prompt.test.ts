@@ -5,6 +5,7 @@ import { buildSystemPrompt } from "./prompt";
 const ctx: AdvisorContext = {
   generatedAt: "2026-04-20T12:00:00.000Z",
   currency: "EUR",
+  dataThrough: "2026-04",
   accounts: { totalBalance: 1234, count: 2 },
   months: [
     {
@@ -52,13 +53,13 @@ describe("buildSystemPrompt", () => {
   it("uses the English system prompt when language is 'en'", () => {
     const p = buildSystemPrompt("en", ctx);
     expect(p).toMatch(/personal financial coach/);
-    expect(p).toMatch(/ALWAYS reply in English/);
+    expect(p).toMatch(/same language as the user's most recent message/i);
   });
 
   it("uses the Spanish system prompt when language is 'es'", () => {
     const p = buildSystemPrompt("es", ctx);
     expect(p).toMatch(/coach financiero personal/);
-    expect(p).toMatch(/Responde SIEMPRE en español/);
+    expect(p).toMatch(/mismo idioma que el último mensaje del usuario/i);
   });
 
   it("forbids inventing numbers and recommending products in both languages", () => {
