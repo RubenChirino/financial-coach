@@ -3,7 +3,9 @@
 import { CategoryIcon } from "@/components/category-icon";
 import { PrivacyAmount } from "@/components/privacy-amount";
 import { cn } from "@/lib/utils";
+import { Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTransition } from "react";
 
 /**
  * Clickable category row for the budgets list. Updates `?id=` in place so the
@@ -42,20 +44,32 @@ export function CategoryRow({
 }) {
   const router = useRouter();
   const sp = useSearchParams();
+  // The detail panel re-renders server-side on `?id=` change — a network
+  // round-trip with no inherent UI feedback. Wrap the navigation in a
+  // transition so we can show the row as loading (and optimistically selected)
+  // while it resolves, otherwise the click feels like a no-op.
+  const [isPending, startTransition] = useTransition();
 
   function select() {
     const next = new URLSearchParams(sp.toString());
     next.set("id", String(id));
-    router.replace(`/categories?${next.toString()}`, { scroll: false });
+    startTransition(() => {
+      router.replace(`/categories?${next.toString()}`, { scroll: false });
+    });
   }
+
+  // Treat a pending click as selected straight away so the highlight responds
+  // to the tap instantly, before the server round-trip completes.
+  const active = selected || isPending;
 
   return (
     <button
       type="button"
       onClick={select}
+      aria-busy={isPending}
       className={cn(
         "group flex w-full items-center gap-3.5 rounded-xl px-3.5 py-3 text-left transition-colors",
-        selected ? "bg-[color:var(--brand-primary-soft)]" : "hover:bg-[color:var(--surface-app)]",
+        active ? "bg-[color:var(--brand-primary-soft)]" : "hover:bg-[color:var(--surface-app)]",
       )}
     >
       <div
@@ -67,7 +81,15 @@ export function CategoryRow({
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline justify-between gap-2">
-          <div className="truncate text-[13.5px] font-semibold">{name}</div>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <div className="truncate text-[13.5px] font-semibold">{name}</div>
+            {isPending ? (
+              <Loader2
+                className="h-3 w-3 shrink-0 animate-spin text-[color:var(--brand-primary)]"
+                aria-hidden
+              />
+            ) : null}
+          </div>
           <div className="tnum whitespace-nowrap text-[12.5px] font-semibold">
             <PrivacyAmount value={spentFormatted} />
             <span className="font-normal text-[color:var(--text-tertiary)]">

@@ -24,6 +24,14 @@ import { and, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 export interface AdvisorContext {
   generatedAt: string;
   currency: string;
+  /**
+   * The most recent month (YYYY-MM) for which the user actually has transactions.
+   * The spending sections below are anchored to this month, NOT the current
+   * calendar month — otherwise a user whose imported data ends a few months ago
+   * would get an all-zero snapshot and the coach would wrongly claim it has no
+   * data. Null only when there are no transactions at all.
+   */
+  dataThrough: string | null;
   accounts: { totalBalance: number; count: number };
   months: AdvisorMonth[];
   topMerchants: AdvisorMerchant[];
@@ -78,6 +86,33 @@ export interface AdvisorBudget {
 
 const CENTS_TO_UNITS = (n: number) => Math.round(n) / 100;
 
+/** First day (UTC) of the month `offset` months from the current month. */
+function monthStartUTC(offset: number): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
+}
+
+/**
+ * How many months back the user's most recent transaction is, as a non-positive
+ * offset relative to the current month (0 = current month has data, -2 = latest
+ * data is two months old). Returns 0 when there are no transactions or the
+ * latest one is in the current/future month, so the snapshot defaults to the
+ * usual "current month" anchor.
+ */
+async function latestDataMonthOffset(): Promise<number> {
+  const rows = await db
+    .select({ latest: sql<number | null>`max(${transactions.bookingDate})` })
+    .from(transactions);
+  const ms = rows[0]?.latest;
+  if (ms == null) return 0;
+  const latest = new Date(Number(ms));
+  const now = new Date();
+  const offset =
+    (latest.getUTCFullYear() - now.getUTCFullYear()) * 12 +
+    (latest.getUTCMonth() - now.getUTCMonth());
+  return Math.min(0, offset);
+}
+
 /**
  * Build the **only** data the LLM ever sees about the user's finances.
  *
@@ -103,8 +138,15 @@ export async function buildAdvisorContext(opts?: {
 
   const accountsTotal = await getAccountsTotal();
 
+  // Anchor every spending window to the user's most recent month of data instead
+  // of "today". If the latest transaction is months old (common after a one-off
+  // CSV import of historical data), a fixed last-3-calendar-months window would
+  // be empty and the coach would falsely report it has no data to work with.
+  const anchorOffset = await latestDataMonthOffset();
+
   const months: AdvisorMonth[] = [];
-  for (let offset = 0; offset > -monthsBack; offset--) {
+  for (let i = 0; i < monthsBack; i++) {
+    const offset = anchorOffset - i;
     const summary = await getMonthSummary(offset);
     const cats = await getTopCategoriesThisMonth(8, offset);
     months.push({
@@ -124,8 +166,8 @@ export async function buildAdvisorContext(opts?: {
 
   const [topMerchants, budgets, subscriptions, advisorGoals, profile, forecast] = await Promise.all(
     [
-      selectTopMerchants(topMerchantLimit),
-      selectBudgets(),
+      selectTopMerchants(topMerchantLimit, anchorOffset),
+      selectBudgets(anchorOffset),
       selectSubscriptions(),
       selectGoals(),
       opts?.userId != null
@@ -138,6 +180,7 @@ export async function buildAdvisorContext(opts?: {
   return {
     generatedAt: new Date().toISOString(),
     currency: accountsTotal.currency,
+    dataThrough: months.find((m) => m.txCount > 0)?.month ?? null,
     accounts: {
       totalBalance: CENTS_TO_UNITS(accountsTotal.totalCents),
       count: accountsTotal.accountCount,
@@ -192,9 +235,10 @@ async function selectSubscriptions(): Promise<AdvisorSubscription[]> {
   }));
 }
 
-async function selectTopMerchants(limit: number): Promise<AdvisorMerchant[]> {
-  const now = new Date();
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1));
+async function selectTopMerchants(limit: number, anchorOffset = 0): Promise<AdvisorMerchant[]> {
+  // 3-month window ending at (and including) the anchor month.
+  const start = monthStartUTC(anchorOffset - 2);
+  const end = monthStartUTC(anchorOffset + 1);
 
   const rows = await db
     .select({
@@ -208,6 +252,7 @@ async function selectTopMerchants(limit: number): Promise<AdvisorMerchant[]> {
     .where(
       and(
         gte(transactions.bookingDate, start),
+        lt(transactions.bookingDate, end),
         isNotNull(transactions.merchantName),
         lt(transactions.amountCents, 0),
       ),
@@ -230,10 +275,9 @@ async function selectTopMerchants(limit: number): Promise<AdvisorMerchant[]> {
     .filter((m) => m.name && m.totalSpent > 0);
 }
 
-async function selectBudgets(): Promise<AdvisorBudget[]> {
-  const now = new Date();
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+async function selectBudgets(anchorOffset = 0): Promise<AdvisorBudget[]> {
+  const monthStart = monthStartUTC(anchorOffset);
+  const monthEnd = monthStartUTC(anchorOffset + 1);
 
   const rows = await db
     .select({
