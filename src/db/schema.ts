@@ -253,6 +253,28 @@ export const recurringSubscriptions = sqliteTable("recurring_subscriptions", {
 });
 
 /**
+ * Persisted city label for a detected travel ("trip").
+ *
+ * Trips themselves are NOT stored — they're recomputed on every load from the
+ * user's foreign-currency transactions (see `src/lib/travels/detect.ts`). The
+ * only thing worth persisting is the city, because transactions carry no city
+ * data: it is either guessed by the LLM (`source = "ai"`, cached so we don't
+ * re-call the model on every render) or typed by the user (`source = "user"`,
+ * which always wins over an AI guess).
+ *
+ * Keyed by `tripKey` = `${currency}:${startEpochDay}` — stable as long as the
+ * trip's earliest transaction doesn't change.
+ */
+export const travelCityLabels = sqliteTable("travel_city_labels", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  tripKey: text("trip_key").notNull().unique(),
+  city: text("city").notNull(),
+  source: text("source", { enum: ["ai", "user"] }).notNull(),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
+});
+
+/**
  * Savings goals. Progress is tracked manually — the user bumps `saved_cents`
  * themselves (or from the advisor suggestion). No auto-link to accounts yet;
  * that can be wired in a later phase.

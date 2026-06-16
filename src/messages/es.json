@@ -16,7 +16,8 @@
     "settings": "Ajustes",
     "lock": "Bloquear",
     "predictions": "Predicciones",
-    "opportunities": "Oportunidades"
+    "opportunities": "Oportunidades",
+    "travels": "Viajes"
   },
   "shell": {
     "main": "Principal",
@@ -276,6 +277,27 @@
     "freqYearly": "Anual",
     "lastSeen": "última: {date}",
     "monthlyEquivalent": "{amount}/mes"
+  },
+  "travels": {
+    "title": "Viajes",
+    "subtitle": "Agrupamos los pagos hechos en el extranjero en viajes, por país.",
+    "emptyTitle": "Aún no se han detectado viajes",
+    "emptyBody": "Los viajes se detectan a partir de pagos en una moneda distinta a la tuya ({currency}). En cuanto gastes en el extranjero en otra moneda, esos pagos aparecerán aquí agrupados en viajes.",
+    "allTrips": "Todos los viajes",
+    "tripCount": "{count, plural, one {# viaje} other {# viajes}}",
+    "payments": "{count, plural, one {# pago} other {# pagos}}",
+    "paymentsLabel": "Pagos",
+    "paymentsHeading": "Pagos de este viaje",
+    "totalSpent": "Total gastado",
+    "currency": "Moneda",
+    "city": "Ciudad",
+    "cityPlaceholder": "p. ej. Londres",
+    "guessCity": "Adivinar con IA",
+    "guessing": "Adivinando…",
+    "saved": "Guardado",
+    "aiSourceNote": "Estimado por IA — edítalo si no es correcto.",
+    "consentNote": "Activa la IA en la nube desde el Coach IA para adivinar ciudades.",
+    "limitationNote": "Nota: los viajes se detectan a partir de pagos en moneda extranjera. Los viajes dentro de la zona de tu moneda ({currency}) no se pueden detectar automáticamente."
   },
   "import": {
     "title": "Importar CSV",

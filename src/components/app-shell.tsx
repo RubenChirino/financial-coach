@@ -12,6 +12,7 @@ import {
   Lightbulb,
   type LucideIcon,
   PieChart,
+  Plane,
   Repeat,
   Settings,
   Sparkles,
@@ -38,6 +39,7 @@ const MAIN: readonly NavEntry[] = [
   { href: "/predictions", tKey: "predictions", Icon: TrendingUp },
   { href: "/opportunities", tKey: "opportunities", Icon: Lightbulb },
   { href: "/subscriptions", tKey: "subscriptions", Icon: Repeat },
+  { href: "/travels", tKey: "travels", Icon: Plane, matchPrefix: true },
   { href: "/banks", tKey: "banks", Icon: Landmark, matchPrefix: true },
 ] as const;
 

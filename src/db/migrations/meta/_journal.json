@@ -64,6 +64,13 @@
       "when": 1778669771206,
       "tag": "0008_whole_wendigo",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1781636758574,
+      "tag": "0009_windy_ben_urich",
+      "breakpoints": true
     }
   ]
 }
