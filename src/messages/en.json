@@ -16,7 +16,8 @@
     "settings": "Settings",
     "lock": "Lock",
     "predictions": "Predictions",
-    "opportunities": "Opportunities"
+    "opportunities": "Opportunities",
+    "travels": "Travels"
   },
   "shell": {
     "main": "Main",
@@ -276,6 +277,27 @@
     "freqYearly": "Yearly",
     "lastSeen": "last: {date}",
     "monthlyEquivalent": "{amount}/mo"
+  },
+  "travels": {
+    "title": "Travels",
+    "subtitle": "We group payments made abroad into trips, by country.",
+    "emptyTitle": "No trips detected yet",
+    "emptyBody": "Trips are detected from payments in a currency other than your home currency ({currency}). Once you spend abroad in a foreign currency, those payments show up here grouped into trips.",
+    "allTrips": "All trips",
+    "tripCount": "{count, plural, one {# trip} other {# trips}}",
+    "payments": "{count, plural, one {# payment} other {# payments}}",
+    "paymentsLabel": "Payments",
+    "paymentsHeading": "Payments on this trip",
+    "totalSpent": "Total spent",
+    "currency": "Currency",
+    "city": "City",
+    "cityPlaceholder": "e.g. London",
+    "guessCity": "Guess with AI",
+    "guessing": "Guessing…",
+    "saved": "Saved",
+    "aiSourceNote": "Guessed by AI — edit if it's wrong.",
+    "consentNote": "Enable the cloud AI in the AI Coach to guess cities.",
+    "limitationNote": "Heads up: trips are detected from foreign-currency payments. Travel within your home currency ({currency}) zone can't be detected automatically."
   },
   "import": {
     "title": "Import CSV",
