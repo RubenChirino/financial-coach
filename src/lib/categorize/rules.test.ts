@@ -61,6 +61,28 @@ describe("matchRule", () => {
     expect(hit).toBeNull();
   });
 
+  it("does not let the zero-commission footer trigger the 'comision' fee rule", () => {
+    const rules = [r(1, "contains", "comision", 22, 30)];
+    // Every card payment ends with ", Comision 0,00" — it must NOT match fees.
+    const hit = matchRule(
+      {
+        merchantName: "Compra Anthropic Claude Sub, San Francisco",
+        rawDescription: "Compra Anthropic Claude Sub, San Francisco, Tarjeta 5489 , Comision 0,00",
+      },
+      rules,
+    );
+    expect(hit).toBeNull();
+  });
+
+  it("still matches a real, non-zero commission", () => {
+    const rules = [r(1, "contains", "comision", 22, 30)];
+    const hit = matchRule(
+      { merchantName: null, rawDescription: "Comision Mantenimiento Cuenta" },
+      rules,
+    );
+    expect(hit?.id).toBe(1);
+  });
+
   it("handles null merchant for merchant_exact safely", () => {
     const rules = [r(1, "merchant_exact", "anything", 10)];
     const hit = matchRule({ merchantName: null, rawDescription: "anything" }, rules);

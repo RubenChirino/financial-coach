@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fixture = await createTestDb();
 vi.mock("@/db/client", () => ({ db: fixture.db, client: fixture.client }));
 
-const { accounts, institutions, requisitions, transactions } = await import("@/db/schema");
+const { accounts, cityCountries, institutions, requisitions, transactions } = await import(
+  "@/db/schema"
+);
 const { listTravels } = await import("./detect");
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -46,8 +48,8 @@ async function seedAccount() {
 async function tx(opts: {
   dayOffset: number;
   amountCents: number;
-  currency: string;
-  merchant?: string;
+  desc: string;
+  currency?: string;
   isRecurring?: boolean;
 }) {
   txSeq += 1;
@@ -56,17 +58,20 @@ async function tx(opts: {
     gocardlessTransactionId: `tx-${txSeq}`,
     bookingDate: new Date(BASE + opts.dayOffset * DAY),
     amountCents: opts.amountCents,
-    currency: opts.currency,
-    merchantName: opts.merchant ?? "Shop",
-    rawDescription: opts.merchant ?? "Shop",
+    currency: opts.currency ?? "EUR",
+    merchantName: opts.desc,
+    rawDescription: opts.desc,
     isRecurring: opts.isRecurring ?? false,
     needsReview: false,
   });
 }
 
-describe("listTravels", () => {
+const home = { homeCountry: "ES", homeCurrency: "EUR" };
+
+describe("listTravels (location-based)", () => {
   beforeEach(async () => {
     await fixture.client.execute("DELETE FROM transactions");
+    await fixture.client.execute("DELETE FROM city_countries");
     await fixture.client.execute("DELETE FROM accounts");
     await fixture.client.execute("DELETE FROM requisitions");
     await fixture.client.execute("DELETE FROM institutions");
@@ -74,79 +79,345 @@ describe("listTravels", () => {
     await seedAccount();
   });
 
-  it("detects a foreign-currency trip and ignores home-currency spending", async () => {
-    // Home-currency spend (must be ignored).
-    await tx({ dayOffset: 0, amountCents: -5000, currency: "EUR" });
-    await tx({ dayOffset: 1, amountCents: -3000, currency: "EUR" });
-    // GBP trip: 3 payments across 3 days.
-    await tx({ dayOffset: 10, amountCents: -2000, currency: "GBP", merchant: "Pub London" });
-    await tx({ dayOffset: 11, amountCents: -4000, currency: "GBP", merchant: "Tube" });
-    await tx({ dayOffset: 12, amountCents: -1000, currency: "GBP", merchant: "Cafe" });
+  it("detects a trip from explicit country codes and ignores home-country spend", async () => {
+    await tx({
+      dayOffset: 0,
+      amountCents: -5000,
+      desc: "Pago Movil En Mercadona, Madrid Es, Tarj. :*1",
+    });
+    await tx({
+      dayOffset: 10,
+      amountCents: -2000,
+      desc: "Pago Movil En Pub, London Gb, Tarj. :*1",
+    });
+    await tx({
+      dayOffset: 11,
+      amountCents: -4000,
+      desc: "Pago Movil En Tube, London Gb, Tarj. :*1",
+    });
+    await tx({
+      dayOffset: 12,
+      amountCents: -1000,
+      desc: "Pago Movil En Cafe, London Gb, Tarj. :*1",
+    });
 
-    const trips = await listTravels({ homeCurrency: "EUR" });
+    const trips = await listTravels(home);
     expect(trips).toHaveLength(1);
-    const t = trips[0]!;
-    expect(t.currency).toBe("GBP");
-    expect(t.country).toBe("United Kingdom");
-    expect(t.txCount).toBe(3);
-    expect(t.totalSpentCents).toBe(7000); // 2000 + 4000 + 1000
-    expect(t.merchantNames).toEqual(["Pub London", "Tube", "Cafe"]);
-    expect(t.tripKey.startsWith("GBP:")).toBe(true);
+    expect(trips[0]!.countryCode).toBe("GB");
+    expect(trips[0]!.txCount).toBe(3);
+    expect(trips[0]!.totalSpentCents).toBe(7000);
+    expect(trips[0]!.city).toBe("London");
+    expect(trips[0]!.tripKey.startsWith("GB:")).toBe(true);
+  });
+
+  it("uses the city→country cache for city-only descriptions", async () => {
+    await fixture.db
+      .insert(cityCountries)
+      .values({ cityKey: "roma", cityLabel: "Roma", countryCode: "IT", source: "ai" });
+    await tx({
+      dayOffset: 5,
+      amountCents: -3000,
+      desc: "Compra Trattoria, Roma, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 6,
+      amountCents: -2500,
+      desc: "Compra Museo, Roma, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 7,
+      amountCents: -1500,
+      desc: "Compra Gelato, Roma, Tarjeta 5489 , Comision 0,00",
+    });
+
+    const trips = await listTravels(home);
+    expect(trips).toHaveLength(1);
+    expect(trips[0]!.countryCode).toBe("IT");
+    expect(trips[0]!.city).toBe("Roma");
+  });
+
+  it("ignores city-only foreign places not yet resolved in the cache", async () => {
+    await tx({
+      dayOffset: 5,
+      amountCents: -3000,
+      desc: "Compra Cafe, Dublin, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 6,
+      amountCents: -2500,
+      desc: "Compra Pub, Dublin, Tarjeta 5489 , Comision 0,00",
+    });
+    // Not in cache → unknown country → not a trip (until a sync resolves it).
+    expect(await listTravels(home)).toHaveLength(0);
   });
 
   it("drops a one-off foreign charge that isn't a trip", async () => {
-    await tx({ dayOffset: 5, amountCents: -9900, currency: "USD" }); // single lone charge
-    const trips = await listTravels({ homeCurrency: "EUR" });
-    expect(trips).toHaveLength(0);
+    await tx({
+      dayOffset: 5,
+      amountCents: -9900,
+      desc: "Pago Movil En Shop, Berlin De, Tarj. :*1",
+    });
+    expect(await listTravels(home)).toHaveLength(0);
   });
 
-  it("keeps a 2-payment cluster only when it spans 2+ days", async () => {
-    // Two USD payments on the SAME day → not a trip.
-    await tx({ dayOffset: 3, amountCents: -1000, currency: "USD" });
-    await tx({ dayOffset: 3, amountCents: -2000, currency: "USD" });
-    expect(await listTravels({ homeCurrency: "EUR" })).toHaveLength(0);
-
-    // Two JPY payments across two days → a trip.
-    await tx({ dayOffset: 20, amountCents: -1000, currency: "JPY" });
-    await tx({ dayOffset: 21, amountCents: -2000, currency: "JPY" });
-    const trips = await listTravels({ homeCurrency: "EUR" });
-    expect(trips.map((t) => t.currency)).toEqual(["JPY"]);
+  it("falls back to currency for foreign-currency payments with no location", async () => {
+    await tx({ dayOffset: 0, amountCents: -1000, desc: "Bizum De Alguien", currency: "GBP" });
+    await tx({ dayOffset: 1, amountCents: -2000, desc: "Bizum De Otro", currency: "GBP" });
+    await tx({ dayOffset: 2, amountCents: -1500, desc: "Bizum De Mas", currency: "GBP" });
+    const trips = await listTravels(home);
+    expect(trips.map((t) => t.countryCode)).toEqual(["GB"]);
   });
 
-  it("splits the same currency into separate trips across a long gap", async () => {
-    // Trip 1
-    await tx({ dayOffset: 0, amountCents: -1000, currency: "GBP" });
-    await tx({ dayOffset: 1, amountCents: -1000, currency: "GBP" });
-    await tx({ dayOffset: 2, amountCents: -1000, currency: "GBP" });
-    // Trip 2 — well beyond the 14-day gap.
-    await tx({ dayOffset: 40, amountCents: -1000, currency: "GBP" });
-    await tx({ dayOffset: 41, amountCents: -1000, currency: "GBP" });
-    await tx({ dayOffset: 42, amountCents: -1000, currency: "GBP" });
-
-    const trips = await listTravels({ homeCurrency: "EUR" });
+  it("splits the same country into separate trips across a long gap", async () => {
+    for (const d of [0, 1, 2, 40, 41, 42]) {
+      await tx({ dayOffset: d, amountCents: -1000, desc: "Pago Movil En X, London Gb, Tarj. :*1" });
+    }
+    const trips = await listTravels(home);
     expect(trips).toHaveLength(2);
-    // Newest first.
     expect(trips[0]!.startDate.getTime()).toBeGreaterThan(trips[1]!.startDate.getTime());
-    expect(new Set(trips.map((t) => t.tripKey)).size).toBe(2);
   });
 
-  it("excludes recurring foreign charges (a foreign subscription is not travel)", async () => {
-    await tx({ dayOffset: 0, amountCents: -1500, currency: "USD", isRecurring: true });
-    await tx({ dayOffset: 30, amountCents: -1500, currency: "USD", isRecurring: true });
-    await tx({ dayOffset: 60, amountCents: -1500, currency: "USD", isRecurring: true });
-    expect(await listTravels({ homeCurrency: "EUR" })).toHaveLength(0);
+  it("treats a home-country city as home even in city-only form (self-learned)", async () => {
+    // "Madrid Es" appears explicitly → Madrid is known to be ES…
+    await tx({
+      dayOffset: 0,
+      amountCents: -1000,
+      desc: "Pago Movil En Tienda, Madrid Es, Tarj. :*1",
+    });
+    // …so these city-only Madrid payments must NOT become a trip.
+    await tx({
+      dayOffset: 5,
+      amountCents: -2000,
+      desc: "Compra Bar, Madrid, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 6,
+      amountCents: -3000,
+      desc: "Compra Cine, Madrid, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 7,
+      amountCents: -1500,
+      desc: "Compra Tienda, Madrid, Tarjeta 5489 , Comision 0,00",
+    });
+
+    expect(await listTravels(home)).toHaveLength(0);
   });
 
-  it("groups different currencies into separate trips", async () => {
-    await tx({ dayOffset: 0, amountCents: -1000, currency: "GBP" });
-    await tx({ dayOffset: 1, amountCents: -1000, currency: "GBP" });
-    await tx({ dayOffset: 2, amountCents: -1000, currency: "GBP" });
-    await tx({ dayOffset: 0, amountCents: -1000, currency: "CHF" });
-    await tx({ dayOffset: 1, amountCents: -1000, currency: "CHF" });
-    await tx({ dayOffset: 2, amountCents: -1000, currency: "CHF" });
+  it("self-learned home city wins over a stale foreign AI cache entry", async () => {
+    // A bad cache says "Cordoba" → Argentina…
+    await fixture.db
+      .insert(cityCountries)
+      .values({ cityKey: "cordoba", cityLabel: "Cordoba", countryCode: "AR", source: "ai" });
+    // …but the user's own data tags Cordoba as ES, which must win.
+    await tx({ dayOffset: 0, amountCents: -1000, desc: "Pago Movil En X, Cordoba Es, Tarj. :*1" });
+    await tx({
+      dayOffset: 5,
+      amountCents: -2000,
+      desc: "Compra Bar, Cordoba, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 6,
+      amountCents: -3000,
+      desc: "Compra Meson, Cordoba, Tarjeta 5489 , Comision 0,00",
+    });
 
-    const trips = await listTravels({ homeCurrency: "EUR" });
-    expect(trips).toHaveLength(2);
-    expect(new Set(trips.map((t) => t.currency))).toEqual(new Set(["GBP", "CHF"]));
+    expect(await listTravels(home)).toHaveLength(0);
+  });
+
+  it("excludes online payments whose city is the merchant's billing location", async () => {
+    // Anthropic billed from San Francisco — must NOT become a US trip…
+    await fixture.db.insert(cityCountries).values({
+      cityKey: "san francisco",
+      cityLabel: "San Francisco",
+      countryCode: "US",
+      source: "ai",
+    });
+    await tx({
+      dayOffset: 0,
+      amountCents: -1210,
+      desc: "Compra Anthropic, San Francisco, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 1,
+      amountCents: -2178,
+      desc: "Compra Anthropic* Claude Sub, San Francisco, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 2,
+      amountCents: -1500,
+      desc: "Compra Amazon* R8, San Francisco, Tarjeta 5489 , Comision 0,00",
+    });
+    expect(await listTravels(home)).toHaveLength(0);
+  });
+
+  it("still detects a real in-person trip alongside excluded online charges", async () => {
+    await fixture.db
+      .insert(cityCountries)
+      .values({ cityKey: "roma", cityLabel: "Roma", countryCode: "IT", source: "ai" });
+    // Real Rome spending…
+    await tx({
+      dayOffset: 0,
+      amountCents: -3000,
+      desc: "Compra Trattoria Da Mario, Roma, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 1,
+      amountCents: -2500,
+      desc: "Compra Museo Vaticano, Roma, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 2,
+      amountCents: -1500,
+      desc: "Compra Gelateria, Roma, Tarjeta 5489 , Comision 0,00",
+    });
+    // …plus an online OpenAI charge that happens to bill from Dublin.
+    await tx({
+      dayOffset: 1,
+      amountCents: -2300,
+      desc: "Compra Openai *chatgpt Subscr, Dublin, Tarjeta 5489 , Comision 0,00",
+    });
+
+    const trips = await listTravels(home);
+    expect(trips.map((t) => t.countryCode)).toEqual(["IT"]);
+    expect(trips[0]!.txCount).toBe(3);
+  });
+
+  it("excludes recurring foreign charges", async () => {
+    for (const d of [0, 30, 60]) {
+      await tx({
+        dayOffset: d,
+        amountCents: -1500,
+        desc: "Compra Service, San Francisco, Tarjeta 5489 , Comision 0,00",
+        isRecurring: true,
+      });
+    }
+    expect(await listTravels(home)).toHaveLength(0);
+  });
+
+  it("detects a domestic trip outside the home region, ignoring home spending", async () => {
+    await fixture.db.insert(cityCountries).values([
+      { cityKey: "madrid", cityLabel: "Madrid", countryCode: "ES", region: "Madrid", source: "ai" },
+      {
+        cityKey: "donostia san",
+        cityLabel: "Donostia San",
+        countryCode: "ES",
+        region: "País Vasco",
+        source: "ai",
+      },
+    ]);
+    // Home-region spending — must be ignored.
+    await tx({
+      dayOffset: 0,
+      amountCents: -2000,
+      desc: "Compra Bar, Madrid, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 1,
+      amountCents: -3000,
+      desc: "Compra Cine, Madrid, Tarjeta 5489 , Comision 0,00",
+    });
+    // San Sebastián trip (different community), explicit "City Cc".
+    await tx({
+      dayOffset: 20,
+      amountCents: -4000,
+      desc: "Pago Movil En Resto, Donostia San Es, Tarj. :*1",
+    });
+    await tx({
+      dayOffset: 21,
+      amountCents: -2500,
+      desc: "Pago Movil En Pintxos, Donostia San Es, Tarj. :*1",
+    });
+    await tx({
+      dayOffset: 22,
+      amountCents: -1500,
+      desc: "Pago Movil En Cafe, Donostia San Es, Tarj. :*1",
+    });
+
+    const trips = await listTravels({ homeCountry: "ES", homeCity: "Madrid", homeCurrency: "EUR" });
+    expect(trips).toHaveLength(1);
+    expect(trips[0]!.region).toBe("País Vasco");
+    expect(trips[0]!.countryCode).toBe("ES");
+    expect(trips[0]!.txCount).toBe(3);
+  });
+
+  it("groups a multi-city domestic trip by region (one trip for the area)", async () => {
+    await fixture.db.insert(cityCountries).values([
+      {
+        cityKey: "alcorcon",
+        cityLabel: "Alcorcon",
+        countryCode: "ES",
+        region: "Madrid",
+        source: "ai",
+      },
+      {
+        cityKey: "santiago",
+        cityLabel: "Santiago",
+        countryCode: "ES",
+        region: "Galicia",
+        source: "ai",
+      },
+      { cityKey: "lugo", cityLabel: "Lugo", countryCode: "ES", region: "Galicia", source: "ai" },
+      {
+        cityKey: "sarria",
+        cityLabel: "Sarria",
+        countryCode: "ES",
+        region: "Galicia",
+        source: "ai",
+      },
+    ]);
+    await tx({
+      dayOffset: 0,
+      amountCents: -2000,
+      desc: "Compra Albergue, Sarria, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 1,
+      amountCents: -1500,
+      desc: "Compra Meson, Lugo, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 3,
+      amountCents: -3000,
+      desc: "Compra Hotel, Santiago, Tarjeta 5489 , Comision 0,00",
+    });
+
+    const trips = await listTravels({
+      homeCountry: "ES",
+      homeCity: "Alcorcon",
+      homeCurrency: "EUR",
+    });
+    expect(trips).toHaveLength(1);
+    expect(trips[0]!.region).toBe("Galicia");
+    expect(trips[0]!.txCount).toBe(3);
+  });
+
+  it("does no domestic detection until the home region is known", async () => {
+    await fixture.db.insert(cityCountries).values({
+      cityKey: "sevilla",
+      cityLabel: "Sevilla",
+      countryCode: "ES",
+      region: "Andalucía",
+      source: "ai",
+    });
+    // Home city "Madrid" is NOT in the cache → no home region → ignore domestic.
+    await tx({
+      dayOffset: 0,
+      amountCents: -2000,
+      desc: "Compra Tapas, Sevilla, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 1,
+      amountCents: -3000,
+      desc: "Compra Museo, Sevilla, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 2,
+      amountCents: -1000,
+      desc: "Compra Bar, Sevilla, Tarjeta 5489 , Comision 0,00",
+    });
+
+    const trips = await listTravels({ homeCountry: "ES", homeCity: "Madrid", homeCurrency: "EUR" });
+    expect(trips).toHaveLength(0);
   });
 });

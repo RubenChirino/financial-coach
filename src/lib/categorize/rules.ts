@@ -46,7 +46,15 @@ function ruleMatches(rule: RuleRow, merchant: string, haystack: string): boolean
 
 export function matchRule(input: RuleInput, rules: RuleRow[]): RuleRow | null {
   const merchant = (input.merchantName ?? "").trim().toLowerCase();
-  const haystack = `${input.merchantName ?? ""} ${input.rawDescription ?? ""}`.trim().toLowerCase();
+  const haystack = `${input.merchantName ?? ""} ${input.rawDescription ?? ""}`
+    .trim()
+    .toLowerCase()
+    // Drop the ubiquitous ", Comision 0,00" zero-fee footer that Spanish-bank
+    // descriptions append to EVERY card payment — otherwise the "comision" fee
+    // rule matches everything and floods unrelated merchants into bank fees.
+    // A real, non-zero commission ("comision 3,50", "comision mantenimiento")
+    // is left intact and still matches.
+    .replace(/comisi[oó]n\s*0[.,]00/g, " ");
 
   const sorted = [...rules].sort((a, b) => a.priority - b.priority);
   for (const r of sorted) {

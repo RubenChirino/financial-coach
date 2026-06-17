@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/app-shell";
+import { HomeLocationForm } from "@/components/travels/home-location-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentSession } from "@/lib/auth/session";
@@ -7,6 +8,7 @@ import { env } from "@/lib/env";
 import { listBankConnectionsAction } from "@/lib/gocardless/actions";
 import { getLocale } from "@/lib/i18n/locale";
 import { getAvailableProviders } from "@/lib/llm/provider";
+import { countryOptions } from "@/lib/travels/countries";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -17,8 +19,10 @@ import { SecurityCard } from "./security-card";
 
 export default async function SettingsPage() {
   if (!(await getCurrentSession())) redirect("/lock");
-  const [t, user, locale, connections] = await Promise.all([
+  const [t, tTravels, tCommon, user, locale, connections] = await Promise.all([
     getTranslations("settings"),
+    getTranslations("travels"),
+    getTranslations("common"),
     getUser(),
     getLocale(),
     listBankConnectionsAction(),
@@ -54,6 +58,27 @@ export default async function SettingsPage() {
               current={user?.currency ?? "EUR"}
               label={t("currency")}
               hintLabel={t("currencyHint")}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{tTravels("homeTitle")}</CardTitle>
+            <CardDescription>{t("homeLocationDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <HomeLocationForm
+              initialCity={user?.homeCity ?? null}
+              initialCountry={user?.homeCountry ?? null}
+              countryOptions={countryOptions(locale)}
+              labels={{
+                cityLabel: tTravels("homeCity"),
+                cityPlaceholder: tTravels("homeCityPlaceholder"),
+                countryLabel: tTravels("homeCountry"),
+                save: tCommon("save"),
+                saved: tTravels("saved"),
+              }}
             />
           </CardContent>
         </Card>

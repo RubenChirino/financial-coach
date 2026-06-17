@@ -1,0 +1,1 @@
+ALTER TABLE `city_countries` ADD `region` text;

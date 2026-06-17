@@ -55,6 +55,12 @@ export const users = sqliteTable(
       .default("ollama"),
     llmModel: text("llm_model").notNull().default("qwen2.5:14b-instruct-q4_K_M"),
     cloudLlmConsentAt: integer("cloud_llm_consent_at", { mode: "timestamp_ms" }),
+    // Home base for the Travels feature: anything spent in a different country is
+    // a "trip". Inferred from the user's most frequent transaction location and
+    // confirmed/edited by the user; null until set. `homeCountry` is an ISO-3166
+    // alpha-2 code (e.g. "ES").
+    homeCity: text("home_city"),
+    homeCountry: text("home_country"),
     createdAt: timestamp("created_at"),
     updatedAt: timestamp("updated_at"),
   },
@@ -270,6 +276,34 @@ export const travelCityLabels = sqliteTable("travel_city_labels", {
   tripKey: text("trip_key").notNull().unique(),
   city: text("city").notNull(),
   source: text("source", { enum: ["ai", "user"] }).notNull(),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
+});
+
+/**
+ * Cache mapping a city name (as it appears in a transaction description) to an
+ * ISO-3166 country code. Many descriptions carry only a city ("Compra …, Roma,
+ * Tarjeta") with no country code, so the Travels "sync" pass resolves those
+ * cities once — via the LLM — and caches the answer here to avoid re-querying.
+ *
+ * `countryCode` is null when the value isn't a real place (e.g. "Itunes.com")
+ * so we remember "tried, not a location" and don't ask again. `cityKey` is the
+ * normalized (lowercased, trimmed) lookup key.
+ */
+export const cityCountries = sqliteTable("city_countries", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  cityKey: text("city_key").notNull().unique(),
+  /** Original-cased city for display, when resolved. */
+  cityLabel: text("city_label"),
+  countryCode: text("country_code"),
+  /**
+   * First-level subdivision used to detect domestic trips: for Spain this is the
+   * autonomous community (e.g. "Madrid", "Galicia", "País Vasco"). Null for
+   * places outside the home country (where the country alone separates trips) or
+   * when unknown.
+   */
+  region: text("region"),
+  source: text("source", { enum: ["ai", "manual"] }).notNull(),
   createdAt: timestamp("created_at"),
   updatedAt: timestamp("updated_at"),
 });

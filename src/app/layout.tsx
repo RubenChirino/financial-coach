@@ -1,4 +1,5 @@
 import { CurrencyInitializer } from "@/components/currency-initializer";
+import { FloatingProgressStack } from "@/components/floating-progress-stack";
 import { PwaRegister } from "@/components/pwa-register";
 import { RouteProgress } from "@/components/route-progress";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -81,6 +82,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                 <Suspense fallback={null}>
                   <RouteProgress />
                 </Suspense>
+                <FloatingProgressStack />
                 {children}
               </ConfirmProvider>
             </Toaster>
