@@ -32,6 +32,17 @@ export async function updateUserLlm(
     .where(eq(users.id, userId));
 }
 
+export async function updateUserHomeLocation(
+  userId: number,
+  homeCity: string | null,
+  homeCountry: string,
+): Promise<void> {
+  await db
+    .update(users)
+    .set({ homeCity, homeCountry, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+}
+
 export async function recordCloudLlmConsent(userId: number): Promise<void> {
   await db
     .update(users)
