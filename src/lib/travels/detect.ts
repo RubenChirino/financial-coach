@@ -5,6 +5,7 @@ import { transactions } from "@/db/schema";
 import { getAccountsTotal } from "@/lib/dashboard/summary";
 import { asc, eq } from "drizzle-orm";
 import { currencyToCountryCode, flagFromCode } from "./countries";
+import { esRegion } from "./es-regions";
 import { type ResolvedCity, getCachedCities } from "./locations";
 import { isOnlinePayment } from "./online-merchants";
 import { cityKey, explicitCityCountries, parseLocation } from "./parse-location";
@@ -77,6 +78,9 @@ function resolveCountryCode(args: {
     const key = cityKey(loc.city);
     const cc = explicit.get(key) ?? cache.get(key)?.countryCode;
     if (cc) return cc.toUpperCase();
+    // A city we know to be Spanish is, by definition, in ES — even if it never
+    // appeared with an explicit "Es" code and isn't cached yet.
+    if (esRegion(loc.city)) return "ES";
   }
   if (currency !== homeCurrency) {
     const cc = currencyToCountryCode(currency);
@@ -119,9 +123,10 @@ function classifyPayment(
   if (cc !== ctx.homeCountry) {
     return { ...row, city: loc.city, countryCode: cc, region: null, placeKey: `C:${cc}` };
   }
-  // Domestic: only a trip when we know both regions and they differ.
+  // Domestic: only a trip when we know both regions and they differ. Static map
+  // first (reliable), AI cache as fallback.
   if (!ctx.homeRegion || !loc.city) return null;
-  const region = ctx.cache.get(cityKey(loc.city))?.region ?? null;
+  const region = esRegion(loc.city) ?? ctx.cache.get(cityKey(loc.city))?.region ?? null;
   if (!region || region === ctx.homeRegion) return null;
   return { ...row, city: loc.city, countryCode: cc, region, placeKey: `R:${region}` };
 }
@@ -172,7 +177,10 @@ export async function listTravels(opts: {
   const homeCityKey = opts.homeCity ? cityKey(opts.homeCity) : null;
   if (homeCityKey) allCityKeys.add(homeCityKey);
   const cache = await getCachedCities([...allCityKeys]);
-  const homeRegion = homeCityKey ? (cache.get(homeCityKey)?.region ?? null) : null;
+  // Home region: static map first (so a Madrid resident is reliably "home" even
+  // if the LLM never resolved Alcorcón), AI cache as fallback.
+  const homeRegion =
+    esRegion(opts.homeCity) ?? (homeCityKey ? (cache.get(homeCityKey)?.region ?? null) : null);
 
   // Keep only "away from home" payments, tagged with their place.
   const ctx: ClassifyCtx = { homeCountry, homeCurrency, homeRegion, explicit, cache };

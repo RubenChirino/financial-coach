@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/empty-state";
 import { PrivacyAmount } from "@/components/privacy-amount";
 import { CityEditor } from "@/components/travels/city-editor";
 import { HomeLocationForm } from "@/components/travels/home-location-form";
+import { PaymentRow } from "@/components/travels/payment-row";
 import { SyncButton } from "@/components/travels/sync-button";
 import { TripRow } from "@/components/travels/trip-row";
 import { getAdvisorProviderStateAction } from "@/lib/advisor/actions";
@@ -61,6 +62,13 @@ export default async function TravelsPage({
     getAdvisorProviderStateAction(),
   ]);
   const intlLocale = locale === "en" ? "en-US" : "es-ES";
+  const shortDate = new Intl.DateTimeFormat(intlLocale, { day: "2-digit", month: "2-digit" });
+  const longDate = new Intl.DateTimeFormat(intlLocale, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
   const aiAvailable = !providerState.consentNeeded;
   const options = countryOptions(locale);
   const homeLabels = {
@@ -255,22 +263,21 @@ export default async function TravelsPage({
               </div>
               <ul className="mt-2 divide-y divide-[color:var(--border-default)]">
                 {selected.transactions.map((tx) => (
-                  <li key={tx.id} className="flex items-center gap-3 py-2.5">
-                    <div className="flex-1 min-w-0 truncate text-[13px] font-medium">
-                      {tx.merchantName ?? tx.rawDescription.slice(0, 48)}
-                    </div>
-                    <div className="text-[11px] text-[color:var(--text-tertiary)]">
-                      {new Intl.DateTimeFormat(intlLocale, {
-                        day: "2-digit",
-                        month: "2-digit",
-                      }).format(tx.bookingDate)}
-                    </div>
-                    <div className="tnum text-[13px] font-semibold whitespace-nowrap">
-                      <PrivacyAmount
-                        value={formatAmount(tx.amountCents, tx.currency, intlLocale)}
-                      />
-                    </div>
-                  </li>
+                  <PaymentRow
+                    key={tx.id}
+                    title={tx.merchantName ?? tx.rawDescription.slice(0, 48)}
+                    description={tx.rawDescription}
+                    city={tx.city}
+                    dateShort={shortDate.format(tx.bookingDate)}
+                    dateFull={longDate.format(tx.bookingDate)}
+                    amountFormatted={formatAmount(tx.amountCents, tx.currency, intlLocale)}
+                    labels={{
+                      description: t("detailDescription"),
+                      city: t("city"),
+                      date: t("detailDate"),
+                      amount: t("detailAmount"),
+                    }}
+                  />
                 ))}
               </ul>
             </div>

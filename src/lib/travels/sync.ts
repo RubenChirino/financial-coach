@@ -3,6 +3,7 @@ import "server-only";
 import { db } from "@/db/client";
 import { transactions } from "@/db/schema";
 import type { LanguageModel } from "ai";
+import { esRegion } from "./es-regions";
 import { type ResolvedCity, cacheCities, getCachedCities, resolveCitiesWithAi } from "./locations";
 import { isOnlinePayment } from "./online-merchants";
 import { cityKey, parseLocation } from "./parse-location";
@@ -48,20 +49,24 @@ async function pendingCityKeys(): Promise<PendingCity[]> {
 }
 
 /**
- * A place still needs the LLM if it isn't cached at all, or it's a home-country
- * place still missing its region (needed for domestic-trip detection).
+ * A place still needs the LLM if it isn't already resolvable. Spanish towns in
+ * the static region map are fully known (country ES + community) and never need
+ * the LLM. Otherwise it's pending when uncached, or a home-country place still
+ * missing its region (needed for domestic-trip detection).
  */
-function needsResolution(entry: ResolvedCity | undefined, homeCountry: string): boolean {
+function needsResolution(
+  label: string,
+  entry: ResolvedCity | undefined,
+  homeCountry: string,
+): boolean {
+  if (esRegion(label)) return false;
   if (!entry) return true;
   return entry.countryCode === homeCountry && entry.region == null;
 }
 
-/** Distinct places the "detect trips" run still needs to resolve. */
-export async function countTravelCities(homeCountry: string): Promise<number> {
-  const all = await pendingCityKeys();
-  if (all.length === 0) return 0;
-  const cached = await getCachedCities(all.map((c) => c.key));
-  return all.filter((c) => needsResolution(cached.get(c.key), homeCountry)).length;
+/** Total distinct places the "detect trips" run will scan (sizes the bar). */
+export async function countTravelCities(): Promise<number> {
+  return (await pendingCityKeys()).length;
 }
 
 export interface CityBatchResult {
@@ -98,7 +103,7 @@ export async function resolveCityBatch(opts: {
   const lastKey = slice[slice.length - 1]!.key;
 
   const cached = await getCachedCities(slice.map((c) => c.key));
-  const todo = slice.filter((c) => needsResolution(cached.get(c.key), opts.homeCountry));
+  const todo = slice.filter((c) => needsResolution(c.label, cached.get(c.key), opts.homeCountry));
 
   let resolved = 0;
   let aiUsed = false;
