@@ -21,6 +21,7 @@
   "scripts": {
     "dev": "next dev -H ${HOST:-127.0.0.1} -p ${PORT:-3000}",
     "build": "next build",
+    "vercel-build": "tsx scripts/migrate.ts && next build",
     "start": "next start -H ${HOST:-127.0.0.1} -p ${PORT:-3000}",
     "start:prod": "pnpm build && pnpm start",
     "typecheck": "tsc --noEmit",
