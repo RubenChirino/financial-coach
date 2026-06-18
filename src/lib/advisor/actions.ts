@@ -16,6 +16,7 @@ export interface ActionResult {
 export async function deleteConversationAction(conversationId: number): Promise<ActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
   await dbDeleteConversation(conversationId);
   revalidatePath("/advisor");
   return { ok: true };
@@ -31,6 +32,7 @@ export async function deleteConversationAction(conversationId: number): Promise<
 export async function grantCloudLlmConsentAction(): Promise<ActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
   const existing = await db.query.users.findFirst({ where: eq(users.id, session.userId) });
   if (!existing) return { ok: false, error: "userNotFound" };
@@ -45,6 +47,7 @@ export async function grantCloudLlmConsentAction(): Promise<ActionResult> {
 export async function revokeCloudLlmConsentAction(): Promise<ActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
   await db.update(users).set({ cloudLlmConsentAt: null }).where(eq(users.id, session.userId));
   revalidatePath("/advisor");
   return { ok: true };

@@ -36,6 +36,8 @@ export type TLActionResult<T = undefined> = TLActionOk<T> | TLActionErr;
 async function requireSession() {
   const session = await getCurrentSession();
   if (!session) throw new Error("unauthenticated");
+  // Only bank-linking / sync writes call this — never read-only guests.
+  if (session.isGuest) throw new Error("guestReadOnly");
   return session;
 }
 

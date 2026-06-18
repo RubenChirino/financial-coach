@@ -32,6 +32,7 @@ export interface SaveProfileResult {
 export async function saveInvestorProfileAction(raw: unknown): Promise<SaveProfileResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
   const parsed = ProfileSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, error: "invalid" };

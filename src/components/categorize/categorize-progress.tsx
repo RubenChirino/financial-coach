@@ -69,6 +69,8 @@ export function CategorizeProgress() {
       : status === "done"
         ? "catDoneTitle"
         : "catErrorTitle";
+  const errorText =
+    errorMsg === "guestReadOnly" ? t("guestNudge") : (errorMsg ?? t("categorizeToastError"));
 
   return (
     <div className="w-full">
@@ -106,9 +108,7 @@ export function CategorizeProgress() {
                 {errors > 0 ? ` · ${t("catDoneErrors", { count: errors })}` : ""}
               </p>
             ) : (
-              <p className="mt-1 text-[12px] text-[color:var(--text-secondary)]">
-                {errorMsg ?? t("categorizeToastError")}
-              </p>
+              <p className="mt-1 text-[12px] text-[color:var(--text-secondary)]">{errorText}</p>
             )}
           </div>
 

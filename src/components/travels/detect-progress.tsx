@@ -86,7 +86,9 @@ export function DetectTravelsProgress() {
               </p>
             ) : (
               <p className="mt-1 text-[12px] text-[color:var(--text-secondary)]">
-                {errorMsg ?? t("detectErrorTitle")}
+                {errorMsg === "guestReadOnly"
+                  ? t("guestNudge")
+                  : (errorMsg ?? t("detectErrorTitle"))}
               </p>
             )}
           </div>

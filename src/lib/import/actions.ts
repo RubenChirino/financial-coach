@@ -170,6 +170,7 @@ async function resolveParse(
 async function runImport(text: string, opts: RunImportOptions = {}): Promise<ImportActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
   if (text.length === 0) return { ok: false, error: "emptyFile" };
   if (text.length > MAX_CSV_BYTES) return { ok: false, error: "fileTooLarge" };
@@ -381,6 +382,7 @@ function csvEscape(s: string): string {
 export async function importSampleDataAction(): Promise<ImportActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
   const path = join(process.cwd(), "docs", "sample-transactions.csv");
   let text: string;

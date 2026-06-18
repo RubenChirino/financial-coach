@@ -23,6 +23,7 @@ export async function setTransactionCategoryAction(
 ): Promise<SetTxCategoryResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
   if (categoryId != null) {
     const cat = await db

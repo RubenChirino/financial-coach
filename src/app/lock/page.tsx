@@ -68,6 +68,8 @@ export default async function LockPage({
               withGoogle: tLock("withGoogle"),
               withMicrosoft: tLock("withMicrosoft"),
               withGitHub: tLock("withGitHub"),
+              guest: tLock("withGuest"),
+              guestHint: tLock("guestHint"),
               legal: tLock("oauthLegal"),
             }}
           />

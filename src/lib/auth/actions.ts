@@ -16,6 +16,7 @@ import {
   clearSessionCookie,
   createSession,
   destroySession,
+  enterGuestMode,
   getCurrentSession,
   setSessionCookie,
 } from "./session";
@@ -149,6 +150,16 @@ export async function lockAction(): Promise<void> {
   await destroySession(token);
   await clearSessionCookie();
   redirect("/lock");
+}
+
+/**
+ * Start an ephemeral read-only guest session and drop the user on the dashboard
+ * with `?guest=1` so the "nothing is saved" notice shows. OAuth mode only.
+ */
+export async function enterGuestModeAction(): Promise<void> {
+  if (env().AUTH_MODE !== "oauth") redirect("/lock");
+  await enterGuestMode();
+  redirect("/?guest=1");
 }
 
 export async function changeLanguageAction(language: string): Promise<ActionResult> {

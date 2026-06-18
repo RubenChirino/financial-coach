@@ -3,9 +3,16 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { db } from "@/db/client";
 import { sessions, users } from "@/db/schema";
-import { CryptoError, decrypt, deriveKey, deriveOAuthEncryptionKey, encrypt } from "@/lib/crypto";
+import {
+  CryptoError,
+  decrypt,
+  deriveKey,
+  deriveOAuthEncryptionKey,
+  encrypt,
+  generateSalt,
+} from "@/lib/crypto";
 import { env } from "@/lib/env";
-import { eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { INACTIVITY_MS, SESSION_COOKIE } from "./constants";
 
@@ -45,10 +52,34 @@ export interface SessionData {
   encryptionKey: Buffer;
   createdAt: number;
   lastActivityAt: number;
+  /** True for an ephemeral, read-only "try it" guest session (OAuth mode). */
+  isGuest?: boolean;
 }
 
 function now(): number {
   return Date.now();
+}
+
+/** Thrown by `assertWritable()` when a read-only guest attempts a mutation. */
+export class GuestReadOnlyError extends Error {
+  constructor() {
+    super("guestReadOnly");
+    this.name = "GuestReadOnlyError";
+  }
+}
+
+/** True when the current session is a read-only guest. */
+export async function isGuestSession(): Promise<boolean> {
+  return !!(await getCurrentSession())?.isGuest;
+}
+
+/**
+ * Guard for write paths: throws `GuestReadOnlyError` for guest sessions so a
+ * read-only guest can never mutate the shared data. Actions that return a
+ * result object should prefer `isGuestSession()` + a typed error instead.
+ */
+export async function assertWritable(): Promise<void> {
+  if (await isGuestSession()) throw new GuestReadOnlyError();
 }
 
 function hashToken(token: string): string {
@@ -157,12 +188,66 @@ export async function clearSessionCookie(): Promise<void> {
   store.delete(SESSION_COOKIE);
 }
 
+/** Cookie without `maxAge` → a session cookie the browser drops when it closes. */
+async function setEphemeralSessionCookie(token: string): Promise<void> {
+  const store = await cookies();
+  store.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+  });
+}
+
+const GUEST_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Start an ephemeral, read-only guest session (OAuth mode "try it" flow).
+ *
+ * Creates a throwaway `users` row (`isGuest = true`) and a DB session, then
+ * sets a session-only cookie so the access disappears when the browser closes.
+ * Guests can't write (see `assertWritable`), so the row never accumulates data;
+ * stale guest rows are best-effort purged on each new guest. Returns nothing —
+ * the caller redirects into the app.
+ */
+export async function enterGuestMode(): Promise<void> {
+  await purgeStaleGuests();
+
+  const encryptionSalt = generateSalt();
+  const inserted = await db
+    .insert(users)
+    .values({ encryptionSalt, isGuest: true, name: "Guest" })
+    .returning({ id: users.id });
+  const userId = inserted[0]!.id;
+
+  const key = deriveOAuthEncryptionKey(env().APP_SECRET, encryptionSalt);
+  const token = await createSession(userId, key);
+  await setEphemeralSessionCookie(token);
+}
+
+/** Delete guest accounts (and, via cascade, their sessions) older than the TTL. */
+async function purgeStaleGuests(): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - GUEST_TTL_MS);
+    await db.delete(users).where(and(eq(users.isGuest, true), lt(users.createdAt, cutoff)));
+  } catch (err) {
+    console.warn("guest purge failed", err);
+  }
+}
+
 export async function getCurrentSession(): Promise<SessionData | null> {
   // OAuth mode: defer to Auth.js's JWT session. The userId travels on the
   // token; we derive the encryption key on-demand from APP_SECRET + the
   // user's stored encryptionSalt (no PIN, no DB session row).
   if (env().AUTH_MODE === "oauth") {
-    return getOAuthSession();
+    const oauth = await getOAuthSession();
+    if (oauth) return oauth;
+    // No OAuth session — fall back to a guest session. In OAuth mode the
+    // SESSION_COOKIE is only ever set by "Go as Guest", so any session found
+    // here is a guest.
+    const store = await cookies();
+    const guest = await getSessionByToken(store.get(SESSION_COOKIE)?.value);
+    return guest ? { ...guest, isGuest: true } : null;
   }
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;

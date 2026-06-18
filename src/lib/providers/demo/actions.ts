@@ -23,6 +23,7 @@ export async function seedDemoBankAction(
   try {
     const session = await getCurrentSession();
     if (!session) return { ok: false, error: "unauthenticated" };
+    if (session.isGuest) return { ok: false, error: "guestReadOnly" };
     if (!DEMO_BANK_KEYS.includes(bank)) return { ok: false, error: "invalidBank" };
 
     const { accountRowId, inserted } = await seedDemoBank(bank, session.encryptionKey);
@@ -48,6 +49,7 @@ export async function wipeDemoDataAction(): Promise<
   try {
     const session = await getCurrentSession();
     if (!session) return { ok: false, error: "unauthenticated" };
+    if (session.isGuest) return { ok: false, error: "guestReadOnly" };
     const res = await wipeAllDemoData();
     return { ok: true, data: res };
   } catch (err) {

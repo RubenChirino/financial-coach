@@ -28,6 +28,7 @@ async function loadUser(userId: number) {
 export async function setCityAction(tripKey: string, city: string): Promise<CityActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
   const trimmed = city.trim();
   if (!trimmed || trimmed.length > MAX_CITY_LEN) {
@@ -46,6 +47,7 @@ export async function setCityAction(tripKey: string, city: string): Promise<City
 export async function guessCityAction(tripKey: string): Promise<CityActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
   const user = await loadUser(session.userId);
   if (!user) return { ok: false, error: "userNotFound" };
@@ -117,6 +119,7 @@ export async function resolveTravelCitiesBatchAction(opts: {
 }): Promise<TravelBatchResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
   const user = await loadUser(session.userId);
   if (!user) return { ok: false, error: "userNotFound" };
@@ -153,6 +156,7 @@ export async function setHomeLocationAction(
 ): Promise<HomeLocationResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
   const cc = countryCode.trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(cc)) return { ok: false, error: "invalidCountry" };

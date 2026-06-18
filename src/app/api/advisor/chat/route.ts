@@ -48,6 +48,13 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const session = await getCurrentSession();
   if (!session) return new Response("unauthenticated", { status: 401 });
+  // Chat persists conversation rows — not allowed for read-only guests.
+  if (session.isGuest) {
+    return new Response(JSON.stringify({ error: "guestReadOnly" }), {
+      status: 403,
+      headers: { "content-type": "application/json" },
+    });
+  }
 
   // Rate limit BEFORE any DB read or LLM call. Caps per-user spend and
   // contains worst-case abuse (e.g. session theft) to a known ceiling.

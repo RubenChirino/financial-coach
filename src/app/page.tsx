@@ -12,6 +12,7 @@ import {
 import { TotalBalanceCard } from "@/components/dashboard/total-balance-card";
 import { type DashboardVariant, VariantSwitcher } from "@/components/dashboard/variant-switcher";
 import { EmptyState } from "@/components/empty-state";
+import { GuestWelcomeDialog } from "@/components/guest/guest-welcome-dialog";
 import { Button } from "@/components/ui/button";
 import { getCurrentSession } from "@/lib/auth/session";
 import { userExists } from "@/lib/auth/user";
@@ -51,7 +52,7 @@ function fmtAmount(cents: number, currency: string, locale: string, round = fals
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ variant?: string }>;
+  searchParams?: Promise<{ variant?: string; guest?: string }>;
 }) {
   // In oauth mode there is no onboarding — users are provisioned on first
   // Google/Microsoft sign-in. Send unauthenticated visitors straight to /lock.
@@ -62,12 +63,18 @@ export default async function DashboardPage({
 
   const sp = (await searchParams) ?? {};
   const variant: DashboardVariant = sp.variant === "focus" ? "focus" : "default";
+  const showGuestWelcome = sp.guest === "1";
 
-  const [t, locale] = await Promise.all([getTranslations("dashboard"), getLocale()]);
+  const [t, tShell, locale] = await Promise.all([
+    getTranslations("dashboard"),
+    getTranslations("shell"),
+    getLocale(),
+  ]);
   const intlLocale = locale === "es" ? "es-ES" : "en-US";
 
-  // Run the insight engine then fetch data in parallel.
-  await runInsightEngine(locale);
+  // The insight engine writes rows — skip it for read-only guests so viewing the
+  // dashboard never mutates the shared demo data.
+  if (!session.isGuest) await runInsightEngine(locale);
 
   const [
     accountsTotal,
@@ -93,10 +100,22 @@ export default async function DashboardPage({
     listActiveInsights(),
   ]);
 
+  const guestDialog = (
+    <GuestWelcomeDialog
+      show={showGuestWelcome}
+      labels={{
+        title: tShell("guestWelcomeTitle"),
+        body: tShell("guestWelcomeBody"),
+        cta: tShell("guestWelcomeCta"),
+      }}
+    />
+  );
+
   // ── Empty dashboard: no accounts yet ──────────────────────────────────
   if (accountsTotal.accountCount === 0) {
     return (
       <AppShell title={t("title")} subtitle={t("subtitle")}>
+        {guestDialog}
         <div className="mx-auto max-w-6xl">
           <EmptyState
             Icon={LineChart}
@@ -253,6 +272,7 @@ export default async function DashboardPage({
   if (variant === "focus") {
     return (
       <AppShell title={t("title")} subtitle={t("subtitleGreeting")}>
+        {guestDialog}
         <div className="mx-auto max-w-3xl space-y-4">
           <div className="flex justify-end">{variantSwitcher}</div>
           <CoachBriefCard
@@ -289,6 +309,7 @@ export default async function DashboardPage({
   // ── Default variant: balanced bento layout ────────────────────────────
   return (
     <AppShell title={t("title")} subtitle={t("subtitleGreeting")}>
+      {guestDialog}
       <div className="mx-auto max-w-6xl">
         <div className="mb-3 flex justify-end">{variantSwitcher}</div>
         <div className="grid grid-cols-12 gap-4">
