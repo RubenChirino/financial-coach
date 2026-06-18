@@ -24,6 +24,7 @@ export interface RecorrectActionResult extends Partial<RecorrectResult> {
 export async function recorrectCategoriesAction(): Promise<RecorrectActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
   try {
     const res = await recorrectCategories();
     revalidatePath("/transactions");
@@ -66,6 +67,7 @@ export async function categorizeBatchAction(opts: {
 }): Promise<CategorizeBatchResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
   try {
     const res = await categorizePendingBatch(opts);
     if (!res.hasMore) revalidatePath("/transactions");

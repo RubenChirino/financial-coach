@@ -61,6 +61,10 @@ export const users = sqliteTable(
     // alpha-2 code (e.g. "ES").
     homeCity: text("home_city"),
     homeCountry: text("home_country"),
+    // Ephemeral "try it" account (OAuth mode only). Read-only: guests can browse
+    // the demo but can't persist changes. Purged periodically; their session
+    // cookie is session-only so it's gone when the browser closes.
+    isGuest: integer("is_guest", { mode: "boolean" }).notNull().default(false),
     createdAt: timestamp("created_at"),
     updatedAt: timestamp("updated_at"),
   },

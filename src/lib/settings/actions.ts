@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 export async function updateCurrencyAction(currency: string): Promise<void> {
   const session = await getCurrentSession();
   if (!session) throw new Error("Not authenticated");
+  if (session.isGuest) throw new Error("guestReadOnly");
 
   const upper = currency.toUpperCase();
   if (!/^[A-Z]{3}$/.test(upper)) {
@@ -32,6 +33,7 @@ const VALID_PROVIDERS: LlmProvider[] = ["ollama", "anthropic", "openai", "google
 export async function updateLlmAction(provider: string, model: string): Promise<void> {
   const session = await getCurrentSession();
   if (!session) throw new Error("Not authenticated");
+  if (session.isGuest) throw new Error("guestReadOnly");
 
   if (!VALID_PROVIDERS.includes(provider as LlmProvider)) {
     throw new Error("Invalid provider");

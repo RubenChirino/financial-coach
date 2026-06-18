@@ -20,6 +20,7 @@ export type GoalActionResult<T = undefined> = GoalActionOk<T> | GoalActionErr;
 async function requireSession() {
   const session = await getCurrentSession();
   if (!session) throw new Error("unauthenticated");
+  if (session.isGuest) throw new Error("guestReadOnly");
   return session;
 }
 

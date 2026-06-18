@@ -31,6 +31,9 @@ export type ActionResult<T = undefined> = ActionOk<T> | ActionErr;
 async function requireSession() {
   const session = await getCurrentSession();
   if (!session) throw new Error("unauthenticated");
+  // All callers here are bank-linking / sync writes (or the add-bank search that
+  // leads to them) — never available to read-only guests.
+  if (session.isGuest) throw new Error("guestReadOnly");
   return session;
 }
 

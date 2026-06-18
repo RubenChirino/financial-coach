@@ -21,6 +21,7 @@ export async function setCategoryBudgetAction(
 ): Promise<SetBudgetResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
   if (budgetCents != null && (!Number.isFinite(budgetCents) || budgetCents < 0)) {
     return { ok: false, error: "invalidBudget" };

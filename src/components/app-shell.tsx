@@ -3,7 +3,11 @@ import { NavLink } from "@/components/shell/nav-link";
 import { SidebarShell } from "@/components/shell/sidebar-shell";
 import { TopbarActions } from "@/components/shell/topbar-actions";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { db } from "@/db/client";
+import { users } from "@/db/schema";
+import { getCurrentSession } from "@/lib/auth/session";
 import { getLocale } from "@/lib/i18n/locale";
+import { eq } from "drizzle-orm";
 import {
   ArrowLeftRight,
   Landmark,
@@ -19,6 +23,7 @@ import {
   Target,
   TrendingUp,
   Upload,
+  User,
 } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
@@ -81,6 +86,18 @@ export async function AppShell({ children, title, subtitle, coachUnread = 0 }: A
   const resolvedTitle = title ?? tApp("name");
   const resolvedSubtitle = subtitle ?? tApp("tagline");
 
+  // Account chip: guest, OAuth (with provider avatar/name), or local.
+  const session = await getCurrentSession();
+  const account = session
+    ? await db.query.users.findFirst({ where: eq(users.id, session.userId) })
+    : null;
+  const isGuest = !!session?.isGuest;
+  const accountName = isGuest
+    ? tShell("guestLabel")
+    : (account?.name ?? account?.email ?? tShell("youLabel"));
+  const accountSub = isGuest ? tShell("guestSub") : (account?.email ?? tShell("youSub"));
+  const accountImage = isGuest ? null : (account?.image ?? null);
+
   const mainNav = MAIN.map(({ href, tKey, Icon, matchPrefix }) => (
     <NavLink
       key={href}
@@ -105,23 +122,28 @@ export async function AppShell({ children, title, subtitle, coachUnread = 0 }: A
   const footer = (
     <div className="border-t border-[color:var(--border-default)] pt-3">
       <div className="flex items-center gap-2.5 rounded-[10px] p-2.5 hover:bg-[color:var(--brand-primary-soft)]">
-        <div
-          aria-hidden
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
-          style={{
-            background: "linear-gradient(135deg, #FFD1DC, #FFBDCD)",
-            color: "#8B2D43",
-          }}
-        >
-          <LifeBuoy className="h-4 w-4" />
-        </div>
+        {accountImage ? (
+          <img
+            src={accountImage}
+            alt=""
+            className="h-8 w-8 shrink-0 rounded-full object-cover"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div
+            aria-hidden
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
+            style={{
+              background: "linear-gradient(135deg, #FFD1DC, #FFBDCD)",
+              color: "#8B2D43",
+            }}
+          >
+            {isGuest ? <User className="h-4 w-4" /> : <LifeBuoy className="h-4 w-4" />}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold leading-tight">
-            {tShell("youLabel")}
-          </div>
-          <div className="truncate text-[11px] text-[color:var(--text-tertiary)]">
-            {tShell("youSub")}
-          </div>
+          <div className="truncate text-[13px] font-semibold leading-tight">{accountName}</div>
+          <div className="truncate text-[11px] text-[color:var(--text-tertiary)]">{accountSub}</div>
         </div>
       </div>
       <div className="mt-2 flex items-center gap-1 px-1">

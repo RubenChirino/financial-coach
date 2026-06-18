@@ -12,6 +12,8 @@ export interface OAuthSigninLabels {
   withGoogle: string;
   withMicrosoft: string;
   withGitHub: string;
+  guest: string;
+  guestHint: string;
   legal: string;
 }
 
@@ -83,10 +85,49 @@ export function OAuthSignin({
         </form>
       ) : null}
 
+      <div className="flex items-center gap-3 pt-1">
+        <div className="h-px flex-1 bg-[color:var(--border-default)]" />
+        <span className="text-[11px] text-[color:var(--text-tertiary)]">·</span>
+        <div className="h-px flex-1 bg-[color:var(--border-default)]" />
+      </div>
+
+      <form
+        action={async () => {
+          "use server";
+          const { enterGuestModeAction } = await import("@/lib/auth/actions");
+          await enterGuestModeAction();
+        }}
+      >
+        <button
+          type="submit"
+          className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-[color:var(--border-default)] bg-transparent px-4 py-2.5 text-[14px] font-medium text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-app)]"
+        >
+          <GuestMark />
+          {labels.guest}
+        </button>
+        <p className="mt-1.5 text-center text-[11px] text-[color:var(--text-tertiary)]">
+          {labels.guestHint}
+        </p>
+      </form>
+
       <p className="pt-2 text-[11px] leading-relaxed text-[color:var(--text-tertiary)]">
         {labels.legal}
       </p>
     </div>
+  );
+}
+
+function GuestMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <title>Guest</title>
+      <path
+        d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 20a8 8 0 0 1 16 0"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
