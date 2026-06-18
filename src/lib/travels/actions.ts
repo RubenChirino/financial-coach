@@ -94,7 +94,7 @@ export async function countTravelCitiesAction(): Promise<TravelCountResult> {
   const user = await loadUser(session.userId);
   if (!user?.homeCountry) return { ok: true, count: 0 };
   try {
-    return { ok: true, count: await countTravelCities(user.homeCountry) };
+    return { ok: true, count: await countTravelCities() };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "failed" };
   }

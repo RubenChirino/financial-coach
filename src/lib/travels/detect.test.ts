@@ -392,15 +392,9 @@ describe("listTravels (location-based)", () => {
     expect(trips[0]!.txCount).toBe(3);
   });
 
-  it("does no domestic detection until the home region is known", async () => {
-    await fixture.db.insert(cityCountries).values({
-      cityKey: "sevilla",
-      cityLabel: "Sevilla",
-      countryCode: "ES",
-      region: "Andalucía",
-      source: "ai",
-    });
-    // Home city "Madrid" is NOT in the cache → no home region → ignore domestic.
+  it("detects a domestic trip from the static region map with NO cache or explicit codes", async () => {
+    // No cityCountries rows seeded — the static ES map resolves Madrid (home)
+    // and Sevilla (Andalucía) deterministically.
     await tx({
       dayOffset: 0,
       amountCents: -2000,
@@ -418,6 +412,34 @@ describe("listTravels (location-based)", () => {
     });
 
     const trips = await listTravels({ homeCountry: "ES", homeCity: "Madrid", homeCurrency: "EUR" });
+    expect(trips).toHaveLength(1);
+    expect(trips[0]!.region).toBe("Andalucía");
+    expect(trips[0]!.countryCode).toBe("ES");
+  });
+
+  it("skips domestic detection when the home city's region can't be resolved", async () => {
+    await tx({
+      dayOffset: 0,
+      amountCents: -2000,
+      desc: "Compra Tapas, Sevilla, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 1,
+      amountCents: -3000,
+      desc: "Compra Museo, Sevilla, Tarjeta 5489 , Comision 0,00",
+    });
+    await tx({
+      dayOffset: 2,
+      amountCents: -1000,
+      desc: "Compra Bar, Sevilla, Tarjeta 5489 , Comision 0,00",
+    });
+
+    // Home city not in the static map and not cached → no home region → no domestic trips.
+    const trips = await listTravels({
+      homeCountry: "ES",
+      homeCity: "Quuxville",
+      homeCurrency: "EUR",
+    });
     expect(trips).toHaveLength(0);
   });
 });
