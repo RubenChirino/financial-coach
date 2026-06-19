@@ -24,12 +24,13 @@ export const dynamic = "force-dynamic";
  * zero-friction path for evaluators.
  */
 export default async function ImportPage() {
-  if (!(await getCurrentSession())) redirect("/lock");
+  const session = await getCurrentSession();
+  if (!session) redirect("/lock");
 
   const [t, locale, batches, categories] = await Promise.all([
     getTranslations("import"),
     getLocale(),
-    listImportBatches(),
+    listImportBatches(session.userId),
     listCategoryOptionsAction(),
   ]);
   const intlLocale = locale === "en" ? "en-US" : "es-ES";

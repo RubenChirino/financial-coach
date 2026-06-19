@@ -92,6 +92,13 @@
       "when": 1781787232469,
       "tag": "0012_lazy_riptide",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1782000000000,
+      "tag": "0013_user_scoping",
+      "breakpoints": true
     }
   ]
 }

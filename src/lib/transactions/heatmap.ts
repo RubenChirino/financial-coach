@@ -39,14 +39,16 @@ function daysInMonth(year: number, monthIndex0: number): number {
 
 /**
  * Aggregate the year's transactions into a per-day and per-month heatmap shape.
- * Single-user app: no per-user filter needed, but we still join through accounts
- * so deleted accounts (cascade) drop their transactions naturally.
+ * Scoped to `userId` so each user only ever sees their own spending.
  *
  * Pass `"auto"` to pick the most recent year that has transactions (falling back
  * to the current year if the table is empty).
  */
-export async function getSpendingHeatmap(yearArg: number | "auto"): Promise<SpendingHeatmap> {
-  const availableYears = await getYearsWithTransactions();
+export async function getSpendingHeatmap(
+  userId: number,
+  yearArg: number | "auto",
+): Promise<SpendingHeatmap> {
+  const availableYears = await getYearsWithTransactions(userId);
   const currentYear = new Date().getUTCFullYear();
   const year =
     yearArg === "auto"
@@ -64,7 +66,13 @@ export async function getSpendingHeatmap(yearArg: number | "auto"): Promise<Spen
     })
     .from(transactions)
     .innerJoin(accounts, eq(accounts.id, transactions.accountId))
-    .where(and(gte(transactions.bookingDate, start), lt(transactions.bookingDate, end)));
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        gte(transactions.bookingDate, start),
+        lt(transactions.bookingDate, end),
+      ),
+    );
 
   const months: HeatmapMonth[] = Array.from({ length: 12 }, (_, m) => ({
     month: m,
@@ -115,11 +123,12 @@ export async function getSpendingHeatmap(yearArg: number | "auto"): Promise<Spen
   };
 }
 
-async function getYearsWithTransactions(): Promise<number[]> {
+async function getYearsWithTransactions(userId: number): Promise<number[]> {
   const rows = await db
     .select({ ts: transactions.bookingDate })
     .from(transactions)
-    .innerJoin(accounts, eq(accounts.id, transactions.accountId));
+    .innerJoin(accounts, eq(accounts.id, transactions.accountId))
+    .where(eq(transactions.userId, userId));
   const years = new Set<number>();
   for (const r of rows) years.add(new Date(r.ts).getUTCFullYear());
   return [...years].sort((a, b) => a - b);

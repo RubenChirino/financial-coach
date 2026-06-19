@@ -17,7 +17,7 @@ export async function deleteConversationAction(conversationId: number): Promise<
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
   if (session.isGuest) return { ok: false, error: "guestReadOnly" };
-  await dbDeleteConversation(conversationId);
+  await dbDeleteConversation(session.userId, conversationId);
   revalidatePath("/advisor");
   return { ok: true };
 }

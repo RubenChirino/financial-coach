@@ -114,19 +114,20 @@ export interface DigestStrings {
  * advisor never disagrees with the dashboard.
  */
 export async function buildDigest(
+  userId: number,
   s: DigestStrings,
   fmt: (cents: number) => string,
 ): Promise<DigestPayload> {
   const [accountsTotal, thisMonth, lastMonth, needsReview, topCats, subsTotals, subs, txStats] =
     await Promise.all([
-      getAccountsTotal(),
-      getMonthSummary(0),
-      getMonthSummary(-1),
-      getNeedsReviewCount(),
-      getTopCategoriesThisMonth(5, 0),
-      getActiveSubscriptionsTotals(),
-      listRecurringSubscriptions(),
-      getTransactionStats(),
+      getAccountsTotal(userId),
+      getMonthSummary(userId, 0),
+      getMonthSummary(userId, -1),
+      getNeedsReviewCount(userId),
+      getTopCategoriesThisMonth(userId, 5, 0),
+      getActiveSubscriptionsTotals(userId),
+      listRecurringSubscriptions(userId),
+      getTransactionStats(userId),
     ]);
 
   const isEmpty = accountsTotal.accountCount === 0 && thisMonth.txCount === 0;
@@ -276,12 +277,12 @@ export interface ChatContextSnapshot {
   subscriptionCount: number;
 }
 
-export async function getChatContextSnapshot(): Promise<ChatContextSnapshot> {
+export async function getChatContextSnapshot(userId: number): Promise<ChatContextSnapshot> {
   const [accountsTotal, txStats, topCats, subsTotals] = await Promise.all([
-    getAccountsTotal(),
-    getTransactionStats(),
-    getTopCategoriesThisMonth(50, 0),
-    getActiveSubscriptionsTotals(),
+    getAccountsTotal(userId),
+    getTransactionStats(userId),
+    getTopCategoriesThisMonth(userId, 50, 0),
+    getActiveSubscriptionsTotals(userId),
   ]);
   return {
     accountCount: accountsTotal.accountCount,

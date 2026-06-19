@@ -1,9 +1,9 @@
 "use server";
 
 import { db } from "@/db/client";
-import { categories } from "@/db/schema";
+import { budgets } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export interface SetBudgetResult {
@@ -12,8 +12,9 @@ export interface SetBudgetResult {
 }
 
 /**
- * Store a monthly budget as integer cents. `null` clears the budget.
- * Rejects negatives — budgets are always positive amounts.
+ * Store this user's monthly budget for a category as integer cents. `null`
+ * clears the budget (deletes the row). Rejects negatives — budgets are always
+ * positive amounts. Budgets are per-user, keyed by `(userId, categoryId)`.
  */
 export async function setCategoryBudgetAction(
   categoryId: number,
@@ -27,10 +28,19 @@ export async function setCategoryBudgetAction(
     return { ok: false, error: "invalidBudget" };
   }
 
-  await db
-    .update(categories)
-    .set({ budgetMonthlyCents: budgetCents })
-    .where(eq(categories.id, categoryId));
+  if (budgetCents == null) {
+    await db
+      .delete(budgets)
+      .where(and(eq(budgets.userId, session.userId), eq(budgets.categoryId, categoryId)));
+  } else {
+    await db
+      .insert(budgets)
+      .values({ userId: session.userId, categoryId, monthlyCents: budgetCents })
+      .onConflictDoUpdate({
+        target: [budgets.userId, budgets.categoryId],
+        set: { monthlyCents: budgetCents, updatedAt: new Date() },
+      });
+  }
 
   revalidatePath("/categories");
   revalidatePath("/");

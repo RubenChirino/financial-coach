@@ -5,12 +5,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fixture = await createTestDb();
 vi.mock("@/db/client", () => ({ db: fixture.db, client: fixture.client }));
 
-const { accounts, categories, institutions, requisitions, transactions } = await import(
-  "@/db/schema"
-);
+const { accounts, budgets, categories, institutions, requisitions, transactions, users } =
+  await import("@/db/schema");
 const { buildAdvisorContext } = await import("./context");
 
+// Captured from the seeded user row so every call scopes to the same owner.
+let userId = 0;
+
 async function seed() {
+  const usr = await fixture.db
+    .insert(users)
+    .values({ encryptionSalt: "salt", name: "Owner" })
+    .returning({ id: users.id });
+  userId = usr[0]!.id;
+
   const inst = await fixture.db
     .insert(institutions)
     .values({ gocardlessId: "INST-1", name: "Bank", logoUrl: null, country: "ES" })
@@ -18,6 +26,7 @@ async function seed() {
   const req = await fixture.db
     .insert(requisitions)
     .values({
+      userId,
       institutionId: inst[0]!.id,
       gocardlessRequisitionId: "ENC",
       status: "linked",
@@ -28,6 +37,7 @@ async function seed() {
   const acc = await fixture.db
     .insert(accounts)
     .values({
+      userId,
       requisitionId: req[0]!.id,
       gocardlessAccountId: "ENC",
       ibanLast4: "1234",
@@ -48,7 +58,6 @@ async function seed() {
         icon: "🛒",
         color: "#10b981",
         sortOrder: 1,
-        budgetMonthlyCents: 30_000, // 300 EUR
       },
       {
         slug: "restaurants",
@@ -65,6 +74,11 @@ async function seed() {
   const groceriesId = cat.find((c) => c.slug === "groceries")!.id;
   const restaurantsId = cat.find((c) => c.slug === "restaurants")!.id;
 
+  // Budgets are per-user now — 300 EUR on groceries for this owner.
+  await fixture.db
+    .insert(budgets)
+    .values({ userId, categoryId: groceriesId, monthlyCents: 30_000 });
+
   const now = new Date();
   const thisMonth = (day: number) =>
     new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), day, 12));
@@ -72,6 +86,7 @@ async function seed() {
   await fixture.db.insert(transactions).values([
     // Income this month
     {
+      userId,
       accountId: acc[0]!.id,
       gocardlessTransactionId: "tx-income",
       bookingDate: thisMonth(1),
@@ -84,6 +99,7 @@ async function seed() {
     },
     // Groceries this month — merchant name contains an IBAN that MUST be redacted
     {
+      userId,
       accountId: acc[0]!.id,
       gocardlessTransactionId: "tx-g1",
       bookingDate: thisMonth(5),
@@ -95,6 +111,7 @@ async function seed() {
       needsReview: false,
     },
     {
+      userId,
       accountId: acc[0]!.id,
       gocardlessTransactionId: "tx-g2",
       bookingDate: thisMonth(10),
@@ -106,6 +123,7 @@ async function seed() {
       needsReview: false,
     },
     {
+      userId,
       accountId: acc[0]!.id,
       gocardlessTransactionId: "tx-r1",
       bookingDate: thisMonth(12),
@@ -121,11 +139,13 @@ async function seed() {
 
 describe("buildAdvisorContext", () => {
   beforeEach(async () => {
+    await fixture.client.execute("DELETE FROM budgets");
     await fixture.client.execute("DELETE FROM transactions");
     await fixture.client.execute("DELETE FROM accounts");
     await fixture.client.execute("DELETE FROM requisitions");
     await fixture.client.execute("DELETE FROM institutions");
     await fixture.client.execute("DELETE FROM categories");
+    await fixture.client.execute("DELETE FROM users");
     await seed();
   });
   afterEach(() => {
@@ -133,7 +153,7 @@ describe("buildAdvisorContext", () => {
   });
 
   it("returns aggregates in whole units (euros, not cents)", async () => {
-    const ctx = await buildAdvisorContext();
+    const ctx = await buildAdvisorContext({ userId });
     expect(ctx.accounts.totalBalance).toBe(3_579);
     expect(ctx.accounts.count).toBe(1);
     expect(ctx.currency).toBe("EUR");
@@ -148,7 +168,7 @@ describe("buildAdvisorContext", () => {
   });
 
   it("redacts PII in merchant names — IBAN never reaches the LLM payload", async () => {
-    const ctx = await buildAdvisorContext({ topMerchantLimit: 5 });
+    const ctx = await buildAdvisorContext({ userId, topMerchantLimit: 5 });
     const blob = JSON.stringify(ctx);
     // The literal IBAN must not appear anywhere in the serialized snapshot.
     expect(blob).not.toMatch(/ES7600491500051234567892/);
@@ -159,7 +179,7 @@ describe("buildAdvisorContext", () => {
   });
 
   it("includes only categories with positive budgets and computes pctUsed", async () => {
-    const ctx = await buildAdvisorContext();
+    const ctx = await buildAdvisorContext({ userId });
     expect(ctx.budgets).toHaveLength(1);
     const groceries = ctx.budgets[0]!;
     expect(groceries.slug).toBe("groceries");
@@ -169,16 +189,16 @@ describe("buildAdvisorContext", () => {
   });
 
   it("clamps monthsBack and topMerchantLimit to safe bounds", async () => {
-    const tooMany = await buildAdvisorContext({ monthsBack: 999, topMerchantLimit: 999 });
+    const tooMany = await buildAdvisorContext({ userId, monthsBack: 999, topMerchantLimit: 999 });
     expect(tooMany.months.length).toBeLessThanOrEqual(12);
     expect(tooMany.topMerchants.length).toBeLessThanOrEqual(25);
 
-    const tooFew = await buildAdvisorContext({ monthsBack: 0, topMerchantLimit: 0 });
+    const tooFew = await buildAdvisorContext({ userId, monthsBack: 0, topMerchantLimit: 0 });
     expect(tooFew.months.length).toBeGreaterThanOrEqual(1);
   });
 
   it("never leaks raw transaction-level rows", async () => {
-    const ctx = await buildAdvisorContext();
+    const ctx = await buildAdvisorContext({ userId });
     // The shape exposes only aggregated keys — nothing per-tx.
     expect(Object.keys(ctx)).toEqual(
       expect.arrayContaining(["accounts", "months", "topMerchants", "budgets"]),

@@ -45,10 +45,12 @@ export interface EnsureImportedAccountResult {
  * don't expose any account identifier).
  */
 export async function ensureImportedAccount(opts: {
+  userId: number;
   encryptionKey: Buffer;
   iban?: string | null;
   currency?: string | null;
 }): Promise<EnsureImportedAccountResult> {
+  const { userId } = opts;
   const existingInst = await db
     .select({ id: institutions.id })
     .from(institutions)
@@ -71,11 +73,14 @@ export async function ensureImportedAccount(opts: {
 
   if (!institutionRowId) throw new Error("failed to ensure imported institution");
 
+  // Requisitions are per-user: scope by userId so two users importing don't
+  // share the single "imported-local" requisition row.
   const existingReq = await db
     .select({ id: requisitions.id })
     .from(requisitions)
     .where(
       and(
+        eq(requisitions.userId, userId),
         eq(requisitions.institutionId, institutionRowId),
         eq(requisitions.reference, IMPORTED_REFERENCE),
       ),
@@ -88,6 +93,7 @@ export async function ensureImportedAccount(opts: {
       await db
         .insert(requisitions)
         .values({
+          userId,
           institutionId: institutionRowId,
           gocardlessRequisitionId: encrypt(IMPORTED_REFERENCE, opts.encryptionKey),
           status: "linked",
@@ -110,7 +116,13 @@ export async function ensureImportedAccount(opts: {
   const existingAcc = await db
     .select({ id: accounts.id })
     .from(accounts)
-    .where(and(eq(accounts.requisitionId, requisitionRowId), eq(accounts.name, accountName)))
+    .where(
+      and(
+        eq(accounts.userId, userId),
+        eq(accounts.requisitionId, requisitionRowId),
+        eq(accounts.name, accountName),
+      ),
+    )
     .limit(1);
 
   const accountRowId =
@@ -119,6 +131,7 @@ export async function ensureImportedAccount(opts: {
       await db
         .insert(accounts)
         .values({
+          userId,
           requisitionId: requisitionRowId,
           gocardlessAccountId: encrypt(
             opts.iban ?? IMPORTED_ACCOUNT_PLACEHOLDER,
@@ -197,6 +210,7 @@ export interface ImportParsedRowsResult {
 export async function importParsedRows(
   rows: ParsedCsvRow[],
   opts: {
+    userId: number;
     accountRowId: number;
     currency?: string;
     filename?: string;
@@ -222,7 +236,7 @@ export async function importParsedRows(
   // turn out to be duplicates. We update counts at the end.
   const batchRow = await db
     .insert(importBatches)
-    .values({ filename: opts.filename ?? null, rowsParsed: rows.length })
+    .values({ userId: opts.userId, filename: opts.filename ?? null, rowsParsed: rows.length })
     .returning({ id: importBatches.id });
   const batchId = batchRow[0]?.id;
   if (!batchId) throw new Error("failed to create import batch");
@@ -300,6 +314,7 @@ export async function importParsedRows(
       .insert(transactions)
       .values(
         fresh.map((c) => ({
+          userId: opts.userId,
           accountId: opts.accountRowId,
           importBatchId: batchId,
           gocardlessTransactionId: c.externalId,
@@ -316,7 +331,7 @@ export async function importParsedRows(
     for (const r of inserted) insertedIds.push(r.id);
   }
 
-  const ruleMatched = await categorizeBatchByRules(insertedIds);
+  const ruleMatched = await categorizeBatchByRules(opts.userId, insertedIds);
 
   // Re-run the recurring detector after each import. Without this the
   // subscriptions table stays empty until the user manually triggers
@@ -325,7 +340,7 @@ export async function importParsedRows(
   // Netflix charges. Best-effort: a failure here shouldn't fail the import.
   if (insertedIds.length > 0) {
     try {
-      await detectRecurringSubscriptions();
+      await detectRecurringSubscriptions({ userId: opts.userId });
     } catch (err) {
       console.warn("post-import recurring detection failed (non-fatal)", err);
     }
@@ -344,7 +359,9 @@ export async function importParsedRows(
         sum: sql<number>`coalesce(sum(${transactions.amountCents}), 0)`,
       })
       .from(transactions)
-      .where(eq(transactions.accountId, opts.accountRowId));
+      .where(
+        and(eq(transactions.userId, opts.userId), eq(transactions.accountId, opts.accountRowId)),
+      );
     newBalance = Number(totalRow[0]?.sum ?? 0);
   }
 
@@ -354,7 +371,10 @@ export async function importParsedRows(
   };
   if (opts.currency) updateSet.currency = opts.currency;
 
-  await db.update(accounts).set(updateSet).where(eq(accounts.id, opts.accountRowId));
+  await db
+    .update(accounts)
+    .set(updateSet)
+    .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
 
   const totalDuplicates = intraBatchDuplicates + existingDuplicates;
   // Persist final counts so the history UI can show accurate numbers.

@@ -29,7 +29,11 @@ interface PendingTx {
 }
 
 /** Rows still needing categorization: never assigned, or flagged for review. */
-const pendingWhere = or(isNull(transactions.categoryId), eq(transactions.needsReview, true));
+const pendingWhere = (userId: number) =>
+  and(
+    eq(transactions.userId, userId),
+    or(isNull(transactions.categoryId), eq(transactions.needsReview, true)),
+  );
 
 const PENDING_COLUMNS = {
   id: transactions.id,
@@ -106,7 +110,7 @@ export interface RecorrectResult {
  *
  * Manual picks (confidence 100) are never touched.
  */
-export async function recorrectCategories(): Promise<RecorrectResult> {
+export async function recorrectCategories(userId: number): Promise<RecorrectResult> {
   const rules = await loadRules();
   const rows = await db
     .select({
@@ -118,7 +122,8 @@ export async function recorrectCategories(): Promise<RecorrectResult> {
       categoryId: transactions.categoryId,
       confidence: transactions.confidence,
     })
-    .from(transactions);
+    .from(transactions)
+    .where(eq(transactions.userId, userId));
 
   let corrected = 0;
   let requeued = 0;
@@ -163,8 +168,11 @@ export async function recorrectCategories(): Promise<RecorrectResult> {
 }
 
 /** Count transactions still needing categorization. */
-export async function countPendingCategorization(): Promise<number> {
-  const rows = await db.select({ c: sql<number>`count(*)` }).from(transactions).where(pendingWhere);
+export async function countPendingCategorization(userId: number): Promise<number> {
+  const rows = await db
+    .select({ c: sql<number>`count(*)` })
+    .from(transactions)
+    .where(pendingWhere(userId));
   return Number(rows[0]?.c ?? 0);
 }
 
@@ -188,19 +196,20 @@ export interface BatchResult {
  * cursor, so they aren't retried in the same run — they'll be picked up by the
  * next full run instead of stalling the loop.
  */
-export async function categorizePendingBatch(opts?: {
+export async function categorizePendingBatch(opts: {
+  userId: number;
   afterId?: number;
   limit?: number;
 }): Promise<BatchResult> {
-  const afterId = opts?.afterId ?? 0;
-  const limit = Math.max(1, Math.min(opts?.limit ?? 15, 100));
+  const afterId = opts.afterId ?? 0;
+  const limit = Math.max(1, Math.min(opts.limit ?? 15, 100));
   const rules = await loadRules();
   const cats = await loadCategoryHints();
 
   const pending = await db
     .select(PENDING_COLUMNS)
     .from(transactions)
-    .where(and(pendingWhere, gt(transactions.id, afterId)))
+    .where(and(pendingWhere(opts.userId), gt(transactions.id, afterId)))
     .orderBy(asc(transactions.id))
     .limit(limit);
 
@@ -235,13 +244,17 @@ export async function categorizePendingBatch(opts?: {
  * multi-run flows call again. Prefer `categorizePendingBatch` for the
  * background "categorize everything" flow.
  */
-export async function categorizeUncategorized(opts?: {
+export async function categorizeUncategorized(opts: {
+  userId: number;
   maxLlm?: number;
 }): Promise<CategorizeResult> {
   const rules = await loadRules();
   const cats = await loadCategoryHints();
 
-  const pending = await db.select(PENDING_COLUMNS).from(transactions).where(pendingWhere);
+  const pending = await db
+    .select(PENDING_COLUMNS)
+    .from(transactions)
+    .where(pendingWhere(opts.userId));
 
   const result: CategorizeResult = {
     processed: 0,
@@ -297,7 +310,7 @@ export async function categorizeUncategorized(opts?: {
  * Categorize a specific batch of transaction IDs (called right after sync).
  * Only uses rules — never hits the LLM — so sync stays fast and offline-safe.
  */
-export async function categorizeBatchByRules(ids: number[]): Promise<number> {
+export async function categorizeBatchByRules(userId: number, ids: number[]): Promise<number> {
   if (ids.length === 0) return 0;
   const rules = await loadRules();
   let matched = 0;
@@ -309,7 +322,13 @@ export async function categorizeBatchByRules(ids: number[]): Promise<number> {
         rawDescription: transactions.rawDescription,
       })
       .from(transactions)
-      .where(and(eq(transactions.id, id), isNull(transactions.categoryId)))
+      .where(
+        and(
+          eq(transactions.id, id),
+          eq(transactions.userId, userId),
+          isNull(transactions.categoryId),
+        ),
+      )
       .limit(1);
     const tx = row[0];
     if (!tx) continue;

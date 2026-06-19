@@ -51,7 +51,8 @@ export default async function TravelsPage({
 }: {
   searchParams?: Promise<{ id?: string }>;
 }) {
-  if (!(await getCurrentSession())) redirect("/lock");
+  const session = await getCurrentSession();
+  if (!session) redirect("/lock");
   const sp = (await searchParams) ?? {};
 
   const [t, tCommon, locale, user, providerState] = await Promise.all([
@@ -81,7 +82,7 @@ export default async function TravelsPage({
 
   // ── First run: no home location set → auto-detect a guess and ask to confirm.
   if (!user?.homeCountry) {
-    const guess = await inferHomeLocation();
+    const guess = await inferHomeLocation(session.userId);
     return (
       <AppShell>
         <div className="mx-auto max-w-6xl space-y-5">
@@ -116,6 +117,7 @@ export default async function TravelsPage({
 
   const homeCountryName = countryName(user.homeCountry, locale);
   const travels = await listTravels({
+    userId: session.userId,
     homeCountry: user.homeCountry,
     homeCity: user.homeCity,
   });
@@ -147,7 +149,10 @@ export default async function TravelsPage({
     );
   }
 
-  const labels = await getCityLabels(travels.map((tr) => tr.tripKey));
+  const labels = await getCityLabels(
+    session.userId,
+    travels.map((tr) => tr.tripKey),
+  );
   const selected = resolveSelected(travels, sp.id);
   if (!selected) redirect("/travels");
 

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import { accounts, institutions, requisitions, transactions } from "../src/db/schema";
+import { accounts, institutions, requisitions, transactions, users } from "../src/db/schema";
 
 const MERCHANTS = [
   { name: "Mercadona", category: "groceries", amount: () => -(2000 + Math.random() * 8000) },
@@ -52,6 +52,19 @@ async function main() {
     "⚠️  seeding synthetic data — this will add a fake institution & account to your db.",
   );
 
+  // Synthetic data is owned by a real user so the per-user scoped queries can
+  // see it. Reuse the first existing user, or create a throwaway dev one.
+  const [existingUser] = await db.select({ id: users.id }).from(users).limit(1);
+  let userId = existingUser?.id;
+  if (!userId) {
+    const [u] = await db
+      .insert(users)
+      .values({ encryptionSalt: "dev-seed-salt", name: "Dev User" })
+      .returning({ id: users.id });
+    if (!u) throw new Error("failed to insert dev user");
+    userId = u.id;
+  }
+
   const [inst] = await db
     .insert(institutions)
     .values({ gocardlessId: "DEV_SANDBOX", name: "Dev Sandbox", country: "ES", logoUrl: null })
@@ -62,6 +75,7 @@ async function main() {
   const [req] = await db
     .insert(requisitions)
     .values({
+      userId,
       institutionId: inst.id,
       gocardlessRequisitionId: "dev-req-ciphertext-placeholder",
       status: "linked",
@@ -73,6 +87,7 @@ async function main() {
   const [acc] = await db
     .insert(accounts)
     .values({
+      userId,
       requisitionId: req.id,
       gocardlessAccountId: "dev-acc-ciphertext-placeholder",
       ibanLast4: "0000",
@@ -89,6 +104,7 @@ async function main() {
   for (let i = 0; i < 120; i++) {
     const m = MERCHANTS[Math.floor(Math.random() * MERCHANTS.length)]!;
     txs.push({
+      userId,
       accountId: acc.id,
       gocardlessTransactionId: `dev-${now}-${i}`,
       bookingDate: new Date(now - i * 6 * 60 * 60 * 1000),

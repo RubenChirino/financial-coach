@@ -17,13 +17,14 @@ import { AccountRow } from "./account-row";
 export const dynamic = "force-dynamic";
 
 export default async function BanksPage() {
-  if (!(await getCurrentSession())) redirect("/lock");
+  const session = await getCurrentSession();
+  if (!session) redirect("/lock");
 
   const [t, locale, groups, accountsTotal, user] = await Promise.all([
     getTranslations("bank"),
     getLocale(),
-    listInstitutionGroups(),
-    getAccountsTotal(),
+    listInstitutionGroups(session.userId),
+    getAccountsTotal(session.userId),
     getUser(),
   ]);
 

@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/db/client";
 import { recurringSubscriptions, transactions } from "@/db/schema";
-import { and, gte, isNotNull } from "drizzle-orm";
+import { and, eq, gte, isNotNull } from "drizzle-orm";
 
 /**
  * Recurring-subscription detector.
@@ -174,6 +174,8 @@ export function evaluateMerchant(
 }
 
 interface DetectOptions {
+  /** Owner whose transactions/subscriptions this pass operates on. */
+  userId: number;
   lookbackDays?: number;
   now?: Date;
 }
@@ -188,8 +190,9 @@ interface DetectOptions {
  * preserve that — for now there's no UI for it.
  */
 export async function detectRecurringSubscriptions(
-  opts: DetectOptions = {},
+  opts: DetectOptions,
 ): Promise<DetectedSubscription[]> {
+  const { userId } = opts;
   const lookbackDays = opts.lookbackDays ?? 180;
   const now = opts.now ?? new Date();
   const since = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
@@ -203,7 +206,13 @@ export async function detectRecurringSubscriptions(
       categoryId: transactions.categoryId,
     })
     .from(transactions)
-    .where(and(gte(transactions.bookingDate, since), isNotNull(transactions.merchantName)));
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        gte(transactions.bookingDate, since),
+        isNotNull(transactions.merchantName),
+      ),
+    );
 
   // Group by normalized merchant name AND sign — a series mixing inflows and
   // outflows under the same merchant (e.g. a refund) would corrupt the cadence
@@ -239,13 +248,16 @@ export async function detectRecurringSubscriptions(
     if (result) detected.push(result);
   }
 
-  // Persist — clear table and reinsert the fresh snapshot. Sequenced rather
-  // than wrapped in a transaction; libSQL's HTTP-mode client treats individual
-  // statements as autocommitting, and the delete-then-insert window is short.
-  await db.delete(recurringSubscriptions);
+  // Persist — clear THIS USER's rows and reinsert their fresh snapshot.
+  // Scoped to `userId` so a pass for one user never wipes another's
+  // subscriptions. Sequenced rather than wrapped in a transaction; libSQL's
+  // HTTP-mode client treats individual statements as autocommitting, and the
+  // delete-then-insert window is short.
+  await db.delete(recurringSubscriptions).where(eq(recurringSubscriptions.userId, userId));
   if (detected.length > 0) {
     await db.insert(recurringSubscriptions).values(
       detected.map((d) => ({
+        userId,
         merchantName: d.merchantName,
         averageAmountCents: d.averageAmountCents,
         frequencyDays: d.frequencyDays,

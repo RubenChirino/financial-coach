@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getCurrentSession } from "@/lib/auth/session";
+import { env } from "@/lib/env";
 import { guardCsrf } from "@/lib/security/csrf";
 import { type NextRequest, NextResponse } from "next/server";
 
@@ -28,6 +29,20 @@ export async function POST(req: NextRequest) {
 
   const session = await getCurrentSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  // Restoring replaces the ENTIRE database — every user's data. It is a
+  // single-user / self-hosted operator tool. In multi-user (oauth) mode any
+  // signed-in user could overwrite everyone's data; a guest never may write.
+  // Disable it for both.
+  if (env().AUTH_MODE === "oauth" || session.isGuest) {
+    return NextResponse.json(
+      {
+        error: "not_available",
+        message: "Database restore is only available in single-user (local) mode.",
+      },
+      { status: 403 },
+    );
+  }
 
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");

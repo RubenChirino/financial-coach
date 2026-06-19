@@ -122,6 +122,7 @@ export async function startTrueLayerLinkAction(
 
     const reference = `tl-${Date.now()}-${randomBytes(4).toString("hex")}`;
     await createTrueLayerPendingConnection({
+      userId: session.userId,
       reference,
       encryptionKey: session.encryptionKey,
       placeholderInstitutionId: placeholderId,
@@ -152,7 +153,13 @@ export async function finalizeTrueLayerLinkAction(
     const row = await db
       .select()
       .from(requisitions)
-      .where(and(eq(requisitions.reference, reference), eq(requisitions.provider, "truelayer")))
+      .where(
+        and(
+          eq(requisitions.userId, session.userId),
+          eq(requisitions.reference, reference),
+          eq(requisitions.provider, "truelayer"),
+        ),
+      )
       .limit(1);
     const req = row[0];
     if (!req) return { ok: false, error: "requisitionNotFound" };
@@ -161,6 +168,7 @@ export async function finalizeTrueLayerLinkAction(
     const redirectUri = `${origin}/settings/bank/truelayer/callback`;
 
     const { accountRowIds } = await finalizeTrueLayerConnection(client, {
+      userId: session.userId,
       requisitionRowId: req.id,
       code,
       redirectUri,
@@ -192,7 +200,13 @@ export async function syncAllTrueLayerAccountsAction(): Promise<
       })
       .from(accounts)
       .innerJoin(requisitions, eq(accounts.requisitionId, requisitions.id))
-      .where(and(eq(requisitions.status, "linked"), eq(requisitions.provider, "truelayer")));
+      .where(
+        and(
+          eq(requisitions.userId, session.userId),
+          eq(requisitions.status, "linked"),
+          eq(requisitions.provider, "truelayer"),
+        ),
+      );
 
     let inserted = 0;
     let skipped = 0;
@@ -206,6 +220,7 @@ export async function syncAllTrueLayerAccountsAction(): Promise<
         let accessToken = tokenByReq.get(r.requisitionId);
         if (!accessToken) {
           accessToken = await getValidAccessToken(client, {
+            userId: session.userId,
             requisitionRowId: r.requisitionId,
             encryptionKey: session.encryptionKey,
           });
@@ -213,6 +228,7 @@ export async function syncAllTrueLayerAccountsAction(): Promise<
         }
         const tlAccId = decrypt(r.tlAccountCipher, session.encryptionKey);
         const res = await syncTrueLayerAccountTransactions(client, {
+          userId: session.userId,
           accountRowId: r.accountRowId,
           tlAccountId: tlAccId,
           accessToken,
@@ -225,7 +241,7 @@ export async function syncAllTrueLayerAccountsAction(): Promise<
       }
     }
 
-    const ruleMatched = await categorizeBatchByRules(allInsertedIds);
+    const ruleMatched = await categorizeBatchByRules(session.userId, allInsertedIds);
     return { ok: true, data: { inserted, skipped, accounts: rows.length, ruleMatched } };
   } catch (err) {
     return { ok: false, error: humanizeError(err) };

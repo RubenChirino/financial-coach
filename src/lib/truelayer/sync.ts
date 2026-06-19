@@ -68,6 +68,7 @@ export async function upsertTrueLayerInstitution(opts: {
  * an empty placeholder so the NOT-NULL constraint is satisfied.
  */
 export async function createTrueLayerPendingConnection(opts: {
+  userId: number;
   reference: string;
   encryptionKey: Buffer;
   /** Temporary placeholder institution — real one is resolved after consent. */
@@ -81,6 +82,7 @@ export async function createTrueLayerPendingConnection(opts: {
   const inserted = await db
     .insert(requisitions)
     .values({
+      userId: opts.userId,
       institutionId: opts.placeholderInstitutionId,
       provider: "truelayer",
       gocardlessRequisitionId: placeholder,
@@ -102,6 +104,7 @@ export async function createTrueLayerPendingConnection(opts: {
 export async function finalizeTrueLayerConnection(
   client: TrueLayerClient,
   opts: {
+    userId: number;
     requisitionRowId: number;
     code: string;
     redirectUri: string;
@@ -128,7 +131,7 @@ export async function finalizeTrueLayerConnection(
     await db
       .update(requisitions)
       .set({ gocardlessRequisitionId: encrypt(serializeTokens(tokens), opts.encryptionKey) })
-      .where(eq(requisitions.id, opts.requisitionRowId));
+      .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
     return { accountRowIds: [] };
   }
 
@@ -150,7 +153,7 @@ export async function finalizeTrueLayerConnection(
       status: "linked",
       gocardlessRequisitionId: encrypt(serializeTokens(tokens), opts.encryptionKey),
     })
-    .where(eq(requisitions.id, opts.requisitionRowId));
+    .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
 
   const rowIds: number[] = [];
   for (const acc of tlAccounts) {
@@ -164,6 +167,7 @@ export async function finalizeTrueLayerConnection(
     const inserted = await db
       .insert(accounts)
       .values({
+        userId: opts.userId,
         requisitionId: opts.requisitionRowId,
         gocardlessAccountId: encryptedAccId,
         ibanLast4,
@@ -185,12 +189,12 @@ export async function finalizeTrueLayerConnection(
  */
 export async function getValidAccessToken(
   client: TrueLayerClient,
-  opts: { requisitionRowId: number; encryptionKey: Buffer },
+  opts: { userId: number; requisitionRowId: number; encryptionKey: Buffer },
 ): Promise<string> {
   const row = await db
     .select({ blob: requisitions.gocardlessRequisitionId })
     .from(requisitions)
-    .where(eq(requisitions.id, opts.requisitionRowId))
+    .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)))
     .limit(1);
   const rec = row[0];
   if (!rec) throw new Error("requisition not found");
@@ -210,7 +214,7 @@ export async function getValidAccessToken(
   await db
     .update(requisitions)
     .set({ gocardlessRequisitionId: encrypt(serializeTokens(next), opts.encryptionKey) })
-    .where(eq(requisitions.id, opts.requisitionRowId));
+    .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
   return next.accessToken;
 }
 
@@ -224,6 +228,7 @@ export interface TrueLayerSyncResult {
 export async function syncTrueLayerAccountTransactions(
   client: TrueLayerClient,
   opts: {
+    userId: number;
     accountRowId: number;
     tlAccountId: string;
     accessToken: string;
@@ -242,7 +247,7 @@ export async function syncTrueLayerAccountTransactions(
     await db
       .update(accounts)
       .set({ lastSyncedAt: new Date() })
-      .where(eq(accounts.id, opts.accountRowId));
+      .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
     return { inserted: 0, skipped: 0, insertedIds: [] };
   }
 
@@ -251,6 +256,7 @@ export async function syncTrueLayerAccountTransactions(
     .from(transactions)
     .where(
       and(
+        eq(transactions.userId, opts.userId),
         eq(transactions.accountId, opts.accountRowId),
         inArray(
           transactions.gocardlessTransactionId,
@@ -267,6 +273,7 @@ export async function syncTrueLayerAccountTransactions(
       .insert(transactions)
       .values(
         fresh.map((t) => ({
+          userId: opts.userId,
           accountId: opts.accountRowId,
           gocardlessTransactionId: t.externalId,
           bookingDate: t.bookingDate,
@@ -285,7 +292,7 @@ export async function syncTrueLayerAccountTransactions(
   await db
     .update(accounts)
     .set({ lastSyncedAt: new Date() })
-    .where(eq(accounts.id, opts.accountRowId));
+    .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
 
   return { inserted: fresh.length, skipped: normalized.length - fresh.length, insertedIds };
 }

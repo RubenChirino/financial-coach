@@ -163,7 +163,8 @@ export default async function CategoriesPage({
 }: {
   searchParams?: Promise<{ id?: string }>;
 }) {
-  if (!(await getCurrentSession())) redirect("/lock");
+  const session = await getCurrentSession();
+  if (!session) redirect("/lock");
   const sp = (await searchParams) ?? {};
 
   const [t, tCommon, locale, rows, monthSummary, lastMonthSummary, accountsTotal] =
@@ -171,10 +172,10 @@ export default async function CategoriesPage({
       getTranslations("categories"),
       getTranslations("common"),
       getLocale(),
-      listCategoriesWithSpend(),
-      getMonthSummary(0),
-      getMonthSummary(-1),
-      getAccountsTotal(),
+      listCategoriesWithSpend(session.userId),
+      getMonthSummary(session.userId, 0),
+      getMonthSummary(session.userId, -1),
+      getAccountsTotal(session.userId),
     ]);
   const intlLocale = locale === "en" ? "en-US" : "es-ES";
   const currency = accountsTotal.currency;
@@ -217,6 +218,7 @@ export default async function CategoriesPage({
   // Recent transactions in the selected category (max 6, this month only is a fair
   // approximation — listTransactions filters by categoryId, grouping is skipped here).
   const { rows: selectedTxs } = await listTransactions({
+    userId: session.userId,
     categoryId: selected.id,
     limit: 6,
   });

@@ -20,13 +20,14 @@ export default async function PredictionsPage({
 }: {
   searchParams: Promise<{ accountId?: string }>;
 }) {
-  if (!(await getCurrentSession())) redirect("/lock");
+  const session = await getCurrentSession();
+  if (!session) redirect("/lock");
 
   const [t, tNav, locale, accounts] = await Promise.all([
     getTranslations("predictions"),
     getTranslations("nav"),
     getLocale(),
-    listAccountsWithInstitutions(),
+    listAccountsWithInstitutions(session.userId),
   ]);
 
   const intlLocale = locale === "en" ? "en-US" : "es-ES";
@@ -43,6 +44,7 @@ export default async function PredictionsPage({
   const showAccountPicker = accounts.length >= 2 && selectedAccount === null;
 
   const forecast = await getSpendingForecast({
+    userId: session.userId,
     horizonMonths: 3,
     accountId: selectedAccount?.id,
   });

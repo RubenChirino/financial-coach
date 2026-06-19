@@ -204,7 +204,7 @@ pnpm start:prod
 You'll see something like:
 
 ```
-▲ Next.js 15.x.x
+▲ Next.js 16.x.x
 - Local:    http://127.0.0.1:3000
 ✓ Ready in 1200ms
 ```
@@ -392,6 +392,14 @@ hosted libSQL (Turso) database and OAuth sign-in.
    ```sh
    DATABASE_URL=libsql://... TURSO_AUTH_TOKEN=ey... pnpm db:migrate
    ```
+4. **If you are migrating an existing single-user database** to multi-user
+   hosting, claim the pre-existing data for your account once (migration `0013`
+   leaves un-owned rows invisible until you do — this is the fail-closed design):
+   ```sh
+   DATABASE_URL=libsql://... TURSO_AUTH_TOKEN=ey... OWNER_EMAIL=you@example.com \
+     pnpm tsx scripts/backfill-ownership.ts
+   ```
+   The script is idempotent (safe to re-run) and a no-op on a fresh database.
 
 ### 8b. Generate `AUTH_SECRET` and set hosted-mode envs
 
@@ -557,5 +565,7 @@ GoCardless requires re-authorization every 90 days (EU regulation, not an app li
 ## What next
 
 - **No bank yet?** Use **Demo mode** from the welcome screen — it loads synthetic transactions so you can poke around without any API keys. You can also import a real bank statement (`.csv` or `.xlsx`) from **Settings → Import**.
+- **Explore the features.** Once you have data, the app surfaces a forecast (**Predictions**), trips abroad (**Travels**), concrete money-saving suggestions (**Opportunities**), a spending heatmap, and the AI **Coach** — all grounded in your own numbers.
+- **Keep a safety net.** There's no PIN reset by design, so export an encrypted backup from **Settings → Backup** and store it somewhere safe alongside your `APP_SECRET`.
 - **Curious about the security model?** Read [`docs/security.md`](docs/security.md) — it covers threat model, encryption details, and what "local-first" actually means.
-- **Want to contribute?** Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [architecture overview](docs/architecture.md).
+- **Want to understand or contribute to the code?** Start with [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full system design, then [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.

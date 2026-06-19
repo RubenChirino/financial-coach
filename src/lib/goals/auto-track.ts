@@ -1,7 +1,7 @@
 import "server-only";
 
 import { db } from "@/db/client";
-import { categories, goals, transactions } from "@/db/schema";
+import { budgets, goals, transactions } from "@/db/schema";
 import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 
 /**
@@ -15,18 +15,19 @@ import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
  * against — we return `null` and the caller should leave `savedCents` alone.
  */
 async function computeSavedFromCategory(
+  userId: number,
   _goalId: number,
   categoryId: number,
   startedAt: Date,
   targetCents: number,
 ): Promise<number | null> {
-  // Look up the category's monthly budget.
-  const catRow = await db
-    .select({ budget: categories.budgetMonthlyCents })
-    .from(categories)
-    .where(eq(categories.id, categoryId))
+  // Look up this user's monthly budget for the category.
+  const budgetRow = await db
+    .select({ budget: budgets.monthlyCents })
+    .from(budgets)
+    .where(and(eq(budgets.userId, userId), eq(budgets.categoryId, categoryId)))
     .limit(1);
-  const budget = catRow[0]?.budget ?? null;
+  const budget = budgetRow[0]?.budget ?? null;
   if (!budget || budget <= 0) return null;
 
   // Normalize the starting month to its first day in UTC.
@@ -48,6 +49,7 @@ async function computeSavedFromCategory(
     .from(transactions)
     .where(
       and(
+        eq(transactions.userId, userId),
         eq(transactions.categoryId, categoryId),
         gte(transactions.bookingDate, start),
         lt(transactions.bookingDate, endExclusive),
@@ -84,7 +86,7 @@ async function computeSavedFromCategory(
  * Returns the number of rows that were actually updated so the caller can
  * show a toast like "3 goals updated".
  */
-export async function recomputeAllGoalsProgress(): Promise<number> {
+export async function recomputeAllGoalsProgress(userId: number): Promise<number> {
   const rows = await db
     .select({
       id: goals.id,
@@ -94,18 +96,24 @@ export async function recomputeAllGoalsProgress(): Promise<number> {
       createdAt: goals.createdAt,
     })
     .from(goals)
-    .where(isNotNull(goals.categoryId));
+    .where(and(eq(goals.userId, userId), isNotNull(goals.categoryId)));
 
   let updated = 0;
   for (const g of rows) {
     if (!g.categoryId) continue;
-    const computed = await computeSavedFromCategory(g.id, g.categoryId, g.createdAt, g.targetCents);
+    const computed = await computeSavedFromCategory(
+      userId,
+      g.id,
+      g.categoryId,
+      g.createdAt,
+      g.targetCents,
+    );
     if (computed == null) continue;
     if (computed === g.savedCents) continue;
     await db
       .update(goals)
       .set({ savedCents: computed, updatedAt: new Date() })
-      .where(eq(goals.id, g.id));
+      .where(and(eq(goals.id, g.id), eq(goals.userId, userId)));
     updated += 1;
   }
   return updated;

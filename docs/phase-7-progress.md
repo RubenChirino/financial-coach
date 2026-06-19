@@ -1,5 +1,12 @@
 # Phase 7 — Full UI/UX Redesign ("Coin") — Progress
 
+> **Archived log (2026-04).** This is a point-in-time record of the Phase 7
+> "Coin" redesign, kept for historical context — it is *not* a description of
+> the current system. Several "deferred"/"next phase" notes below were addressed
+> in later work (the insights engine, privacy wiring, per-user budgets, etc.).
+> For the system as it stands today, read [`../ARCHITECTURE.md`](../ARCHITECTURE.md);
+> for the feature list, the [README](../README.md).
+
 Source of truth for the redesign work. Updated as sub-phases land.
 
 ## Scope

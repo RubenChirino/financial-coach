@@ -5,6 +5,7 @@ import { goals } from "@/db/schema";
 import { getMonthSummary, getTopCategoriesThisMonth } from "@/lib/dashboard/summary";
 import { getSpendingForecast } from "@/lib/predictions/forecast";
 import { listRecurringSubscriptions, monthlyEquivalentCents } from "@/lib/recurring/list";
+import { eq } from "drizzle-orm";
 
 /**
  * Opportunities are deterministic, data-grounded suggestions — NOT investment
@@ -63,6 +64,8 @@ export interface OpportunityLabels {
 }
 
 interface BuildOpts {
+  /** Owner whose data the opportunities are computed from. */
+  userId: number;
   labels: OpportunityLabels;
   fmt: (cents: number) => string;
   fmtMonth: (date: Date) => string;
@@ -73,12 +76,13 @@ interface BuildOpts {
  * the page calls; pure async, no side effects.
  */
 export async function buildOpportunities(opts: BuildOpts): Promise<Opportunity[]> {
+  const { userId } = opts;
   const [forecast, monthSummary, topCats, subs, allGoals] = await Promise.all([
-    getSpendingForecast({ horizonMonths: 3 }),
-    getMonthSummary(0),
-    getTopCategoriesThisMonth(20, 0),
-    listRecurringSubscriptions(),
-    db.select().from(goals),
+    getSpendingForecast({ userId, horizonMonths: 3 }),
+    getMonthSummary(userId, 0),
+    getTopCategoriesThisMonth(userId, 20, 0),
+    listRecurringSubscriptions(userId),
+    db.select().from(goals).where(eq(goals.userId, userId)),
   ]);
 
   const out: Opportunity[] = [];

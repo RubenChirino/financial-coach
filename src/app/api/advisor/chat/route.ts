@@ -6,6 +6,7 @@ import {
   createConversation,
   getConversationMessages,
   maybeAutoTitle,
+  userOwnsConversation,
 } from "@/lib/advisor/conversations";
 import { buildSystemPrompt } from "@/lib/advisor/prompt";
 import { getCurrentSession } from "@/lib/auth/session";
@@ -107,7 +108,18 @@ export async function POST(req: NextRequest): Promise<Response> {
     return new Response("missing user message", { status: 400 });
   }
 
-  const conversationId = body.conversationId ?? (await createConversation(""));
+  // Resolve the target conversation. A client-supplied id must belong to this
+  // user — otherwise an attacker could append to (and read) someone else's
+  // conversation. Reject mismatches rather than silently forking.
+  let conversationId: number;
+  if (body.conversationId != null) {
+    if (!(await userOwnsConversation(session.userId, body.conversationId))) {
+      return new Response("not found", { status: 404 });
+    }
+    conversationId = body.conversationId;
+  } else {
+    conversationId = await createConversation(session.userId, "");
+  }
 
   // Persist the inbound user message before doing any LLM work, so we don't lose
   // it on a server crash or stream cancellation.
@@ -117,7 +129,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   // History from DB is the source of truth (the client may be out of sync after
   // refresh). We pass the full history every turn — at typical sizes this fits
   // easily in the context window.
-  const persisted = await getConversationMessages(conversationId);
+  const persisted = await getConversationMessages(session.userId, conversationId);
   const language = user.language === "en" ? "en" : "es";
   const ctx = await buildAdvisorContext({ monthsBack: 3, userId: session.userId });
   const system = buildSystemPrompt(language, ctx);

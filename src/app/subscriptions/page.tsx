@@ -21,14 +21,15 @@ import { ToggleActiveButton } from "./toggle-active-button";
 export const dynamic = "force-dynamic";
 
 export default async function SubscriptionsPage() {
-  if (!(await getCurrentSession())) redirect("/lock");
+  const session = await getCurrentSession();
+  if (!session) redirect("/lock");
 
   const [t, locale, subs, totals, accountsTotal] = await Promise.all([
     getTranslations("subscriptions"),
     getLocale(),
-    listRecurringSubscriptions(),
-    getActiveSubscriptionsTotals(),
-    getAccountsTotal(),
+    listRecurringSubscriptions(session.userId),
+    getActiveSubscriptionsTotals(session.userId),
+    getAccountsTotal(session.userId),
   ]);
   const intlLocale = locale === "es" ? "es-ES" : "en-US";
 

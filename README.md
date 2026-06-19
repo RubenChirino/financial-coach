@@ -4,7 +4,9 @@
 
 ## What this is
 
-A web app that aggregates your bank transactions via PSD2 Open Banking, categorizes them with an LLM, detects recurring subscriptions, surfaces predictions, and gives you personalized, data-grounded financial advice.
+A web app that aggregates your bank transactions via PSD2 Open Banking, categorizes them with an LLM, detects recurring subscriptions and trips abroad, forecasts your cash flow, surfaces concrete money-saving opportunities, and gives you personalized, data-grounded financial advice.
+
+**Want to understand how it's built?** Read **[ARCHITECTURE.md](ARCHITECTURE.md)** — a detailed, decision-by-decision tour of the system (and a case study in architecting a privacy-first product).
 
 **Two ways to run it:**
 
@@ -34,7 +36,14 @@ Screenshots are in progress. Every feature listed below is shipped and live.
 - **CSV + XLSX import.** Drop a bank statement into the import flow — XLSX parsed server-side via SheetJS, CSV via streaming parser. Account-aware deduping, initial-balance detection.
 - **Transactions + categories.** Rule-based matcher runs first (fast, deterministic); LLM fallback categorizes the rest with a confidence score and a "needs review" queue. Full merchant editor, keyboard-driven category picker.
 - **Bento dashboard.** Net worth, monthly income/expenses, sparkline, top categories donut, recent activity — all auto-recomputed on sync.
-- **Predictions.** Forward-looking projection per account using historical cadence + recurring subscriptions, with per-account accept/dismiss. Respects privacy mode (blurred when active).
+- **Predictions.** A dedicated forecast page that projects next months' cash flow from transparent, explainable layers — fixed income, recurring outflows, habitual spend, and a median of the variable residual (median, not mean, so one holiday month doesn't poison the projection). No black-box ML; every number is auditable.
+- **Travels.** Automatically detects trips — clusters of foreign-currency (or out-of-home-region) payments close in time — and labels each trip's city. Trips are recomputed on every load; only the hard-won city/country labels are cached (LLM-resolved once, then editable by you).
+- **Opportunities.** Deterministic, data-grounded money-saving suggestions (subscription overlap, top overspend, goal projections, savings runway, emergency-fund gap), each with a concrete euro impact computed from your own numbers. An optional, enum-only investor questionnaire lets the coach tailor *framing* — never specific instrument picks.
+- **Spending heatmap.** Calendar-style view of daily spend and monthly savings, with red/green intensity normalized across the year.
+- **Manual entry + import history.** Add one-off cash transactions by hand; every CSV/XLSX upload is grouped into a deletable batch with an AI-assisted column mapper for unfamiliar bank export formats.
+- **Multi-currency display.** Live exchange-rate conversion of the whole UI between EUR/USD (and more), persisted per-user.
+- **Backup & restore.** Export an encrypted snapshot of your data and restore it later — your safety net for the "no PIN reset" security model.
+- **Guest mode (hosted).** A read-only "try it" session seeded with demo data, so newcomers can explore a hosted instance without signing in or touching real accounts.
 - **AI advisor chat.** Grounded on your redacted transaction snapshot + detected subscriptions. Streaming responses, per-conversation history, optional cloud LLM with explicit per-provider consent. Digest tab shows auto-generated brief + insight cards before you even open chat.
 - **In-app LLM selector.** Switch between Ollama, Claude, OpenAI, and Gemini from Settings — no `.env.local` edits needed. Preference is stored per-user; env remains the fallback. In hosted mode, Gemini is the automatic fallback (serverless can't reach a local Ollama daemon).
 - **Recurring subscription detection.** Cadence snapping (weekly / biweekly / monthly / quarterly / yearly) + amount-stability heuristic. Dashboard widget with monthly-equivalent total.
@@ -140,6 +149,12 @@ Or use the TrueLayer connector if your bank has better Live coverage there — k
 - [x] **Phase 6** — Final polish: bento dashboard, CSV export, CI, Node 24 LTS bump
 - [x] **Phase 7** — Coin redesign: Goals, Insights engine, Privacy blur, Currency selector, In-app LLM selector, Banks page, CSV export endpoint
 - [x] **Phase 8** — Hosted deployment: Auth.js OAuth (Google / Microsoft / GitHub), libSQL/Turso driver, Vercel-compat Node engine relax, hosted-mode UI, Gemini auto-fallback, XLSX import, per-account predictions
+- [x] **Phase 9** — Intelligence & polish: Travels (trip detection + city labelling), Opportunities + investor profile, dedicated Predictions page, spending heatmap, multi-currency conversion, manual transaction entry, import history, encrypted backup/restore, TrueLayer connector, Demo provider, PWA install + pull-to-refresh
+- [x] **Phase 10** — Multi-user hardening: per-user data isolation (fail-closed `user_id` scoping across every table), read-only Guest mode, CSRF guards on `/api/*`, strict per-request CSP nonce, per-user LLM rate limiting
+
+## Architecture
+
+The app is a Next.js 16 (App Router) application: server components query the database directly, server actions handle mutations, and the only outbound network calls are to your database, your bank-data provider, and your chosen LLM. Read the full, decision-by-decision breakdown in **[ARCHITECTURE.md](ARCHITECTURE.md)** — it covers the stack and the alternatives weighed for each choice, the security model, the AI subsystem, and the reasoning patterns behind a privacy-first design.
 
 ## Contributing
 
@@ -160,5 +175,6 @@ Contributions welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setup, 
 - [Turso](https://turso.tech) — hosted libSQL
 - [Auth.js](https://authjs.dev) — OAuth on Next.js
 - [Ollama](https://ollama.com) — local LLM runtime
-- [shadcn/ui](https://ui.shadcn.com), [Radix UI](https://www.radix-ui.com), [Lucide](https://lucide.dev)
+- [shadcn/ui](https://ui.shadcn.com), [Radix UI](https://www.radix-ui.com), [Lucide](https://lucide.dev), [Recharts](https://recharts.org)
 - [Drizzle ORM](https://orm.drizzle.team), [Next.js](https://nextjs.org), [Vercel AI SDK](https://sdk.vercel.ai)
+- [next-intl](https://next-intl.dev), [Biome](https://biomejs.dev), [Vitest](https://vitest.dev), [Playwright](https://playwright.dev)

@@ -3,7 +3,7 @@
 import { db } from "@/db/client";
 import { accounts } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export interface DeleteAccountResult {
@@ -23,9 +23,14 @@ export interface DeleteAccountResult {
  *    institution + requisition each time.
  */
 export async function deleteAccountAction(accountId: number): Promise<DeleteAccountResult> {
-  if (!(await getCurrentSession())) return { ok: false, error: "unauthenticated" };
+  const session = await getCurrentSession();
+  if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
-  await db.delete(accounts).where(eq(accounts.id, accountId));
+  // Scoped by userId so a user can only ever delete their own account.
+  await db
+    .delete(accounts)
+    .where(and(eq(accounts.userId, session.userId), eq(accounts.id, accountId)));
 
   revalidatePath("/");
   revalidatePath("/banks");

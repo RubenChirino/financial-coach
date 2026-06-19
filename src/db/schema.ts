@@ -127,6 +127,13 @@ export const requisitions = sqliteTable(
   "requisitions",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
+    // Owner of this bank connection. Every read/write is scoped by it so users
+    // never see each other's data. Added in migration 0013; legacy rows carry
+    // 0 (no real user) until the ownership backfill assigns them, so an
+    // un-backfilled row is invisible to everyone (fail-safe).
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     institutionId: integer("institution_id")
       .notNull()
       .references(() => institutions.id, { onDelete: "cascade" }),
@@ -157,6 +164,11 @@ export const accounts = sqliteTable(
   "accounts",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
+    // Owner of the account — the root anchor for per-user data scoping. See the
+    // note on `requisitions.userId`.
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     requisitionId: integer("requisition_id")
       .notNull()
       .references(() => requisitions.id, { onDelete: "cascade" }),
@@ -181,10 +193,39 @@ export const categories = sqliteTable("categories", {
   color: text("color").notNull(),
   parentId: integer("parent_id"),
   isSystem: integer("is_system", { mode: "boolean" }).notNull().default(true),
+  /**
+   * @deprecated Budgets are per-user — see the `budgets` table. This column is
+   * kept only so existing data can be migrated out (migration 0013); it is no
+   * longer read or written. The category taxonomy itself is shared across all
+   * users, so a per-user value can't live here.
+   */
   budgetMonthlyCents: integer("budget_monthly_cents", { mode: "number" }),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at"),
 });
+
+/**
+ * Per-user monthly budget for a (shared) category. Split out of
+ * `categories.budgetMonthlyCents` in migration 0013 because the category
+ * taxonomy is shared across users while a budget is private. At most one row
+ * per (user, category).
+ */
+export const budgets = sqliteTable(
+  "budgets",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    categoryId: integer("category_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "cascade" }),
+    monthlyCents: integer("monthly_cents", { mode: "number" }).notNull(),
+    createdAt: timestamp("created_at"),
+    updatedAt: timestamp("updated_at"),
+  },
+  (t) => [uniqueIndex("budgets_user_cat_uniq").on(t.userId, t.categoryId)],
+);
 
 /**
  * One row per CSV/XLS file the user imports. Lets users see what they uploaded
@@ -192,6 +233,10 @@ export const categories = sqliteTable("categories", {
  */
 export const importBatches = sqliteTable("import_batches", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  /** Owner of the import. Scopes the import-history list per user. */
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   /** Original filename, or null when data was pasted directly. */
   filename: text("filename"),
   rowsParsed: integer("rows_parsed").notNull().default(0),
@@ -204,6 +249,12 @@ export const transactions = sqliteTable(
   "transactions",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
+    // Denormalized owner (== accounts.userId of `accountId`). Denormalized so the
+    // many transaction queries filter with a single `eq(transactions.userId, …)`
+    // instead of joining through accounts everywhere. Kept in sync on insert.
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     accountId: integer("account_id")
       .notNull()
       .references(() => accounts.id, { onDelete: "cascade" }),
@@ -231,6 +282,7 @@ export const transactions = sqliteTable(
     index("transactions_account_date_idx").on(t.accountId, t.bookingDate),
     index("transactions_category_idx").on(t.categoryId),
     index("transactions_needs_review_idx").on(t.needsReview),
+    index("transactions_user_date_idx").on(t.userId, t.bookingDate),
   ],
 );
 
@@ -253,6 +305,9 @@ export const categoryRules = sqliteTable(
 
 export const recurringSubscriptions = sqliteTable("recurring_subscriptions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   merchantName: text("merchant_name").notNull(),
   averageAmountCents: integer("average_amount_cents", { mode: "number" }).notNull(),
   frequencyDays: integer("frequency_days").notNull(),
@@ -275,14 +330,23 @@ export const recurringSubscriptions = sqliteTable("recurring_subscriptions", {
  * Keyed by `tripKey` = `${currency}:${startEpochDay}` — stable as long as the
  * trip's earliest transaction doesn't change.
  */
-export const travelCityLabels = sqliteTable("travel_city_labels", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  tripKey: text("trip_key").notNull().unique(),
-  city: text("city").notNull(),
-  source: text("source", { enum: ["ai", "user"] }).notNull(),
-  createdAt: timestamp("created_at"),
-  updatedAt: timestamp("updated_at"),
-});
+export const travelCityLabels = sqliteTable(
+  "travel_city_labels",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tripKey: text("trip_key").notNull(),
+    city: text("city").notNull(),
+    source: text("source", { enum: ["ai", "user"] }).notNull(),
+    createdAt: timestamp("created_at"),
+    updatedAt: timestamp("updated_at"),
+  },
+  // A trip key is only unique within a user — two users can each have a
+  // "USD:20100" trip.
+  (t) => [uniqueIndex("travel_city_labels_user_trip_uniq").on(t.userId, t.tripKey)],
+);
 
 /**
  * Cache mapping a city name (as it appears in a transaction description) to an
@@ -319,6 +383,9 @@ export const cityCountries = sqliteTable("city_countries", {
  */
 export const goals = sqliteTable("goals", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   emoji: text("emoji").notNull().default("🎯"),
   targetCents: integer("target_cents", { mode: "number" }).notNull(),
@@ -344,6 +411,9 @@ export const insights = sqliteTable(
   "insights",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     kind: text("kind", {
       enum: [
         "overspend",
@@ -373,6 +443,7 @@ export const insights = sqliteTable(
   (t) => [
     index("insights_kind_entity_idx").on(t.kind, t.entityId),
     index("insights_dismissed_idx").on(t.dismissedAt),
+    index("insights_user_idx").on(t.userId),
   ],
 );
 
@@ -422,11 +493,21 @@ export const goalsRelations = relations(goals, ({ one }) => ({
   category: one(categories, { fields: [goals.categoryId], references: [categories.id] }),
 }));
 
+export const budgetsRelations = relations(budgets, ({ one }) => ({
+  category: one(categories, { fields: [budgets.categoryId], references: [categories.id] }),
+}));
+
+export type Budget = typeof budgets.$inferSelect;
+export type NewBudget = typeof budgets.$inferInsert;
+
 export type Goal = typeof goals.$inferSelect;
 export type NewGoal = typeof goals.$inferInsert;
 
 export const advisorConversations = sqliteTable("advisor_conversations", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull().default(""),
   summary: text("summary").notNull().default(""),
   createdAt: timestamp("created_at"),

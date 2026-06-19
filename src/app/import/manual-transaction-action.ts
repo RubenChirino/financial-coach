@@ -5,7 +5,7 @@ import { db } from "@/db/client";
 import { accounts, transactions } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { ensureImportedAccount } from "@/lib/import/ingest";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export interface AddManualTransactionResult {
@@ -29,6 +29,7 @@ export async function addManualTransactionAction(input: {
 }): Promise<AddManualTransactionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
   if (!input.date || !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
     return { ok: false, error: "invalidDate" };
@@ -41,12 +42,14 @@ export async function addManualTransactionAction(input: {
   }
 
   const { accountRowId } = await ensureImportedAccount({
+    userId: session.userId,
     encryptionKey: session.encryptionKey,
   });
 
   const bookingDate = new Date(`${input.date}T12:00:00Z`);
 
   await db.insert(transactions).values({
+    userId: session.userId,
     accountId: accountRowId,
     // Unique ID — "manual:" prefix + UUID makes it recognisable in debug queries.
     gocardlessTransactionId: `manual:${randomUUID()}`,
@@ -63,11 +66,11 @@ export async function addManualTransactionAction(input: {
   const sumRow = await db
     .select({ total: sql<number>`coalesce(sum(amount_cents), 0)` })
     .from(transactions)
-    .where(eq(transactions.accountId, accountRowId));
+    .where(and(eq(transactions.userId, session.userId), eq(transactions.accountId, accountRowId)));
   await db
     .update(accounts)
     .set({ balanceCents: Number(sumRow[0]?.total ?? 0), lastSyncedAt: new Date() })
-    .where(eq(accounts.id, accountRowId));
+    .where(and(eq(accounts.userId, session.userId), eq(accounts.id, accountRowId)));
 
   revalidatePath("/");
   revalidatePath("/transactions");

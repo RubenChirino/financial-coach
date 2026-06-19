@@ -139,6 +139,7 @@ function buildAccountFilter(accountId: number | undefined) {
  * the in-progress current month so a partial month doesn't pull averages down.
  */
 async function getMonthlyHistory(
+  userId: number,
   wantMonths: number,
   accountId?: number,
 ): Promise<{ month: string; incomeCents: number; expenseCents: number; netCents: number }[]> {
@@ -146,6 +147,7 @@ async function getMonthlyHistory(
   const lookbackStart = monthRange(-MAX_LOOKBACK_MONTHS).start;
 
   const conditions = [
+    eq(transactions.userId, userId),
     gte(transactions.bookingDate, lookbackStart),
     lt(transactions.bookingDate, currentMonthStart),
   ];
@@ -175,12 +177,14 @@ async function getMonthlyHistory(
   return all.slice(-wantMonths);
 }
 
-async function getCurrency(accountId?: number): Promise<string> {
+async function getCurrency(userId: number, accountId?: number): Promise<string> {
   const accountFilter = buildAccountFilter(accountId);
+  const conditions = [eq(transactions.userId, userId)];
+  if (accountFilter) conditions.push(accountFilter);
   const r = await db
     .select({ c: sql<string | null>`max(${transactions.currency})` })
     .from(transactions)
-    .where(accountFilter ?? sql`1 = 1`);
+    .where(and(...conditions));
   return r[0]?.c ?? "EUR";
 }
 
@@ -203,6 +207,7 @@ interface HabitualEntry {
  * income sources (positive tx).
  */
 async function detectHabitualParties(
+  userId: number,
   direction: "in" | "out",
   windowStart: Date,
   windowEnd: Date,
@@ -212,6 +217,7 @@ async function detectHabitualParties(
   const signFilter =
     direction === "out" ? lt(transactions.amountCents, 0) : sql`${transactions.amountCents} > 0`;
   const conditions = [
+    eq(transactions.userId, userId),
     gte(transactions.bookingDate, windowStart),
     lt(transactions.bookingDate, windowEnd),
     signFilter,
@@ -305,30 +311,35 @@ function stdDev(nums: number[]): number {
  * the caller can explain the math to the user. Pass `accountId` to scope all
  * stats to a single account; omit to forecast across the whole household.
  */
-export async function getSpendingForecast(opts?: {
+export async function getSpendingForecast(opts: {
+  userId: number;
   horizonMonths?: number;
   accountId?: number;
 }): Promise<SpendingForecast> {
-  const horizon = Math.max(1, Math.min(opts?.horizonMonths ?? DEFAULT_HORIZON_MONTHS, 6));
-  const accountId = opts?.accountId;
+  const { userId } = opts;
+  const horizon = Math.max(1, Math.min(opts.horizonMonths ?? DEFAULT_HORIZON_MONTHS, 6));
+  const accountId = opts.accountId;
 
-  // One-shot hydration: if the recurring table is empty (e.g. the user
-  // imported transactions before the auto-detect-on-import wiring landed),
+  // One-shot hydration: if the recurring table is empty for THIS user (e.g.
+  // they imported transactions before the auto-detect-on-import wiring landed),
   // run detection once so the forecast surfaces fixed income / subscriptions
   // immediately. Subsequent calls skip this because the table is populated.
-  const subCount = await db.select({ n: sql<number>`count(*)` }).from(recurringSubscriptions);
+  const subCount = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(recurringSubscriptions)
+    .where(eq(recurringSubscriptions.userId, userId));
   if (Number(subCount[0]?.n ?? 0) === 0) {
     try {
-      await detectRecurringSubscriptions();
+      await detectRecurringSubscriptions({ userId });
     } catch (err) {
       console.warn("on-demand recurring detection failed (non-fatal)", err);
     }
   }
 
   const [history, subscriptions, currency] = await Promise.all([
-    getMonthlyHistory(TRAILING_WINDOW_MONTHS, accountId),
-    listRecurringSubscriptions(),
-    getCurrency(accountId),
+    getMonthlyHistory(userId, TRAILING_WINDOW_MONTHS, accountId),
+    listRecurringSubscriptions(userId),
+    getCurrency(userId, accountId),
   ]);
 
   // Recurring monthly equivalents from the subscriptions table.
@@ -366,8 +377,22 @@ export async function getSpendingForecast(opts?: {
   const trailingStart = monthRange(-TRAILING_WINDOW_MONTHS).start;
   const trailingEnd = monthRange(0).start;
   const [habitualOutEntries, habitualInEntries] = await Promise.all([
-    detectHabitualParties("out", trailingStart, trailingEnd, recurringMerchantKeys, accountId),
-    detectHabitualParties("in", trailingStart, trailingEnd, recurringMerchantKeys, accountId),
+    detectHabitualParties(
+      userId,
+      "out",
+      trailingStart,
+      trailingEnd,
+      recurringMerchantKeys,
+      accountId,
+    ),
+    detectHabitualParties(
+      userId,
+      "in",
+      trailingStart,
+      trailingEnd,
+      recurringMerchantKeys,
+      accountId,
+    ),
   ]);
   const habitualMerchants: HabitualMerchant[] = habitualOutEntries.map((e) => ({
     merchant: e.display,
