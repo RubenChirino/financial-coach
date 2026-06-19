@@ -2,7 +2,7 @@
 
 import { randomBytes } from "node:crypto";
 import { db } from "@/db/client";
-import { accounts, institutions, requisitions } from "@/db/schema";
+import { accounts, institutions, requisitions, users } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { categorizeBatchByRules, categorizeUncategorized } from "@/lib/categorize";
 import { decrypt } from "@/lib/crypto";
@@ -126,10 +126,11 @@ export async function startBankLinkAction(
 
     const origin = await originFromHeaders();
     const reference = `fc-${Date.now()}-${randomBytes(4).toString("hex")}`;
-    const user = await db.query.users.findFirst();
+    const user = await db.query.users.findFirst({ where: eq(users.id, session.userId) });
     const language = user?.language === "en" ? "EN" : "ES";
 
     const { link } = await createRequisition(client, {
+      userId: session.userId,
       institution: inst,
       redirectUrl: `${origin}/settings/bank/callback?ref=${encodeURIComponent(reference)}`,
       reference,
@@ -152,7 +153,7 @@ export async function finalizeBankLinkAction(
     const row = await db
       .select()
       .from(requisitions)
-      .where(eq(requisitions.reference, reference))
+      .where(and(eq(requisitions.userId, session.userId), eq(requisitions.reference, reference)))
       .limit(1);
     const req = row[0];
     if (!req) return { ok: false, error: "requisitionNotFound" };
@@ -160,6 +161,7 @@ export async function finalizeBankLinkAction(
     const gcId = decrypt(req.gocardlessRequisitionId, session.encryptionKey);
 
     const { accountRowIds } = await linkRequisitionAccounts(client, {
+      userId: session.userId,
       requisitionRowId: req.id,
       gocardlessRequisitionId: gcId,
       encryptionKey: session.encryptionKey,
@@ -191,7 +193,13 @@ export async function syncAllAccountsAction(): Promise<
       })
       .from(accounts)
       .innerJoin(requisitions, eq(accounts.requisitionId, requisitions.id))
-      .where(and(eq(requisitions.status, "linked"), eq(requisitions.provider, "gocardless")));
+      .where(
+        and(
+          eq(requisitions.userId, session.userId),
+          eq(requisitions.status, "linked"),
+          eq(requisitions.provider, "gocardless"),
+        ),
+      );
 
     let inserted = 0;
     let skipped = 0;
@@ -200,6 +208,7 @@ export async function syncAllAccountsAction(): Promise<
       const gcAccId = decrypt(r.gcAccountIdCipher, session.encryptionKey);
       try {
         const res = await syncAccountTransactions(client, {
+          userId: session.userId,
           accountRowId: r.accountRowId,
           gocardlessAccountId: gcAccId,
         });
@@ -211,7 +220,7 @@ export async function syncAllAccountsAction(): Promise<
       }
     }
 
-    const ruleMatched = await categorizeBatchByRules(allInsertedIds);
+    const ruleMatched = await categorizeBatchByRules(session.userId, allInsertedIds);
 
     return {
       ok: true,
@@ -232,8 +241,8 @@ export async function categorizeNowAction(maxLlm?: number): Promise<
   }>
 > {
   try {
-    await requireSession();
-    const res = await categorizeUncategorized({ maxLlm });
+    const session = await requireSession();
+    const res = await categorizeUncategorized({ userId: session.userId, maxLlm });
     return { ok: true, data: res };
   } catch (err) {
     return { ok: false, error: humanizeError(err) };
@@ -265,6 +274,7 @@ export async function listBankConnectionsAction(): Promise<BankConnectionSummary
     })
     .from(requisitions)
     .innerJoin(institutions, eq(institutions.id, requisitions.institutionId))
+    .where(eq(requisitions.userId, session.userId))
     .orderBy(desc(requisitions.createdAt));
 
   const summaries: BankConnectionSummary[] = [];
@@ -272,7 +282,7 @@ export async function listBankConnectionsAction(): Promise<BankConnectionSummary
     const acc = await db
       .select({ id: accounts.id, lastSyncedAt: accounts.lastSyncedAt })
       .from(accounts)
-      .where(eq(accounts.requisitionId, r.requisitionId));
+      .where(and(eq(accounts.userId, session.userId), eq(accounts.requisitionId, r.requisitionId)));
     const lastSyncedAt = acc
       .map((a) => (a.lastSyncedAt ? a.lastSyncedAt.getTime() : 0))
       .reduce((max, v) => (v > max ? v : max), 0);
@@ -296,7 +306,7 @@ export async function deleteBankConnectionAction(requisitionId: number): Promise
     const row = await db
       .select()
       .from(requisitions)
-      .where(eq(requisitions.id, requisitionId))
+      .where(and(eq(requisitions.userId, session.userId), eq(requisitions.id, requisitionId)))
       .limit(1);
     const req = row[0];
     if (!req) return { ok: false, error: "requisitionNotFound" };
@@ -314,7 +324,9 @@ export async function deleteBankConnectionAction(requisitionId: number): Promise
         }
       }
     }
-    await db.delete(requisitions).where(eq(requisitions.id, requisitionId));
+    await db
+      .delete(requisitions)
+      .where(and(eq(requisitions.userId, session.userId), eq(requisitions.id, requisitionId)));
     return { ok: true };
   } catch (err) {
     return { ok: false, error: humanizeError(err) };

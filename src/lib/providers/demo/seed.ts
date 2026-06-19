@@ -229,6 +229,7 @@ async function upsertDemoInstitution(spec: DemoBankSpec): Promise<number> {
 }
 
 export async function seedDemoBank(
+  userId: number,
   bank: DemoBankKey,
   encryptionKey: Buffer,
 ): Promise<{ requisitionRowId: number; accountRowId: number; inserted: number }> {
@@ -242,6 +243,7 @@ export async function seedDemoBank(
   const reqInsert = await db
     .insert(requisitions)
     .values({
+      userId,
       institutionId: institutionRowId,
       provider: "demo",
       gocardlessRequisitionId: encrypt(gcRequisitionId, encryptionKey),
@@ -258,6 +260,7 @@ export async function seedDemoBank(
   const accInsert = await db
     .insert(accounts)
     .values({
+      userId,
       requisitionId: requisitionRowId,
       gocardlessAccountId: encrypt(gcAccountId, encryptionKey),
       ibanLast4: spec.ibanLast4,
@@ -280,6 +283,7 @@ export async function seedDemoBank(
   const rows = seeds.map((s, idx) => {
     const booking = new Date(now - s.daysAgo * 24 * 60 * 60 * 1000);
     return {
+      userId,
       accountId: accountRowId,
       gocardlessTransactionId: `DEMO_TX_${spec.key.toUpperCase()}_${now}_${idx}`,
       bookingDate: booking,
@@ -309,14 +313,16 @@ export async function seedDemoBank(
  * can be re-seeded without duplicates. Also cleans up orphan demo
  * institutions that no longer have any requisition.
  */
-export async function wipeAllDemoData(): Promise<{ removedRequisitions: number }> {
+export async function wipeAllDemoData(userId: number): Promise<{ removedRequisitions: number }> {
   const demoReqs = await db
     .select({ id: requisitions.id })
     .from(requisitions)
-    .where(eq(requisitions.provider, "demo"));
+    .where(and(eq(requisitions.userId, userId), eq(requisitions.provider, "demo")));
 
   for (const r of demoReqs) {
-    await db.delete(requisitions).where(eq(requisitions.id, r.id));
+    await db
+      .delete(requisitions)
+      .where(and(eq(requisitions.userId, userId), eq(requisitions.id, r.id)));
   }
 
   // Drop orphan demo institutions (no requisitions pointing at them).

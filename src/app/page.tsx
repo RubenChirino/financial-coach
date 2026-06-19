@@ -74,7 +74,7 @@ export default async function DashboardPage({
 
   // The insight engine writes rows — skip it for read-only guests so viewing the
   // dashboard never mutates the shared demo data.
-  if (!session.isGuest) await runInsightEngine(locale);
+  if (!session.isGuest) await runInsightEngine(session.userId, locale);
 
   const [
     accountsTotal,
@@ -88,16 +88,16 @@ export default async function DashboardPage({
     accountTiles,
     activeInsights,
   ] = await Promise.all([
-    getAccountsTotal(),
-    getMonthSummary(0),
-    getMonthSummary(-1),
-    getTopCategoriesThisMonth(6, 0),
-    getNeedsReviewCount(),
-    listTransactions(),
-    getActiveSubscriptionsTotals(),
-    getMonthlyFlowHistory(6, locale),
-    listAccountsWithInstitutions(),
-    listActiveInsights(),
+    getAccountsTotal(session.userId),
+    getMonthSummary(session.userId, 0),
+    getMonthSummary(session.userId, -1),
+    getTopCategoriesThisMonth(session.userId, 6, 0),
+    getNeedsReviewCount(session.userId),
+    listTransactions({ userId: session.userId }),
+    getActiveSubscriptionsTotals(session.userId),
+    getMonthlyFlowHistory(session.userId, 6, locale),
+    listAccountsWithInstitutions(session.userId),
+    listActiveInsights(session.userId),
   ]);
 
   const guestDialog = (

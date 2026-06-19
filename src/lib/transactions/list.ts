@@ -25,7 +25,9 @@ export interface TransactionRow {
 
 const PAGE_SIZE = 50;
 
-export async function listTransactions(opts?: {
+export async function listTransactions(opts: {
+  /** Owner whose transactions to list — every query is scoped to this user. */
+  userId: number;
   cursor?: { bookingDate: number; id: number } | null;
   accountId?: number;
   categoryId?: number;
@@ -39,7 +41,7 @@ export async function listTransactions(opts?: {
    */
   dates?: string[];
 }): Promise<{ rows: TransactionRow[]; nextCursor: { bookingDate: number; id: number } | null }> {
-  const conds = [];
+  const conds = [eq(transactions.userId, opts.userId)];
   if (opts?.accountId) conds.push(eq(transactions.accountId, opts.accountId));
   if (opts?.categoryId) conds.push(eq(transactions.categoryId, opts.categoryId));
   if (opts?.needsReviewOnly) conds.push(eq(transactions.needsReview, true));
@@ -111,12 +113,13 @@ export async function listTransactions(opts?: {
   return { rows: slice, nextCursor };
 }
 
-export async function getTransactionStats() {
+export async function getTransactionStats(userId: number) {
   const result = await db
     .select({
       count: sql<number>`count(*)`,
       needsReview: sql<number>`sum(case when ${transactions.needsReview} then 1 else 0 end)`,
     })
-    .from(transactions);
+    .from(transactions)
+    .where(eq(transactions.userId, userId));
   return result[0] ?? { count: 0, needsReview: 0 };
 }

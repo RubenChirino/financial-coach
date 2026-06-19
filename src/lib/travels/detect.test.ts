@@ -11,6 +11,7 @@ const { listTravels } = await import("./detect");
 
 const DAY = 24 * 60 * 60 * 1000;
 const BASE = Date.UTC(2026, 2, 1, 12); // 2026-03-01
+const USER = 1;
 
 let accountId = 0;
 let txSeq = 0;
@@ -23,6 +24,7 @@ async function seedAccount() {
   const req = await fixture.db
     .insert(requisitions)
     .values({
+      userId: USER,
       institutionId: inst[0]!.id,
       gocardlessRequisitionId: "ENC",
       status: "linked",
@@ -33,6 +35,7 @@ async function seedAccount() {
   const acc = await fixture.db
     .insert(accounts)
     .values({
+      userId: USER,
       requisitionId: req[0]!.id,
       gocardlessAccountId: "ENC",
       ibanLast4: "1234",
@@ -54,6 +57,7 @@ async function tx(opts: {
 }) {
   txSeq += 1;
   await fixture.db.insert(transactions).values({
+    userId: USER,
     accountId,
     gocardlessTransactionId: `tx-${txSeq}`,
     bookingDate: new Date(BASE + opts.dayOffset * DAY),
@@ -66,7 +70,7 @@ async function tx(opts: {
   });
 }
 
-const home = { homeCountry: "ES", homeCurrency: "EUR" };
+const home = { userId: USER, homeCountry: "ES", homeCurrency: "EUR" };
 
 describe("listTravels (location-based)", () => {
   beforeEach(async () => {
@@ -334,7 +338,12 @@ describe("listTravels (location-based)", () => {
       desc: "Pago Movil En Cafe, Donostia San Es, Tarj. :*1",
     });
 
-    const trips = await listTravels({ homeCountry: "ES", homeCity: "Madrid", homeCurrency: "EUR" });
+    const trips = await listTravels({
+      userId: USER,
+      homeCountry: "ES",
+      homeCity: "Madrid",
+      homeCurrency: "EUR",
+    });
     expect(trips).toHaveLength(1);
     expect(trips[0]!.region).toBe("País Vasco");
     expect(trips[0]!.countryCode).toBe("ES");
@@ -383,6 +392,7 @@ describe("listTravels (location-based)", () => {
     });
 
     const trips = await listTravels({
+      userId: USER,
       homeCountry: "ES",
       homeCity: "Alcorcon",
       homeCurrency: "EUR",
@@ -411,7 +421,12 @@ describe("listTravels (location-based)", () => {
       desc: "Compra Bar, Sevilla, Tarjeta 5489 , Comision 0,00",
     });
 
-    const trips = await listTravels({ homeCountry: "ES", homeCity: "Madrid", homeCurrency: "EUR" });
+    const trips = await listTravels({
+      userId: USER,
+      homeCountry: "ES",
+      homeCity: "Madrid",
+      homeCurrency: "EUR",
+    });
     expect(trips).toHaveLength(1);
     expect(trips[0]!.region).toBe("Andalucía");
     expect(trips[0]!.countryCode).toBe("ES");
@@ -436,6 +451,7 @@ describe("listTravels (location-based)", () => {
 
     // Home city not in the static map and not cached → no home region → no domestic trips.
     const trips = await listTravels({
+      userId: USER,
       homeCountry: "ES",
       homeCity: "Quuxville",
       homeCurrency: "EUR",

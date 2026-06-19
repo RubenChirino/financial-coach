@@ -25,7 +25,8 @@ export default async function AdvisorPage({
 }: {
   searchParams?: Promise<{ c?: string; tab?: string }>;
 }) {
-  if (!(await getCurrentSession())) redirect("/lock");
+  const session = await getCurrentSession();
+  if (!session) redirect("/lock");
 
   const sp = (await searchParams) ?? {};
   const activeTab: CoachTab = sp.tab === "chat" ? "chat" : "digest";
@@ -36,7 +37,7 @@ export default async function AdvisorPage({
     getTranslations("advisor.chat"),
     getLocale(),
     getAdvisorProviderStateAction(),
-    getAccountsTotal(),
+    getAccountsTotal(session.userId),
   ]);
   const intlLocale = locale === "es" ? "es-ES" : "en-US";
   const currency = accountsTotal.currency;
@@ -52,7 +53,7 @@ export default async function AdvisorPage({
   );
 
   if (activeTab === "digest") {
-    const activeInsights = await listActiveInsights();
+    const activeInsights = await listActiveInsights(session.userId);
     // Severity-sorted: warning first, then info, then positive.
     const severityRank: Record<string, number> = { warning: 0, info: 1, positive: 2 };
     const topInsight = [...activeInsights].sort(
@@ -60,6 +61,7 @@ export default async function AdvisorPage({
     )[0];
 
     const digest = await buildDigest(
+      session.userId,
       {
         headlineSaving: tDigest("headlineSaving"),
         headlineFlat: tDigest("headlineFlat"),
@@ -137,11 +139,11 @@ export default async function AdvisorPage({
   const requestedId = sp.c ? Number(sp.c) : null;
   const safeRequested = requestedId && Number.isFinite(requestedId) ? requestedId : null;
   const [conversations, contextSnapshot] = await Promise.all([
-    listConversations(),
-    getChatContextSnapshot(),
+    listConversations(session.userId),
+    getChatContextSnapshot(session.userId),
   ]);
   const activeId = safeRequested ?? conversations[0]?.id ?? null;
-  const activeMessages = activeId ? await getConversationMessages(activeId) : [];
+  const activeMessages = activeId ? await getConversationMessages(session.userId, activeId) : [];
 
   const context: ChatContextSnapshot = contextSnapshot;
   const suggestions = [tChat("suggestion1"), tChat("suggestion2"), tChat("suggestion3")];

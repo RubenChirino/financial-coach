@@ -9,6 +9,13 @@ Thanks for considering a contribution. This project aims to be a calm, well-craf
 3. **Test what you change.** Crypto, redaction, categorization, and bank-sync logic must ship with tests.
 4. **i18n lockstep.** Any user-facing string added to `src/messages/es.json` must also go into `en.json`.
 
+## Understanding the codebase
+
+Before your first change, skim **[ARCHITECTURE.md](ARCHITECTURE.md)**. It explains
+the two runtime modes, where business logic lives (`src/lib/*`), the
+server/client boundary rules (and the serialization pitfalls that have bitten us
+in production), and the security model your change has to respect.
+
 ## Dev setup
 
 ```bash
@@ -17,10 +24,14 @@ cd financial-coach
 cp .env.example .env.local                          # fill in APP_SECRET
 pnpm install
 pnpm db:migrate
+pnpm db:seed                                         # optional: synthetic data for local dev
 pnpm dev
 ```
 
 Requirements: Node.js 24 LTS, pnpm 9+. `.nvmrc` pins the Node version if you use nvm or fnm.
+
+Useful scripts: `pnpm test` (Vitest unit/component), `pnpm e2e` (Playwright
+end-to-end), `pnpm db:studio` (Drizzle Studio), `pnpm lint:fix` (Biome).
 
 ## Branching & commits
 

@@ -4,7 +4,7 @@ import { db } from "@/db/client";
 import { categories, transactions } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { type TransactionRow, listTransactions } from "@/lib/transactions/list";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export interface SetTxCategoryResult {
@@ -42,7 +42,7 @@ export async function setTransactionCategoryAction(
       confidence: categoryId == null ? null : 100,
       updatedAt: new Date(),
     })
-    .where(eq(transactions.id, txId));
+    .where(and(eq(transactions.id, txId), eq(transactions.userId, session.userId)));
 
   revalidatePath("/transactions");
   revalidatePath("/");
@@ -74,6 +74,7 @@ export async function loadMoreTransactionsAction(
   const session = await getCurrentSession();
   if (!session) return { rows: [], nextCursor: null };
   const result = await listTransactions({
+    userId: session.userId,
     cursor,
     needsReviewOnly: opts?.needsReviewOnly,
   });

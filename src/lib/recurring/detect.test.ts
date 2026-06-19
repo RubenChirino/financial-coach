@@ -9,6 +9,7 @@ const { accounts, categories, institutions, recurringSubscriptions, requisitions
 const { detectRecurringSubscriptions, evaluateMerchant } = await import("./detect");
 
 const NOW = new Date("2026-04-15T12:00:00.000Z");
+const USER = 1;
 
 function daysAgo(n: number): Date {
   return new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
@@ -22,6 +23,7 @@ async function seedSkeleton() {
   const req = await fixture.db
     .insert(requisitions)
     .values({
+      userId: USER,
       institutionId: inst[0]!.id,
       gocardlessRequisitionId: "ENC",
       status: "linked",
@@ -32,6 +34,7 @@ async function seedSkeleton() {
   const acc = await fixture.db
     .insert(accounts)
     .values({
+      userId: USER,
       requisitionId: req[0]!.id,
       gocardlessAccountId: "ENC",
       ibanLast4: "1234",
@@ -151,6 +154,7 @@ describe("detectRecurringSubscriptions (DB)", () => {
     const { accountId, subscriptionsCategoryId } = await seedSkeleton();
     let txCounter = 0;
     const newTx = (date: Date, amount: number, merchant: string, categoryId: number | null) => ({
+      userId: USER,
       accountId,
       gocardlessTransactionId: `tx-${txCounter++}`,
       bookingDate: date,
@@ -177,7 +181,7 @@ describe("detectRecurringSubscriptions (DB)", () => {
       newTx(daysAgo(20), -50_000, "Amazon", null),
     ]);
 
-    const out = await detectRecurringSubscriptions({ now: NOW });
+    const out = await detectRecurringSubscriptions({ userId: USER, now: NOW });
     expect(out.map((s) => s.merchantName)).toEqual(["Netflix"]);
 
     const rows = await fixture.db.select().from(recurringSubscriptions);
@@ -192,6 +196,7 @@ describe("detectRecurringSubscriptions (DB)", () => {
     const { accountId } = await seedSkeleton();
     let txCounter = 0;
     const newTx = (date: Date, amount: number, merchant: string) => ({
+      userId: USER,
       accountId,
       gocardlessTransactionId: `tx-${txCounter++}`,
       bookingDate: date,
@@ -212,8 +217,8 @@ describe("detectRecurringSubscriptions (DB)", () => {
         newTx(daysAgo(1), -999, "Spotify"),
       ]);
 
-    await detectRecurringSubscriptions({ now: NOW });
-    await detectRecurringSubscriptions({ now: NOW });
+    await detectRecurringSubscriptions({ userId: USER, now: NOW });
+    await detectRecurringSubscriptions({ userId: USER, now: NOW });
     const rows = await fixture.db.select().from(recurringSubscriptions);
     expect(rows).toHaveLength(1);
   });
@@ -222,6 +227,7 @@ describe("detectRecurringSubscriptions (DB)", () => {
     const { accountId } = await seedSkeleton();
     let txCounter = 0;
     const newTx = (date: Date, merchant: string) => ({
+      userId: USER,
       accountId,
       gocardlessTransactionId: `tx-${txCounter++}`,
       bookingDate: date,
@@ -243,7 +249,7 @@ describe("detectRecurringSubscriptions (DB)", () => {
         newTx(daysAgo(30), "GymPlus  20260203"),
         newTx(daysAgo(1), "GymPlus 20260404"),
       ]);
-    const out = await detectRecurringSubscriptions({ now: NOW });
+    const out = await detectRecurringSubscriptions({ userId: USER, now: NOW });
     expect(out).toHaveLength(1);
     expect(out[0]?.merchantName.toLowerCase()).toContain("gymplus");
   });

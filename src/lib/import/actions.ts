@@ -191,12 +191,14 @@ async function runImport(text: string, opts: RunImportOptions = {}): Promise<Imp
     // null fields for files that don't expose any of this.
     const meta = extractAccountMetadata(text);
     const { accountRowId } = await ensureImportedAccount({
+      userId: session.userId,
       encryptionKey: session.encryptionKey,
       iban: meta.iban,
       currency: meta.currency,
     });
     const currency = meta.currency ?? parsed.rows[0]?.currency;
     const ingest = await importParsedRows(parsed.rows, {
+      userId: session.userId,
       accountRowId,
       currency,
       filename: opts.filename,

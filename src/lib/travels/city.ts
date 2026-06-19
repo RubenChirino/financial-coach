@@ -3,7 +3,7 @@ import "server-only";
 import { db } from "@/db/client";
 import { travelCityLabels } from "@/db/schema";
 import { type LanguageModel, generateText } from "ai";
-import { inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 export type CitySource = "ai" | "user";
 
@@ -16,7 +16,10 @@ export interface CityLabel {
  * Load persisted city labels for the given trip keys in a single query.
  * Returns a Map keyed by tripKey; trips without a label are simply absent.
  */
-export async function getCityLabels(tripKeys: string[]): Promise<Map<string, CityLabel>> {
+export async function getCityLabels(
+  userId: number,
+  tripKeys: string[],
+): Promise<Map<string, CityLabel>> {
   const result = new Map<string, CityLabel>();
   if (tripKeys.length === 0) return result;
 
@@ -27,7 +30,7 @@ export async function getCityLabels(tripKeys: string[]): Promise<Map<string, Cit
       source: travelCityLabels.source,
     })
     .from(travelCityLabels)
-    .where(inArray(travelCityLabels.tripKey, tripKeys));
+    .where(and(eq(travelCityLabels.userId, userId), inArray(travelCityLabels.tripKey, tripKeys)));
 
   for (const r of rows) {
     result.set(r.tripKey, { city: r.city, source: r.source as CitySource });
@@ -40,12 +43,17 @@ export async function getCityLabels(tripKeys: string[]): Promise<Map<string, Cit
  * overwrites a city the user typed (the caller enforces this before calling
  * with `source = "ai"`).
  */
-export async function upsertCity(tripKey: string, city: string, source: CitySource): Promise<void> {
+export async function upsertCity(
+  userId: number,
+  tripKey: string,
+  city: string,
+  source: CitySource,
+): Promise<void> {
   await db
     .insert(travelCityLabels)
-    .values({ tripKey, city, source })
+    .values({ userId, tripKey, city, source })
     .onConflictDoUpdate({
-      target: travelCityLabels.tripKey,
+      target: [travelCityLabels.userId, travelCityLabels.tripKey],
       set: { city, source, updatedAt: new Date() },
     });
 }

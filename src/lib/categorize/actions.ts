@@ -26,7 +26,7 @@ export async function recorrectCategoriesAction(): Promise<RecorrectActionResult
   if (!session) return { ok: false, error: "unauthenticated" };
   if (session.isGuest) return { ok: false, error: "guestReadOnly" };
   try {
-    const res = await recorrectCategories();
+    const res = await recorrectCategories(session.userId);
     revalidatePath("/transactions");
     return { ok: true, ...res };
   } catch (err) {
@@ -45,7 +45,7 @@ export async function countPendingCategorizationAction(): Promise<PendingCountRe
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
   try {
-    return { ok: true, count: await countPendingCategorization() };
+    return { ok: true, count: await countPendingCategorization(session.userId) };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "failed" };
   }
@@ -69,7 +69,7 @@ export async function categorizeBatchAction(opts: {
   if (!session) return { ok: false, error: "unauthenticated" };
   if (session.isGuest) return { ok: false, error: "guestReadOnly" };
   try {
-    const res = await categorizePendingBatch(opts);
+    const res = await categorizePendingBatch({ userId: session.userId, ...opts });
     if (!res.hasMore) revalidatePath("/transactions");
     return { ok: true, ...res };
   } catch (err) {

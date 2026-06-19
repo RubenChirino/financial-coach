@@ -3,6 +3,7 @@ import "server-only";
 import { db } from "@/db/client";
 import { transactions } from "@/db/schema";
 import type { LanguageModel } from "ai";
+import { eq } from "drizzle-orm";
 import { esRegion } from "./es-regions";
 import { type ResolvedCity, cacheCities, getCachedCities, resolveCitiesWithAi } from "./locations";
 import { isOnlinePayment } from "./online-merchants";
@@ -13,13 +14,14 @@ interface RawTx {
   merchantName: string | null;
 }
 
-async function loadDescriptions(): Promise<RawTx[]> {
+async function loadDescriptions(userId: number): Promise<RawTx[]> {
   return db
     .select({
       rawDescription: transactions.rawDescription,
       merchantName: transactions.merchantName,
     })
-    .from(transactions);
+    .from(transactions)
+    .where(eq(transactions.userId, userId));
 }
 
 interface PendingCity {
@@ -34,8 +36,8 @@ interface PendingCity {
  * (their embedded city is a billing location, not a place visited). Sorted by
  * key for stable cursor paging.
  */
-async function pendingCityKeys(): Promise<PendingCity[]> {
-  const rows = await loadDescriptions();
+async function pendingCityKeys(userId: number): Promise<PendingCity[]> {
+  const rows = await loadDescriptions(userId);
   const byKey = new Map<string, string>();
   for (const r of rows) {
     if (isOnlinePayment(r.merchantName, r.rawDescription)) continue;
@@ -65,8 +67,8 @@ function needsResolution(
 }
 
 /** Total distinct places the "detect trips" run will scan (sizes the bar). */
-export async function countTravelCities(): Promise<number> {
-  return (await pendingCityKeys()).length;
+export async function countTravelCities(userId: number): Promise<number> {
+  return (await pendingCityKeys(userId)).length;
 }
 
 export interface CityBatchResult {
@@ -87,6 +89,7 @@ export interface CityBatchResult {
  * advances the cursor (resolving nothing) so the run completes.
  */
 export async function resolveCityBatch(opts: {
+  userId: number;
   afterKey?: string;
   limit?: number;
   model: LanguageModel | null;
@@ -95,7 +98,7 @@ export async function resolveCityBatch(opts: {
   const afterKey = opts.afterKey ?? "";
   const limit = Math.max(1, Math.min(opts.limit ?? 20, 100));
 
-  const all = await pendingCityKeys();
+  const all = await pendingCityKeys(opts.userId);
   const slice = all.filter((c) => c.key > afterKey).slice(0, limit);
   if (slice.length === 0) {
     return { scanned: 0, resolved: 0, lastKey: afterKey, hasMore: false, aiUsed: false };
@@ -139,8 +142,8 @@ export interface HomeGuess {
  * it. Works without AI because the home country is dominated by explicit
  * "City Cc" descriptions. Returns nulls when there's no location signal at all.
  */
-export async function inferHomeLocation(): Promise<HomeGuess> {
-  const rows = await loadDescriptions();
+export async function inferHomeLocation(userId: number): Promise<HomeGuess> {
+  const rows = await loadDescriptions(userId);
 
   // First gather explicit codes + cities, then enrich city-only with the cache.
   const parsed = rows.map((r) => parseLocation(r.rawDescription));

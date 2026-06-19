@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/db/client";
 import { advisorConversations, advisorMessages } from "@/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 export interface ConversationSummary {
   id: number;
@@ -21,7 +21,25 @@ export interface AdvisorMessageRow {
   createdAt: number;
 }
 
-export async function listConversations(): Promise<ConversationSummary[]> {
+/**
+ * Whether `conversationId` belongs to `userId`. Used to gate writes to a
+ * caller-supplied conversation id (the chat route accepts one from the client).
+ */
+export async function userOwnsConversation(
+  userId: number,
+  conversationId: number,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: advisorConversations.id })
+    .from(advisorConversations)
+    .where(
+      and(eq(advisorConversations.id, conversationId), eq(advisorConversations.userId, userId)),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function listConversations(userId: number): Promise<ConversationSummary[]> {
   const rows = await db
     .select({
       id: advisorConversations.id,
@@ -29,6 +47,7 @@ export async function listConversations(): Promise<ConversationSummary[]> {
       updatedAt: advisorConversations.updatedAt,
     })
     .from(advisorConversations)
+    .where(eq(advisorConversations.userId, userId))
     .orderBy(desc(advisorConversations.updatedAt));
 
   const summaries: ConversationSummary[] = [];
@@ -48,12 +67,30 @@ export async function listConversations(): Promise<ConversationSummary[]> {
 }
 
 export async function getConversationMessages(
+  userId: number,
   conversationId: number,
 ): Promise<AdvisorMessageRow[]> {
+  // Ownership gate: only the owner of the conversation can read its messages.
+  // `advisorMessages` carries no `userId` of its own — it inherits ownership
+  // through its parent conversation, so we join and filter there.
   const rows = await db
-    .select()
+    .select({
+      id: advisorMessages.id,
+      conversationId: advisorMessages.conversationId,
+      role: advisorMessages.role,
+      content: advisorMessages.content,
+      tokenCount: advisorMessages.tokenCount,
+      providerUsed: advisorMessages.providerUsed,
+      createdAt: advisorMessages.createdAt,
+    })
     .from(advisorMessages)
-    .where(eq(advisorMessages.conversationId, conversationId))
+    .innerJoin(advisorConversations, eq(advisorConversations.id, advisorMessages.conversationId))
+    .where(
+      and(
+        eq(advisorMessages.conversationId, conversationId),
+        eq(advisorConversations.userId, userId),
+      ),
+    )
     .orderBy(advisorMessages.createdAt, advisorMessages.id);
   return rows.map((r) => ({
     id: r.id,
@@ -66,10 +103,10 @@ export async function getConversationMessages(
   }));
 }
 
-export async function createConversation(title = ""): Promise<number> {
+export async function createConversation(userId: number, title = ""): Promise<number> {
   const inserted = await db
     .insert(advisorConversations)
-    .values({ title })
+    .values({ userId, title })
     .returning({ id: advisorConversations.id });
   const id = inserted[0]?.id;
   if (!id) throw new Error("failed to create conversation");
@@ -123,6 +160,10 @@ export async function maybeAutoTitle(conversationId: number, firstUserMsg: strin
     .where(eq(advisorConversations.id, conversationId));
 }
 
-export async function deleteConversation(conversationId: number): Promise<void> {
-  await db.delete(advisorConversations).where(eq(advisorConversations.id, conversationId));
+export async function deleteConversation(userId: number, conversationId: number): Promise<void> {
+  await db
+    .delete(advisorConversations)
+    .where(
+      and(eq(advisorConversations.id, conversationId), eq(advisorConversations.userId, userId)),
+    );
 }

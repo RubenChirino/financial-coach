@@ -35,7 +35,7 @@ export async function setCityAction(tripKey: string, city: string): Promise<City
     return { ok: false, error: "invalidCity" };
   }
 
-  await upsertCity(tripKey, trimmed, "user");
+  await upsertCity(session.userId, tripKey, trimmed, "user");
   revalidatePath("/travels");
   return { ok: true, city: trimmed };
 }
@@ -60,14 +60,18 @@ export async function guessCityAction(tripKey: string): Promise<CityActionResult
   }
 
   // A city the user set by hand always wins — don't spend an LLM call.
-  const existing = await getCityLabels([tripKey]);
+  const existing = await getCityLabels(session.userId, [tripKey]);
   if (existing.get(tripKey)?.source === "user") {
     return { ok: true, city: existing.get(tripKey)?.city ?? null };
   }
 
-  const trip = (await listTravels({ homeCountry: user.homeCountry, homeCity: user.homeCity })).find(
-    (t) => t.tripKey === tripKey,
-  );
+  const trip = (
+    await listTravels({
+      userId: session.userId,
+      homeCountry: user.homeCountry,
+      homeCity: user.homeCity,
+    })
+  ).find((t) => t.tripKey === tripKey);
   if (!trip) return { ok: false, error: "tripNotFound" };
 
   const { model } = getLanguageModel(prefs);
@@ -78,7 +82,7 @@ export async function guessCityAction(tripKey: string): Promise<CityActionResult
     merchantNames: trip.merchantNames,
   });
 
-  if (city) await upsertCity(tripKey, city, "ai");
+  if (city) await upsertCity(session.userId, tripKey, city, "ai");
   revalidatePath("/travels");
   return { ok: true, city };
 }
@@ -96,7 +100,7 @@ export async function countTravelCitiesAction(): Promise<TravelCountResult> {
   const user = await loadUser(session.userId);
   if (!user?.homeCountry) return { ok: true, count: 0 };
   try {
-    return { ok: true, count: await countTravelCities() };
+    return { ok: true, count: await countTravelCities(session.userId) };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "failed" };
   }
@@ -132,6 +136,7 @@ export async function resolveTravelCitiesBatchAction(opts: {
 
   try {
     const res = await resolveCityBatch({
+      userId: session.userId,
       afterKey: opts.afterKey,
       limit: opts.limit,
       model,

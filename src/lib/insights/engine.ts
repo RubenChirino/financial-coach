@@ -38,8 +38,8 @@ interface RuleResult {
 
 // ─── Rules ────────────────────────────────────────────────────────────────────
 
-async function ruleNeedsReview(locale: string): Promise<RuleResult[]> {
-  const count = await getNeedsReviewCount();
+async function ruleNeedsReview(userId: number, locale: string): Promise<RuleResult[]> {
+  const count = await getNeedsReviewCount(userId);
   if (count === 0) return [];
   const es = locale === "es";
   return [
@@ -58,8 +58,8 @@ async function ruleNeedsReview(locale: string): Promise<RuleResult[]> {
   ];
 }
 
-async function ruleOverspend(locale: string): Promise<RuleResult[]> {
-  const cats = await getTopCategoriesThisMonth(12, 0);
+async function ruleOverspend(userId: number, locale: string): Promise<RuleResult[]> {
+  const cats = await getTopCategoriesThisMonth(userId, 12, 0);
   const results: RuleResult[] = [];
   const es = locale === "es";
   for (const c of cats) {
@@ -83,8 +83,8 @@ async function ruleOverspend(locale: string): Promise<RuleResult[]> {
   return results;
 }
 
-async function ruleOnTrack(locale: string): Promise<RuleResult[]> {
-  const thisMonth = await getMonthSummary(0);
+async function ruleOnTrack(userId: number, locale: string): Promise<RuleResult[]> {
+  const thisMonth = await getMonthSummary(userId, 0);
   if (thisMonth.netCents <= 0) return [];
   const es = locale === "es";
   const saved = (thisMonth.netCents / 100).toLocaleString(es ? "es-ES" : "en-GB", {
@@ -106,7 +106,7 @@ async function ruleOnTrack(locale: string): Promise<RuleResult[]> {
   ];
 }
 
-async function ruleLowBalance(locale: string): Promise<RuleResult[]> {
+async function ruleLowBalance(userId: number, locale: string): Promise<RuleResult[]> {
   const LOW_THRESHOLD_CENTS = 10000; // €100
   const rows = await db
     .select({ id: accounts.id, name: accounts.name, balanceCents: accounts.balanceCents })
@@ -114,6 +114,7 @@ async function ruleLowBalance(locale: string): Promise<RuleResult[]> {
     .innerJoin(requisitions, eq(accounts.requisitionId, requisitions.id))
     .where(
       and(
+        eq(accounts.userId, userId),
         eq(requisitions.status, "linked"),
         lt(accounts.balanceCents, LOW_THRESHOLD_CENTS),
         gte(accounts.balanceCents, 0),
@@ -142,7 +143,7 @@ async function ruleLowBalance(locale: string): Promise<RuleResult[]> {
   return results;
 }
 
-async function ruleGoalNear(locale: string): Promise<RuleResult[]> {
+async function ruleGoalNear(userId: number, locale: string): Promise<RuleResult[]> {
   // Import dynamically to avoid circular dep
   const { goals: goalsTable } = await import("@/db/schema");
   const nearGoals = await db
@@ -150,6 +151,7 @@ async function ruleGoalNear(locale: string): Promise<RuleResult[]> {
     .from(goalsTable)
     .where(
       and(
+        eq(goalsTable.userId, userId),
         // ≥ 80% funded
         sql`CAST(${goalsTable.savedCents} AS REAL) / CAST(${goalsTable.targetCents} AS REAL) >= 0.8`,
         sql`CAST(${goalsTable.savedCents} AS REAL) / CAST(${goalsTable.targetCents} AS REAL) < 1.0`,
@@ -188,24 +190,30 @@ async function ruleGoalNear(locale: string): Promise<RuleResult[]> {
  *
  * Safe to call multiple times; cost is a handful of SELECT + DELETE + INSERT.
  */
-export async function runInsightEngine(locale = "es"): Promise<void> {
-  // 1. Prune dismissed older than 30 days.
+export async function runInsightEngine(userId: number, locale = "es"): Promise<void> {
+  // 1. Prune this user's dismissed insights older than 30 days.
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   await db
     .delete(insights)
-    .where(and(isNotNull(insights.dismissedAt), lt(insights.dismissedAt, cutoff)));
+    .where(
+      and(
+        eq(insights.userId, userId),
+        isNotNull(insights.dismissedAt),
+        lt(insights.dismissedAt, cutoff),
+      ),
+    );
 
-  // 2. Delete all active (non-dismissed) insights to rederive.
-  await db.delete(insights).where(isNull(insights.dismissedAt));
+  // 2. Delete this user's active (non-dismissed) insights to rederive.
+  await db.delete(insights).where(and(eq(insights.userId, userId), isNull(insights.dismissedAt)));
 
-  // 3. Run all rules.
+  // 3. Run all rules (each scoped to this user).
   const all = (
     await Promise.all([
-      ruleNeedsReview(locale),
-      ruleOverspend(locale),
-      ruleOnTrack(locale),
-      ruleLowBalance(locale),
-      ruleGoalNear(locale),
+      ruleNeedsReview(userId, locale),
+      ruleOverspend(userId, locale),
+      ruleOnTrack(userId, locale),
+      ruleLowBalance(userId, locale),
+      ruleGoalNear(userId, locale),
     ])
   ).flat();
 
@@ -213,6 +221,7 @@ export async function runInsightEngine(locale = "es"): Promise<void> {
 
   await db.insert(insights).values(
     all.map((r) => ({
+      userId,
       kind: r.kind,
       entityId: r.entityId ?? null,
       title: r.title,
@@ -225,13 +234,13 @@ export async function runInsightEngine(locale = "es"): Promise<void> {
 }
 
 /**
- * Load active (non-dismissed) insights ordered by severity.
+ * Load this user's active (non-dismissed) insights ordered by severity.
  */
-export async function listActiveInsights() {
+export async function listActiveInsights(userId: number) {
   return db
     .select()
     .from(insights)
-    .where(isNull(insights.dismissedAt))
+    .where(and(eq(insights.userId, userId), isNull(insights.dismissedAt)))
     .orderBy(
       // warnings first, then positive, then info
       sql`CASE ${insights.severity}

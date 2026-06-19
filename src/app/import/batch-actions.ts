@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { accounts, importBatches, transactions } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { deleteImportBatch } from "@/lib/import/batches";
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export async function deleteImportBatchAction(
@@ -11,8 +12,9 @@ export async function deleteImportBatchAction(
 ): Promise<{ ok: boolean; deleted?: number; error?: string }> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
-  const { deleted } = await deleteImportBatch(batchId);
+  const { deleted } = await deleteImportBatch(session.userId, batchId);
   revalidatePath("/import");
   revalidatePath("/transactions");
   revalidatePath("/");
@@ -32,12 +34,17 @@ export async function resetAllTransactionsAction(): Promise<{
 }> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
-  const deleted = await db.delete(transactions).returning({ id: transactions.id });
-  await db.delete(importBatches);
-  // Zero every stored account balance — balances are cached on the account row
-  // and won't auto-clear when transactions are removed.
-  await db.update(accounts).set({ balanceCents: 0 });
+  // Scoped to the current user: a reset must never touch another user's data.
+  const deleted = await db
+    .delete(transactions)
+    .where(eq(transactions.userId, session.userId))
+    .returning({ id: transactions.id });
+  await db.delete(importBatches).where(eq(importBatches.userId, session.userId));
+  // Zero this user's stored account balances — balances are cached on the account
+  // row and won't auto-clear when transactions are removed.
+  await db.update(accounts).set({ balanceCents: 0 }).where(eq(accounts.userId, session.userId));
 
   revalidatePath("/");
   revalidatePath("/banks");

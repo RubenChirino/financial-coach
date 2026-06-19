@@ -42,7 +42,7 @@ export default async function OpportunitiesPage() {
   const [t, locale, accountsTotal, profile] = await Promise.all([
     getTranslations("opportunities"),
     getLocale(),
-    getAccountsTotal(),
+    getAccountsTotal(session.userId),
     getInvestorProfile(session.userId),
   ]);
   const intlLocale = locale === "en" ? "en-US" : "es-ES";
@@ -51,6 +51,7 @@ export default async function OpportunitiesPage() {
     new Intl.DateTimeFormat(intlLocale, { month: "short", year: "numeric" }).format(d);
 
   const opportunities = await buildOpportunities({
+    userId: session.userId,
     fmt,
     fmtMonth,
     labels: {

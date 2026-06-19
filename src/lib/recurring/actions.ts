@@ -3,7 +3,7 @@
 import { db } from "@/db/client";
 import { recurringSubscriptions } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { detectRecurringSubscriptions } from "./detect";
 
@@ -22,7 +22,7 @@ export interface ActionResult {
 export async function runRecurringDetectionAction(): Promise<ActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
-  const detected = await detectRecurringSubscriptions();
+  const detected = await detectRecurringSubscriptions({ userId: session.userId });
   revalidatePath("/subscriptions");
   revalidatePath("/");
   return { ok: true, detected: detected.length };
@@ -42,7 +42,9 @@ export async function setSubscriptionActiveAction(
   await db
     .update(recurringSubscriptions)
     .set({ isActive })
-    .where(eq(recurringSubscriptions.id, id));
+    .where(
+      and(eq(recurringSubscriptions.id, id), eq(recurringSubscriptions.userId, session.userId)),
+    );
   revalidatePath("/subscriptions");
   revalidatePath("/");
   return { ok: true };

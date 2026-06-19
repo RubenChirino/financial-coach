@@ -1,7 +1,7 @@
 import "server-only";
 
 import { db } from "@/db/client";
-import { categories, transactions } from "@/db/schema";
+import { budgets, categories, transactions } from "@/db/schema";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 
 export interface CategoryWithSpend {
@@ -24,7 +24,7 @@ function monthStart(): { start: Date; end: Date } {
   return { start, end };
 }
 
-export async function listCategoriesWithSpend(): Promise<CategoryWithSpend[]> {
+export async function listCategoriesWithSpend(userId: number): Promise<CategoryWithSpend[]> {
   const { start, end } = monthStart();
   const rows = await db
     .select({
@@ -34,7 +34,7 @@ export async function listCategoriesWithSpend(): Promise<CategoryWithSpend[]> {
       nameEn: categories.nameEn,
       icon: categories.icon,
       color: categories.color,
-      budgetMonthlyCents: categories.budgetMonthlyCents,
+      budgetMonthlyCents: budgets.monthlyCents,
       sortOrder: categories.sortOrder,
       spentThisMonthCents: sql<number>`coalesce(sum(case when ${transactions.amountCents} < 0 and ${transactions.bookingDate} >= ${start.getTime()} and ${transactions.bookingDate} < ${end.getTime()} then -${transactions.amountCents} else 0 end), 0)`,
       txCount: sql<number>`count(case when ${transactions.bookingDate} >= ${start.getTime()} and ${transactions.bookingDate} < ${end.getTime()} then 1 else null end)`,
@@ -44,10 +44,12 @@ export async function listCategoriesWithSpend(): Promise<CategoryWithSpend[]> {
       transactions,
       and(
         eq(transactions.categoryId, categories.id),
+        eq(transactions.userId, userId),
         gte(transactions.bookingDate, start),
         lt(transactions.bookingDate, end),
       ),
     )
+    .leftJoin(budgets, and(eq(budgets.categoryId, categories.id), eq(budgets.userId, userId)))
     .groupBy(categories.id)
     .orderBy(categories.sortOrder, categories.nameEs);
 

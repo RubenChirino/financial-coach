@@ -24,7 +24,8 @@ export default async function TransactionsPage({
 }: {
   searchParams?: Promise<{ review?: string; q?: string; heatmapYear?: string; dates?: string }>;
 }) {
-  if (!(await getCurrentSession())) redirect("/lock");
+  const session = await getCurrentSession();
+  if (!session) redirect("/lock");
 
   const sp = (await searchParams) ?? {};
   const reviewOnly = sp.review === "1";
@@ -49,14 +50,15 @@ export default async function TransactionsPage({
       getTranslations("nav"),
       getLocale(),
       listTransactions({
+        userId: session.userId,
         needsReviewOnly: reviewOnly,
         query: searchQuery || undefined,
         dates: selectedDates.length ? selectedDates : undefined,
       }),
       listCategoryOptionsAction(),
-      getAccountsTotal(),
-      getSpendingHeatmap(heatmapYearArg),
-      getTransactionStats(),
+      getAccountsTotal(session.userId),
+      getSpendingHeatmap(session.userId, heatmapYearArg),
+      getTransactionStats(session.userId),
     ]);
   // The list above is only the FIRST PAGE — show the real total in the header
   // (otherwise users think their import didn't work).

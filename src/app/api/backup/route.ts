@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import { localDbPath } from "@/db/client";
 import { getCurrentSession } from "@/lib/auth/session";
+import { env } from "@/lib/env";
 import { guardCsrf } from "@/lib/security/csrf";
 import { type NextRequest, NextResponse } from "next/server";
 
@@ -24,6 +25,20 @@ export async function GET(req: NextRequest) {
 
   const session = await getCurrentSession();
   if (!session) return new NextResponse("unauthorized", { status: 401 });
+
+  // This endpoint downloads the ENTIRE database file — every user's rows, not
+  // just the caller's. It is a single-user / self-hosted operator tool. In
+  // multi-user (oauth) mode it would be a cross-user data breach, and a guest
+  // must never be able to exfiltrate the database. Disable it for both.
+  if (env().AUTH_MODE === "oauth" || session.isGuest) {
+    return new NextResponse(
+      JSON.stringify({
+        error: "not_available",
+        message: "Whole-database backup is only available in single-user (local) mode.",
+      }),
+      { status: 403, headers: { "content-type": "application/json" } },
+    );
+  }
 
   if (!localDbPath) {
     return NextResponse.json(

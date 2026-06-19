@@ -4,7 +4,7 @@ import { db } from "@/db/client";
 import { requisitions, transactions } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { categorizeBatchByRules } from "@/lib/categorize";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { DEMO_BANK_KEYS, type DemoBankKey, seedDemoBank, wipeAllDemoData } from "./seed";
 
 export interface DemoActionOk<T = undefined> {
@@ -26,15 +26,24 @@ export async function seedDemoBankAction(
     if (session.isGuest) return { ok: false, error: "guestReadOnly" };
     if (!DEMO_BANK_KEYS.includes(bank)) return { ok: false, error: "invalidBank" };
 
-    const { accountRowId, inserted } = await seedDemoBank(bank, session.encryptionKey);
+    const { accountRowId, inserted } = await seedDemoBank(
+      session.userId,
+      bank,
+      session.encryptionKey,
+    );
 
     // Re-categorize anything still missing a category via rules (seed provides
     // categoryIds for most rows already, but rules may refine).
     const uncategorized = await db
       .select({ id: transactions.id })
       .from(transactions)
-      .where(eq(transactions.accountId, accountRowId));
-    const ruleMatched = await categorizeBatchByRules(uncategorized.map((r) => r.id));
+      .where(
+        and(eq(transactions.userId, session.userId), eq(transactions.accountId, accountRowId)),
+      );
+    const ruleMatched = await categorizeBatchByRules(
+      session.userId,
+      uncategorized.map((r) => r.id),
+    );
 
     return { ok: true, data: { inserted, ruleMatched } };
   } catch (err) {
@@ -50,7 +59,7 @@ export async function wipeDemoDataAction(): Promise<
     const session = await getCurrentSession();
     if (!session) return { ok: false, error: "unauthenticated" };
     if (session.isGuest) return { ok: false, error: "guestReadOnly" };
-    const res = await wipeAllDemoData();
+    const res = await wipeAllDemoData(session.userId);
     return { ok: true, data: res };
   } catch (err) {
     console.warn("wipeDemoDataAction failed", err);
@@ -68,7 +77,7 @@ export async function hasDemoConnectionsAction(): Promise<boolean> {
   const rows = await db
     .select({ id: requisitions.id })
     .from(requisitions)
-    .where(eq(requisitions.provider, "demo"))
+    .where(and(eq(requisitions.userId, session.userId), eq(requisitions.provider, "demo")))
     .limit(1);
   return rows.length > 0;
 }

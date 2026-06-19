@@ -1,7 +1,7 @@
 import "server-only";
 
 import { db } from "@/db/client";
-import { categories, goals, transactions } from "@/db/schema";
+import { budgets, categories, goals, transactions } from "@/db/schema";
 import {
   getAccountsTotal,
   getMonthSummary,
@@ -99,10 +99,11 @@ function monthStartUTC(offset: number): Date {
  * latest one is in the current/future month, so the snapshot defaults to the
  * usual "current month" anchor.
  */
-async function latestDataMonthOffset(): Promise<number> {
+async function latestDataMonthOffset(userId: number): Promise<number> {
   const rows = await db
     .select({ latest: sql<number | null>`max(${transactions.bookingDate})` })
-    .from(transactions);
+    .from(transactions)
+    .where(eq(transactions.userId, userId));
   const ms = rows[0]?.latest;
   if (ms == null) return 0;
   const latest = new Date(Number(ms));
@@ -127,28 +128,29 @@ async function latestDataMonthOffset(): Promise<number> {
  * in the prompt of every chat turn — we re-build it per request rather than
  * trying to keep a stale snapshot.
  */
-export async function buildAdvisorContext(opts?: {
+export async function buildAdvisorContext(opts: {
+  /** Owner whose finances the context describes — every query is scoped to this user. */
+  userId: number;
   monthsBack?: number;
   topMerchantLimit?: number;
-  /** Required to load the user's investor profile. Optional — pass when known. */
-  userId?: number;
 }): Promise<AdvisorContext> {
-  const monthsBack = Math.max(1, Math.min(opts?.monthsBack ?? 3, 12));
-  const topMerchantLimit = Math.max(1, Math.min(opts?.topMerchantLimit ?? 10, 25));
+  const { userId } = opts;
+  const monthsBack = Math.max(1, Math.min(opts.monthsBack ?? 3, 12));
+  const topMerchantLimit = Math.max(1, Math.min(opts.topMerchantLimit ?? 10, 25));
 
-  const accountsTotal = await getAccountsTotal();
+  const accountsTotal = await getAccountsTotal(userId);
 
   // Anchor every spending window to the user's most recent month of data instead
   // of "today". If the latest transaction is months old (common after a one-off
   // CSV import of historical data), a fixed last-3-calendar-months window would
   // be empty and the coach would falsely report it has no data to work with.
-  const anchorOffset = await latestDataMonthOffset();
+  const anchorOffset = await latestDataMonthOffset(userId);
 
   const months: AdvisorMonth[] = [];
   for (let i = 0; i < monthsBack; i++) {
     const offset = anchorOffset - i;
-    const summary = await getMonthSummary(offset);
-    const cats = await getTopCategoriesThisMonth(8, offset);
+    const summary = await getMonthSummary(userId, offset);
+    const cats = await getTopCategoriesThisMonth(userId, 8, offset);
     months.push({
       month: summary.month,
       income: CENTS_TO_UNITS(summary.incomeCents),
@@ -164,18 +166,15 @@ export async function buildAdvisorContext(opts?: {
     });
   }
 
-  const [topMerchants, budgets, subscriptions, advisorGoals, profile, forecast] = await Promise.all(
-    [
-      selectTopMerchants(topMerchantLimit, anchorOffset),
-      selectBudgets(anchorOffset),
-      selectSubscriptions(),
-      selectGoals(),
-      opts?.userId != null
-        ? getInvestorProfile(opts.userId)
-        : Promise.resolve<InvestorProfile | null>(null),
-      getSpendingForecast({ horizonMonths: 3 }).catch(() => null),
-    ],
-  );
+  const [topMerchants, budgetRows, subscriptions, advisorGoals, profile, forecast] =
+    await Promise.all([
+      selectTopMerchants(userId, topMerchantLimit, anchorOffset),
+      selectBudgets(userId, anchorOffset),
+      selectSubscriptions(userId),
+      selectGoals(userId),
+      getInvestorProfile(userId).catch(() => null as InvestorProfile | null),
+      getSpendingForecast({ userId, horizonMonths: 3 }).catch(() => null),
+    ]);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -187,7 +186,7 @@ export async function buildAdvisorContext(opts?: {
     },
     months,
     topMerchants,
-    budgets,
+    budgets: budgetRows,
     subscriptions,
     goals: advisorGoals,
     investorProfile: profile ? summarizeProfileForLlm(profile) : null,
@@ -195,7 +194,7 @@ export async function buildAdvisorContext(opts?: {
   };
 }
 
-async function selectGoals(): Promise<AdvisorGoal[]> {
+async function selectGoals(userId: number): Promise<AdvisorGoal[]> {
   const rows = await db
     .select({
       title: goals.title,
@@ -204,7 +203,8 @@ async function selectGoals(): Promise<AdvisorGoal[]> {
       savedCents: goals.savedCents,
       deadline: goals.deadline,
     })
-    .from(goals);
+    .from(goals)
+    .where(eq(goals.userId, userId));
   const now = Date.now();
   return rows.map((r) => {
     const target = CENTS_TO_UNITS(r.targetCents);
@@ -224,8 +224,8 @@ async function selectGoals(): Promise<AdvisorGoal[]> {
   });
 }
 
-async function selectSubscriptions(): Promise<AdvisorSubscription[]> {
-  const rows = await listRecurringSubscriptions();
+async function selectSubscriptions(userId: number): Promise<AdvisorSubscription[]> {
+  const rows = await listRecurringSubscriptions(userId);
   return rows.map((s) => ({
     merchant: redactPII(s.merchantName),
     amountPerCharge: CENTS_TO_UNITS(s.averageAmountCents),
@@ -235,7 +235,11 @@ async function selectSubscriptions(): Promise<AdvisorSubscription[]> {
   }));
 }
 
-async function selectTopMerchants(limit: number, anchorOffset = 0): Promise<AdvisorMerchant[]> {
+async function selectTopMerchants(
+  userId: number,
+  limit: number,
+  anchorOffset = 0,
+): Promise<AdvisorMerchant[]> {
   // 3-month window ending at (and including) the anchor month.
   const start = monthStartUTC(anchorOffset - 2);
   const end = monthStartUTC(anchorOffset + 1);
@@ -251,6 +255,7 @@ async function selectTopMerchants(limit: number, anchorOffset = 0): Promise<Advi
     .leftJoin(categories, eq(categories.id, transactions.categoryId))
     .where(
       and(
+        eq(transactions.userId, userId),
         gte(transactions.bookingDate, start),
         lt(transactions.bookingDate, end),
         isNotNull(transactions.merchantName),
@@ -275,7 +280,7 @@ async function selectTopMerchants(limit: number, anchorOffset = 0): Promise<Advi
     .filter((m) => m.name && m.totalSpent > 0);
 }
 
-async function selectBudgets(anchorOffset = 0): Promise<AdvisorBudget[]> {
+async function selectBudgets(userId: number, anchorOffset = 0): Promise<AdvisorBudget[]> {
   const monthStart = monthStartUTC(anchorOffset);
   const monthEnd = monthStartUTC(anchorOffset + 1);
 
@@ -283,12 +288,16 @@ async function selectBudgets(anchorOffset = 0): Promise<AdvisorBudget[]> {
     .select({
       slug: categories.slug,
       nameEn: categories.nameEn,
-      budget: categories.budgetMonthlyCents,
+      budget: budgets.monthlyCents,
       spent: sql<number>`coalesce(sum(case when ${transactions.amountCents} < 0 and ${transactions.bookingDate} >= ${monthStart.getTime()} and ${transactions.bookingDate} < ${monthEnd.getTime()} then -${transactions.amountCents} else 0 end), 0)`,
     })
-    .from(categories)
-    .leftJoin(transactions, eq(transactions.categoryId, categories.id))
-    .where(isNotNull(categories.budgetMonthlyCents))
+    .from(budgets)
+    .innerJoin(categories, eq(categories.id, budgets.categoryId))
+    .leftJoin(
+      transactions,
+      and(eq(transactions.categoryId, categories.id), eq(transactions.userId, userId)),
+    )
+    .where(eq(budgets.userId, userId))
     .groupBy(categories.id);
 
   return rows

@@ -31,7 +31,7 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   // Fetch all transactions (no pagination limit for export).
-  const { rows } = await listTransactions({ limit: 100_000 });
+  const { rows } = await listTransactions({ userId: session.userId, limit: 100_000 });
 
   const header = [
     "date",

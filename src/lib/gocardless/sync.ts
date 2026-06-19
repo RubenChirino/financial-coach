@@ -59,6 +59,7 @@ export async function upsertInstitution(inst: Institution): Promise<number> {
 export async function createRequisition(
   client: GoCardlessClient,
   opts: {
+    userId: number;
     institution: Institution;
     redirectUrl: string;
     reference: string;
@@ -81,6 +82,7 @@ export async function createRequisition(
   const inserted = await db
     .insert(requisitions)
     .values({
+      userId: opts.userId,
       institutionId: institutionRowId,
       gocardlessRequisitionId: encryptedId,
       status: statusFromApi(req.status),
@@ -103,6 +105,7 @@ export async function createRequisition(
 export async function linkRequisitionAccounts(
   client: GoCardlessClient,
   opts: {
+    userId: number;
     requisitionRowId: number;
     gocardlessRequisitionId: string;
     encryptionKey: Buffer;
@@ -111,7 +114,10 @@ export async function linkRequisitionAccounts(
   const req = await client.getRequisition(opts.gocardlessRequisitionId);
   const status = statusFromApi(req.status);
 
-  await db.update(requisitions).set({ status }).where(eq(requisitions.id, opts.requisitionRowId));
+  await db
+    .update(requisitions)
+    .set({ status })
+    .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
 
   if (status !== "linked") return { accountRowIds: [] };
 
@@ -132,6 +138,7 @@ export async function linkRequisitionAccounts(
     const inserted = await db
       .insert(accounts)
       .values({
+        userId: opts.userId,
         requisitionId: opts.requisitionRowId,
         gocardlessAccountId: encryptedAccId,
         ibanLast4,
@@ -162,6 +169,7 @@ export interface SyncAccountResult {
 export async function syncAccountTransactions(
   client: GoCardlessClient,
   opts: {
+    userId: number;
     accountRowId: number;
     gocardlessAccountId: string;
     sinceDays?: number;
@@ -181,7 +189,7 @@ export async function syncAccountTransactions(
     await db
       .update(accounts)
       .set({ lastSyncedAt: new Date() })
-      .where(eq(accounts.id, opts.accountRowId));
+      .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
     return { inserted: 0, skipped: 0, insertedIds: [] };
   }
 
@@ -190,6 +198,7 @@ export async function syncAccountTransactions(
     .from(transactions)
     .where(
       and(
+        eq(transactions.userId, opts.userId),
         eq(transactions.accountId, opts.accountRowId),
         inArray(
           transactions.gocardlessTransactionId,
@@ -206,6 +215,7 @@ export async function syncAccountTransactions(
       .insert(transactions)
       .values(
         fresh.map((t) => ({
+          userId: opts.userId,
           accountId: opts.accountRowId,
           gocardlessTransactionId: t.externalId,
           bookingDate: t.bookingDate,
@@ -224,7 +234,7 @@ export async function syncAccountTransactions(
   await db
     .update(accounts)
     .set({ lastSyncedAt: new Date() })
-    .where(eq(accounts.id, opts.accountRowId));
+    .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
 
   return {
     inserted: fresh.length,

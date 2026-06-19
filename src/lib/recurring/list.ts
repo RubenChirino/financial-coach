@@ -18,7 +18,7 @@ export interface SubscriptionRow {
   categoryIcon: string | null;
 }
 
-export async function listRecurringSubscriptions(): Promise<SubscriptionRow[]> {
+export async function listRecurringSubscriptions(userId: number): Promise<SubscriptionRow[]> {
   const rows = await db
     .select({
       id: recurringSubscriptions.id,
@@ -39,7 +39,12 @@ export async function listRecurringSubscriptions(): Promise<SubscriptionRow[]> {
     // are stored with negative `averageAmountCents` and feed the forecast,
     // but they don't belong in the "subscriptions" list which the user reads
     // as "things charging me". Filter them out here.
-    .where(gt(recurringSubscriptions.averageAmountCents, 0))
+    .where(
+      and(
+        eq(recurringSubscriptions.userId, userId),
+        gt(recurringSubscriptions.averageAmountCents, 0),
+      ),
+    )
     // Active first, then by amount-per-month descending.
     .orderBy(
       desc(recurringSubscriptions.isActive),
@@ -66,7 +71,7 @@ export interface SubscriptionsTotals {
   monthlyTotalCents: number;
 }
 
-export async function getActiveSubscriptionsTotals(): Promise<SubscriptionsTotals> {
+export async function getActiveSubscriptionsTotals(userId: number): Promise<SubscriptionsTotals> {
   const rows = await db
     .select({
       averageAmountCents: recurringSubscriptions.averageAmountCents,
@@ -76,6 +81,7 @@ export async function getActiveSubscriptionsTotals(): Promise<SubscriptionsTotal
     .from(recurringSubscriptions)
     .where(
       and(
+        eq(recurringSubscriptions.userId, userId),
         eq(recurringSubscriptions.isActive, true),
         // Outflows only — see comment in `listRecurringSubscriptions`.
         gt(recurringSubscriptions.averageAmountCents, 0),

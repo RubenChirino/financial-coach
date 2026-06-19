@@ -3,7 +3,7 @@ import "server-only";
 import { db } from "@/db/client";
 import { transactions } from "@/db/schema";
 import { getAccountsTotal } from "@/lib/dashboard/summary";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { currencyToCountryCode, flagFromCode } from "./countries";
 import { esRegion } from "./es-regions";
 import { type ResolvedCity, getCachedCities } from "./locations";
@@ -146,12 +146,14 @@ function classifyPayment(
  * every call (not persisted) and returned newest-first.
  */
 export async function listTravels(opts: {
+  userId: number;
   homeCountry: string;
   homeCity?: string | null;
   homeCurrency?: string;
 }): Promise<Travel[]> {
+  const { userId } = opts;
   const homeCountry = opts.homeCountry.toUpperCase();
-  const homeCurrency = opts.homeCurrency ?? (await getAccountsTotal()).currency;
+  const homeCurrency = opts.homeCurrency ?? (await getAccountsTotal(userId)).currency;
 
   const rows = await db
     .select({
@@ -163,7 +165,7 @@ export async function listTravels(opts: {
       rawDescription: transactions.rawDescription,
     })
     .from(transactions)
-    .where(eq(transactions.isRecurring, false))
+    .where(and(eq(transactions.userId, userId), eq(transactions.isRecurring, false)))
     .orderBy(asc(transactions.bookingDate));
 
   const parsedByRow = rows.map((r) => parseLocation(r.rawDescription));

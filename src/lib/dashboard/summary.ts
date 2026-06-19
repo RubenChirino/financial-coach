@@ -1,7 +1,14 @@
 import "server-only";
 
 import { db } from "@/db/client";
-import { accounts, categories, institutions, requisitions, transactions } from "@/db/schema";
+import {
+  accounts,
+  budgets,
+  categories,
+  institutions,
+  requisitions,
+  transactions,
+} from "@/db/schema";
 import { and, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 
 export interface MonthSummary {
@@ -45,7 +52,7 @@ function monthRange(offset = 0): { start: Date; end: Date; label: string } {
   return { start, end, label };
 }
 
-export async function getMonthSummary(offset = 0): Promise<MonthSummary> {
+export async function getMonthSummary(userId: number, offset = 0): Promise<MonthSummary> {
   const { start, end, label } = monthRange(offset);
   const result = await db
     .select({
@@ -55,7 +62,13 @@ export async function getMonthSummary(offset = 0): Promise<MonthSummary> {
       currency: sql<string | null>`max(${transactions.currency})`,
     })
     .from(transactions)
-    .where(and(gte(transactions.bookingDate, start), lt(transactions.bookingDate, end)));
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        gte(transactions.bookingDate, start),
+        lt(transactions.bookingDate, end),
+      ),
+    );
 
   const r = result[0] ?? { income: 0, expense: 0, count: 0, currency: null };
   return {
@@ -69,6 +82,7 @@ export async function getMonthSummary(offset = 0): Promise<MonthSummary> {
 }
 
 export async function getTopCategoriesThisMonth(
+  userId: number,
   limit = 6,
   offset = 0,
 ): Promise<CategoryBreakdown[]> {
@@ -81,14 +95,16 @@ export async function getTopCategoriesThisMonth(
       nameEn: categories.nameEn,
       icon: categories.icon,
       color: categories.color,
-      budgetMonthlyCents: categories.budgetMonthlyCents,
+      budgetMonthlyCents: budgets.monthlyCents,
       spentCents: sql<number>`coalesce(sum(case when ${transactions.amountCents} < 0 then -${transactions.amountCents} else 0 end), 0)`,
       txCount: sql<number>`count(${transactions.id})`,
     })
     .from(transactions)
     .innerJoin(categories, eq(categories.id, transactions.categoryId))
+    .leftJoin(budgets, and(eq(budgets.categoryId, categories.id), eq(budgets.userId, userId)))
     .where(
       and(
+        eq(transactions.userId, userId),
         gte(transactions.bookingDate, start),
         lt(transactions.bookingDate, end),
         isNotNull(transactions.categoryId),
@@ -124,25 +140,25 @@ export async function getTopCategoriesThisMonth(
  */
 const accountIsVisible = sql`NOT (${accounts.balanceCents} = 0 AND NOT EXISTS (SELECT 1 FROM ${transactions} WHERE ${transactions.accountId} = ${accounts.id}))`;
 
-export async function getAccountsTotal(): Promise<AccountsTotal> {
+export async function getAccountsTotal(userId: number): Promise<AccountsTotal> {
   const rows = await db
     .select({
       balance: accounts.balanceCents,
       currency: accounts.currency,
     })
     .from(accounts)
-    .where(accountIsVisible);
+    .where(and(eq(accounts.userId, userId), accountIsVisible));
   if (rows.length === 0) return { totalCents: 0, currency: "EUR", accountCount: 0 };
   const total = rows.reduce((sum, r) => sum + (r.balance ?? 0), 0);
   const currency = rows[0]?.currency ?? "EUR";
   return { totalCents: total, currency, accountCount: rows.length };
 }
 
-export async function getNeedsReviewCount(): Promise<number> {
+export async function getNeedsReviewCount(userId: number): Promise<number> {
   const r = await db
     .select({ count: sql<number>`count(*)` })
     .from(transactions)
-    .where(eq(transactions.needsReview, true));
+    .where(and(eq(transactions.userId, userId), eq(transactions.needsReview, true)));
   return Number(r[0]?.count) || 0;
 }
 
@@ -159,6 +175,7 @@ export interface MonthFlowPoint {
  * ("Apr" / "abr") is ready to render without a client-side `Intl` pass.
  */
 export async function getMonthlyFlowHistory(
+  userId: number,
   months = 6,
   locale: "es" | "en" = "es",
 ): Promise<MonthFlowPoint[]> {
@@ -173,7 +190,13 @@ export async function getMonthlyFlowHistory(
         expense: sql<number>`coalesce(sum(case when ${transactions.amountCents} < 0 then ${transactions.amountCents} else 0 end), 0)`,
       })
       .from(transactions)
-      .where(and(gte(transactions.bookingDate, start), lt(transactions.bookingDate, end)));
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          gte(transactions.bookingDate, start),
+          lt(transactions.bookingDate, end),
+        ),
+      );
     const income = Number(r[0]?.income) || 0;
     const expense = Math.abs(Number(r[0]?.expense) || 0);
     out.push({
@@ -197,7 +220,7 @@ export interface AccountTile {
   currency: string;
 }
 
-export async function listAccountsWithInstitutions(): Promise<AccountTile[]> {
+export async function listAccountsWithInstitutions(userId: number): Promise<AccountTile[]> {
   const rows = await db
     .select({
       id: accounts.id,
@@ -211,7 +234,7 @@ export async function listAccountsWithInstitutions(): Promise<AccountTile[]> {
     .from(accounts)
     .innerJoin(requisitions, eq(requisitions.id, accounts.requisitionId))
     .innerJoin(institutions, eq(institutions.id, requisitions.institutionId))
-    .where(accountIsVisible)
+    .where(and(eq(accounts.userId, userId), accountIsVisible))
     .orderBy(desc(accounts.balanceCents));
   return rows;
 }
@@ -233,7 +256,7 @@ export interface InstitutionGroup {
 }
 
 /** Return accounts grouped by institution, ordered by total balance descending. */
-export async function listInstitutionGroups(): Promise<InstitutionGroup[]> {
+export async function listInstitutionGroups(userId: number): Promise<InstitutionGroup[]> {
   const rows = await db
     .select({
       accountId: accounts.id,
@@ -251,7 +274,7 @@ export async function listInstitutionGroups(): Promise<InstitutionGroup[]> {
     .from(accounts)
     .innerJoin(requisitions, eq(requisitions.id, accounts.requisitionId))
     .innerJoin(institutions, eq(institutions.id, requisitions.institutionId))
-    .where(accountIsVisible)
+    .where(and(eq(accounts.userId, userId), accountIsVisible))
     .orderBy(desc(accounts.balanceCents));
 
   const map = new Map<number, InstitutionGroup>();

@@ -1,6 +1,20 @@
 # Connecting your bank
 
-> _Accurate as of v0.2.0 (Phase 2). Screenshots live in `docs/screenshots/bank-*.png`._
+The app can pull your accounts and transactions from **four sources**, all of
+which land in the same tables and behave identically across the rest of the app
+(dashboard, categorization, predictions, …). Architecturally they sit behind one
+provider contract — see [`../ARCHITECTURE.md` §9](../ARCHITECTURE.md#9-bank-aggregation).
+
+| Source | Best for | Keys needed |
+|---|---|---|
+| **GoCardless** (this page) | Most EU/EEA + UK banks | `secret_id` / `secret_key` (free) |
+| **TrueLayer** | Banks with better Live coverage there (Santander ES, Revolut, Monzo) | Client ID / Secret, stored encrypted in-app — see [SETUP.md §6d](../SETUP.md#6d-alternative-connect-via-truelayer-santander-es-and-others) |
+| **Demo** | Exploring the app with synthetic data, no signup | None — just pick "Demo" from the welcome screen or Settings → Bank |
+| **CSV / XLSX import** | Banks not covered, or offline-first | None — drop a statement into **Settings → Import** |
+
+The rest of this page covers GoCardless, the primary provider.
+
+## GoCardless
 
 We use the **GoCardless Bank Account Data API** (formerly Nordigen) — a PSD2 aggregation provider that covers most banks in Spain and the rest of the EU/EEA and UK.
 

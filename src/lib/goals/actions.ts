@@ -4,7 +4,7 @@ import { db } from "@/db/client";
 import { goals } from "@/db/schema";
 import type { Goal } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { recomputeAllGoalsProgress } from "./auto-track";
 
 export interface GoalActionOk<T = undefined> {
@@ -31,7 +31,11 @@ async function requireSession() {
 export async function listGoalsAction(): Promise<Goal[]> {
   const session = await getCurrentSession();
   if (!session) return [];
-  return db.select().from(goals).orderBy(desc(goals.createdAt));
+  return db
+    .select()
+    .from(goals)
+    .where(eq(goals.userId, session.userId))
+    .orderBy(desc(goals.createdAt));
 }
 
 // ---------------------------------------------------------------------------
@@ -52,7 +56,7 @@ export async function createGoalAction(
   input: CreateGoalInput,
 ): Promise<GoalActionResult<{ id: number }>> {
   try {
-    await requireSession();
+    const session = await requireSession();
 
     const title = input.title.trim();
     if (!title) return { ok: false, error: "missingTitle" };
@@ -62,6 +66,7 @@ export async function createGoalAction(
     const inserted = await db
       .insert(goals)
       .values({
+        userId: session.userId,
         title,
         emoji: input.emoji || "🎯",
         targetCents: input.targetCents,
@@ -97,7 +102,7 @@ export interface UpdateGoalInput {
 
 export async function updateGoalAction(input: UpdateGoalInput): Promise<GoalActionResult> {
   try {
-    await requireSession();
+    const session = await requireSession();
 
     const title = input.title.trim();
     if (!title) return { ok: false, error: "missingTitle" };
@@ -115,7 +120,7 @@ export async function updateGoalAction(input: UpdateGoalInput): Promise<GoalActi
         notes: input.notes?.trim() || null,
         updatedAt: new Date(),
       })
-      .where(eq(goals.id, input.id));
+      .where(and(eq(goals.id, input.id), eq(goals.userId, session.userId)));
 
     return { ok: true };
   } catch (err) {
@@ -132,13 +137,13 @@ export async function updateGoalProgressAction(
   savedCents: number,
 ): Promise<GoalActionResult> {
   try {
-    await requireSession();
+    const session = await requireSession();
     if (savedCents < 0) return { ok: false, error: "invalidSaved" };
 
     const row = await db
       .select({ targetCents: goals.targetCents })
       .from(goals)
-      .where(eq(goals.id, id))
+      .where(and(eq(goals.id, id), eq(goals.userId, session.userId)))
       .limit(1);
     if (!row[0]) return { ok: false, error: "notFound" };
 
@@ -148,7 +153,7 @@ export async function updateGoalProgressAction(
         savedCents: Math.min(savedCents, row[0].targetCents),
         updatedAt: new Date(),
       })
-      .where(eq(goals.id, id));
+      .where(and(eq(goals.id, id), eq(goals.userId, session.userId)));
 
     return { ok: true };
   } catch (err) {
@@ -170,8 +175,8 @@ export async function recomputeGoalsProgressAction(): Promise<
   GoalActionResult<{ updated: number }>
 > {
   try {
-    await requireSession();
-    const updated = await recomputeAllGoalsProgress();
+    const session = await requireSession();
+    const updated = await recomputeAllGoalsProgress(session.userId);
     return { ok: true, data: { updated } };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "unknown" };
@@ -180,8 +185,8 @@ export async function recomputeGoalsProgressAction(): Promise<
 
 export async function deleteGoalAction(id: number): Promise<GoalActionResult> {
   try {
-    await requireSession();
-    await db.delete(goals).where(eq(goals.id, id));
+    const session = await requireSession();
+    await db.delete(goals).where(and(eq(goals.id, id), eq(goals.userId, session.userId)));
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "unknown" };
