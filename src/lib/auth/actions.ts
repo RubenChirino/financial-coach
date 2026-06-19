@@ -136,6 +136,18 @@ export async function unlockWithPinAction(formData: FormData): Promise<ActionRes
 }
 
 export async function lockAction(): Promise<void> {
+  // A guest is authenticated by OUR `fc_session` DB session + cookie, never an
+  // Auth.js JWT — even in oauth mode. So tear that down directly. Auth.js
+  // `signOut()` would find no JWT to clear and leave the guest cookie in place,
+  // which is exactly the "guest can't log out" bug.
+  const session = await getCurrentSession();
+  if (session?.isGuest) {
+    const store = await cookies();
+    await destroySession(store.get(SESSION_COOKIE)?.value);
+    await clearSessionCookie();
+    redirect("/lock");
+  }
+
   // OAuth-mode sign-out goes through Auth.js so it can clear the JWT cookie
   // and (in providers that support it) the upstream session. PIN-mode
   // sign-out destroys our DB session row and clears `fc_session`.
