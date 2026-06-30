@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/db/client";
 import { budgets, categories, transactions } from "@/db/schema";
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, sql } from "drizzle-orm";
 
 export interface CategoryWithSpend {
   id: number;
@@ -47,6 +47,7 @@ export async function listCategoriesWithSpend(userId: number): Promise<CategoryW
         eq(transactions.userId, userId),
         gte(transactions.bookingDate, start),
         lt(transactions.bookingDate, end),
+        isNull(transactions.transferGroupId),
       ),
     )
     .leftJoin(budgets, and(eq(budgets.categoryId, categories.id), eq(budgets.userId, userId)))

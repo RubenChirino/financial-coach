@@ -14,6 +14,7 @@ import { type DashboardVariant, VariantSwitcher } from "@/components/dashboard/v
 import { EmptyState } from "@/components/empty-state";
 import { GuestWelcomeDialog } from "@/components/guest/guest-welcome-dialog";
 import { Button } from "@/components/ui/button";
+import { getNetWorthSeries } from "@/lib/accounts/history";
 import { getCurrentSession } from "@/lib/auth/session";
 import { userExists } from "@/lib/auth/user";
 import {
@@ -47,6 +48,27 @@ function fmtAmount(cents: number, currency: string, locale: string, round = fals
     currency,
     maximumFractionDigits: 0,
   }).format(cents / 100);
+}
+
+/**
+ * Net-worth sparkline values. Prefers the real daily snapshot series once we
+ * have ≥2 points; otherwise reconstructs the last few months by walking back
+ * from the current balance and subtracting each prior month's net flow
+ * (directionally truthful, not a true daily snapshot).
+ */
+function buildNetWorthSpark(
+  seriesPoints: { netCents: number }[],
+  totalCents: number,
+  monthlyFlow: { netCents: number }[],
+): number[] {
+  if (seriesPoints.length >= 2) return seriesPoints.map((p) => p.netCents);
+  const points: number[] = [totalCents];
+  let running = totalCents;
+  for (let i = monthlyFlow.length - 1; i >= 0; i--) {
+    running -= monthlyFlow[i]?.netCents ?? 0;
+    points.push(running);
+  }
+  return points.reverse();
 }
 
 export default async function DashboardPage({
@@ -87,6 +109,7 @@ export default async function DashboardPage({
     monthlyFlow,
     accountTiles,
     activeInsights,
+    netWorthSeries,
   ] = await Promise.all([
     getAccountsTotal(session.userId),
     getMonthSummary(session.userId, 0),
@@ -98,6 +121,7 @@ export default async function DashboardPage({
     getMonthlyFlowHistory(session.userId, 6, locale),
     listAccountsWithInstitutions(session.userId),
     listActiveInsights(session.userId),
+    getNetWorthSeries(session.userId, { days: 180 }),
   ]);
 
   const guestDialog = (
@@ -137,21 +161,12 @@ export default async function DashboardPage({
   const savedThisMonthCents = thisMonth.netCents;
   const savedLastMonthCents = lastMonth.netCents;
 
-  // Net-worth sparkline: reconstruct the last 6 months by walking back from
-  // the current balance and subtracting each prior month's net. It's not a
-  // daily snapshot (we don't persist those) but it's directionally truthful.
-  const sparkValues: number[] = (() => {
-    const flow = monthlyFlow; // oldest → newest
-    const points: number[] = [];
-    let running = accountsTotal.totalCents;
-    // Push "today" first, then walk back.
-    points.push(running);
-    for (let i = flow.length - 1; i >= 0; i--) {
-      running -= flow[i]?.netCents ?? 0;
-      points.push(running);
-    }
-    return points.reverse();
-  })();
+  // Net-worth sparkline (real snapshots when available; see helper).
+  const sparkValues = buildNetWorthSpark(
+    netWorthSeries.points,
+    accountsTotal.totalCents,
+    monthlyFlow,
+  );
 
   // Delta vs. last month — compare this-month savings to last-month savings,
   // as a percentage of last month (absolute fallback when last month is zero).

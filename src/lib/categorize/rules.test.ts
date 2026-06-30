@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type RuleRow, matchRule } from "./rules";
+import { type RuleRow, deriveRulePattern, matchRule } from "./rules";
 
 const r = (
   id: number,
@@ -87,5 +87,31 @@ describe("matchRule", () => {
     const rules = [r(1, "merchant_exact", "anything", 10)];
     const hit = matchRule({ merchantName: null, rawDescription: "anything" }, rules);
     expect(hit).toBeNull();
+  });
+});
+
+describe("deriveRulePattern", () => {
+  it("reduces a noisy description to a lowercase merchant token", () => {
+    expect(deriveRulePattern("Compra Mercadona, Madrid", "x")).toBe("mercadona");
+  });
+
+  it("falls back to the raw description when no merchant name", () => {
+    expect(deriveRulePattern(null, "Compra Netflix.com, Tarjeta 5489")).toBe("netflix.com");
+  });
+
+  it("returns null when nothing usable (too short) remains", () => {
+    expect(deriveRulePattern("AB", "AB")).toBeNull();
+    expect(deriveRulePattern(null, "")).toBeNull();
+  });
+
+  it("produces a pattern that matches future transactions via a contains rule", () => {
+    const pattern = deriveRulePattern("Compra Mercadona, Madrid", "x");
+    expect(pattern).not.toBeNull();
+    const rules = [r(1, "contains", pattern as string, 10, 5)];
+    const hit = matchRule(
+      { merchantName: null, rawDescription: "PAGO TARJETA MERCADONA VALENCIA" },
+      rules,
+    );
+    expect(hit?.id).toBe(1);
   });
 });

@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `digest_email_opt_in` integer DEFAULT false NOT NULL;

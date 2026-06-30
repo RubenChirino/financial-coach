@@ -1,7 +1,7 @@
 "use server";
 
 import { getCurrentSession } from "@/lib/auth/session";
-import { getUser, updateUserCurrency, updateUserLlm } from "@/lib/auth/user";
+import { getUser, updateUserCurrency, updateUserDigestOptIn, updateUserLlm } from "@/lib/auth/user";
 import type { LlmProvider } from "@/lib/llm/provider";
 import { revalidatePath } from "next/cache";
 
@@ -47,4 +47,16 @@ export async function updateLlmAction(provider: string, model: string): Promise<
   await updateUserLlm(user.id, provider as LlmProvider, trimmedModel);
   revalidatePath("/settings");
   revalidatePath("/advisor");
+}
+
+export async function updateDigestOptInAction(optIn: boolean): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) throw new Error("Not authenticated");
+  if (session.isGuest) throw new Error("guestReadOnly");
+
+  const user = await getUser();
+  if (!user) throw new Error("User not found");
+
+  await updateUserDigestOptIn(user.id, optIn);
+  revalidatePath("/settings");
 }

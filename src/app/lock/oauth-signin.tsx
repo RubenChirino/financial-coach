@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { SubmitButton } from "./submit-button";
 
 /**
  * OAuth sign-in panel rendered on /lock when AUTH_MODE=oauth.
@@ -39,13 +40,11 @@ export function OAuthSignin({
             await signIn("google", { redirectTo });
           }}
         >
-          <button
-            type="submit"
+          <SubmitButton
+            icon={<GoogleMark />}
+            label={labels.withGoogle}
             className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-[color:var(--border-default)] bg-white px-4 py-2.5 text-[14px] font-medium text-gray-900 shadow-sm hover:bg-gray-50"
-          >
-            <GoogleMark />
-            {labels.withGoogle}
-          </button>
+          />
         </form>
       ) : null}
 
@@ -57,13 +56,11 @@ export function OAuthSignin({
             await signIn("microsoft-entra-id", { redirectTo });
           }}
         >
-          <button
-            type="submit"
+          <SubmitButton
+            icon={<MicrosoftMark />}
+            label={labels.withMicrosoft}
             className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-[color:var(--border-default)] bg-white px-4 py-2.5 text-[14px] font-medium text-gray-900 shadow-sm hover:bg-gray-50"
-          >
-            <MicrosoftMark />
-            {labels.withMicrosoft}
-          </button>
+          />
         </form>
       ) : null}
 
@@ -75,13 +72,11 @@ export function OAuthSignin({
             await signIn("github", { redirectTo });
           }}
         >
-          <button
-            type="submit"
+          <SubmitButton
+            icon={<GitHubMark />}
+            label={labels.withGitHub}
             className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-[color:var(--border-default)] bg-[#24292F] px-4 py-2.5 text-[14px] font-medium text-white shadow-sm hover:bg-[#2d3338]"
-          >
-            <GitHubMark />
-            {labels.withGitHub}
-          </button>
+          />
         </form>
       ) : null}
 
@@ -98,13 +93,11 @@ export function OAuthSignin({
           await enterGuestModeAction();
         }}
       >
-        <button
-          type="submit"
+        <SubmitButton
+          icon={<GuestMark />}
+          label={labels.guest}
           className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-[color:var(--border-default)] bg-transparent px-4 py-2.5 text-[14px] font-medium text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-app)]"
-        >
-          <GuestMark />
-          {labels.guest}
-        </button>
+        />
         <p className="mt-1.5 text-center text-[11px] text-[color:var(--text-tertiary)]">
           {labels.guestHint}
         </p>

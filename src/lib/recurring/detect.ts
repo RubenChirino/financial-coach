@@ -188,12 +188,23 @@ interface DetectOptions {
  * heuristics are removed entirely (rather than left in an inconsistent state).
  * If the user has manually toggled `isActive` in the future we'll need to
  * preserve that — for now there's no UI for it.
+ *
+ * `lookbackDays` defaults to 270 (~9 months), not the cadence span itself.
+ * `MIN_OCCURRENCES` is evaluated only on transactions inside this window, so a
+ * monthly subscription that quietly lapsed needs at least 3 of its charges to
+ * still fall within it — with a 180-day window, a series whose last charge was
+ * more than ~150 days ago keeps only 1-2 charges in range and silently stops
+ * being detected at all (not just marked inactive). 270 days gives a monthly
+ * series several months of slack after it stops before it drops out of view
+ * entirely; it still won't catch quarterly/yearly cadences reliably (those
+ * need a much longer window to accumulate 3 occurrences) — pass a larger
+ * `lookbackDays` explicitly if that's needed.
  */
 export async function detectRecurringSubscriptions(
   opts: DetectOptions,
 ): Promise<DetectedSubscription[]> {
   const { userId } = opts;
-  const lookbackDays = opts.lookbackDays ?? 180;
+  const lookbackDays = opts.lookbackDays ?? 270;
   const now = opts.now ?? new Date();
   const since = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
 

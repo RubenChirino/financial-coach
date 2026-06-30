@@ -1,5 +1,6 @@
 "use client";
 
+import { PrivacyAmount } from "@/components/privacy-amount";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -71,7 +72,9 @@ export function TripRow({
               />
             ) : null}
           </div>
-          <div className="tnum whitespace-nowrap text-[12.5px] font-semibold">{totalFormatted}</div>
+          <div className="tnum whitespace-nowrap text-[12.5px] font-semibold">
+            <PrivacyAmount value={totalFormatted} />
+          </div>
         </div>
         <div className="mt-0.5 flex justify-between gap-2 text-[11px] text-[color:var(--text-tertiary)]">
           <span className="truncate">{subtitle}</span>

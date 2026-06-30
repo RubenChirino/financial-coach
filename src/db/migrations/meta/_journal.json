@@ -99,6 +99,34 @@
       "when": 1782000000000,
       "tag": "0013_user_scoping",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1781944188860,
+      "tag": "0014_cynical_gauntlet",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1781944523524,
+      "tag": "0015_soft_warhawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1782425279845,
+      "tag": "0016_amusing_banshee",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1782426137978,
+      "tag": "0017_lumpy_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

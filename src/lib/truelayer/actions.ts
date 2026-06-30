@@ -3,10 +3,12 @@
 import { randomBytes } from "node:crypto";
 import { db } from "@/db/client";
 import { accounts, requisitions } from "@/db/schema";
+import { snapshotBalances } from "@/lib/accounts/history";
 import { getCurrentSession } from "@/lib/auth/session";
 import { categorizeBatchByRules } from "@/lib/categorize";
 import { decrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
+import { detectTransfers } from "@/lib/transfers/detect";
 import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { TrueLayerClient, type TrueLayerCredentials, TrueLayerError } from "./client";
@@ -242,6 +244,19 @@ export async function syncAllTrueLayerAccountsAction(): Promise<
     }
 
     const ruleMatched = await categorizeBatchByRules(session.userId, allInsertedIds);
+
+    // Tag internal transfers so cross-account moves don't skew income/expense.
+    try {
+      await detectTransfers({ userId: session.userId });
+    } catch (err) {
+      console.warn("post-sync transfer detection failed (non-fatal)", err);
+    }
+    try {
+      await snapshotBalances(session.userId);
+    } catch (err) {
+      console.warn("post-sync balance snapshot failed (non-fatal)", err);
+    }
+
     return { ok: true, data: { inserted, skipped, accounts: rows.length, ruleMatched } };
   } catch (err) {
     return { ok: false, error: humanizeError(err) };

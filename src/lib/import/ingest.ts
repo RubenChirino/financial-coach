@@ -7,6 +7,7 @@ import { categorizeBatchByRules } from "@/lib/categorize";
 import { encrypt } from "@/lib/crypto";
 import { formatIban } from "@/lib/format/iban";
 import { detectRecurringSubscriptions } from "@/lib/recurring/detect";
+import { detectTransfers } from "@/lib/transfers/detect";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { ParsedCsvRow } from "./csv";
 
@@ -343,6 +344,12 @@ export async function importParsedRows(
       await detectRecurringSubscriptions({ userId: opts.userId });
     } catch (err) {
       console.warn("post-import recurring detection failed (non-fatal)", err);
+    }
+    // Tag internal transfers so the new rows don't inflate income/expense.
+    try {
+      await detectTransfers({ userId: opts.userId });
+    } catch (err) {
+      console.warn("post-import transfer detection failed (non-fatal)", err);
     }
   }
 

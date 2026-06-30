@@ -1,13 +1,14 @@
 import "server-only";
 
 import { db } from "@/db/client";
-import { accounts, insights, requisitions } from "@/db/schema";
+import { accounts, insights, requisitions, transactions } from "@/db/schema";
 import {
   getMonthSummary,
   getNeedsReviewCount,
   getTopCategoriesThisMonth,
 } from "@/lib/dashboard/summary";
-import { and, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { listRecurringSubscriptions } from "@/lib/recurring/list";
+import { and, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 
 /**
  * Insight rule engine (Phase 7h).
@@ -180,6 +181,59 @@ async function ruleGoalNear(userId: number, locale: string): Promise<RuleResult[
   return results;
 }
 
+/**
+ * Flag subscriptions whose most recent charge jumped meaningfully above their
+ * historical average — the classic silent price hike. Requires a ≥15% rise and
+ * at least €1 in absolute terms to avoid rounding noise.
+ */
+async function ruleRecurringIncrease(userId: number, locale: string): Promise<RuleResult[]> {
+  const subs = await listRecurringSubscriptions(userId);
+  const es = locale === "es";
+  const fmt = (cents: number) =>
+    (cents / 100).toLocaleString(es ? "es-ES" : "en-GB", {
+      style: "currency",
+      currency: "EUR",
+      maximumFractionDigits: 2,
+    });
+
+  const results: RuleResult[] = [];
+  for (const s of subs) {
+    if (!s.isActive || !s.merchantName) continue;
+    const avg = s.averageAmountCents;
+    if (avg <= 0) continue;
+
+    const latest = await db
+      .select({ amountCents: transactions.amountCents })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.merchantName, s.merchantName),
+          lt(transactions.amountCents, 0),
+          isNull(transactions.transferGroupId),
+        ),
+      )
+      .orderBy(desc(transactions.bookingDate))
+      .limit(1);
+    const latestAbs = latest[0] ? Math.abs(latest[0].amountCents) : 0;
+    if (latestAbs < avg * 1.15 || latestAbs - avg < 100) continue;
+
+    const pct = Math.round(((latestAbs - avg) / avg) * 100);
+    results.push({
+      kind: "recurring_increase",
+      entityId: s.id,
+      title: es ? `${s.merchantName} subió de precio` : `${s.merchantName} got more expensive`,
+      body: es
+        ? `El último cargo de ${s.merchantName} fue ${fmt(latestAbs)}, un ${pct}% más que su media de ${fmt(avg)}.`
+        : `Your latest ${s.merchantName} charge was ${fmt(latestAbs)} — ${pct}% above its ${fmt(avg)} average.`,
+      actionLabel: es ? "Ver suscripciones" : "View subscriptions",
+      actionHref: "/subscriptions",
+      severity: "warning",
+    });
+  }
+  return results;
+}
+
 // ─── Main entry ───────────────────────────────────────────────────────────────
 
 /**
@@ -214,6 +268,7 @@ export async function runInsightEngine(userId: number, locale = "es"): Promise<v
       ruleOnTrack(userId, locale),
       ruleLowBalance(userId, locale),
       ruleGoalNear(userId, locale),
+      ruleRecurringIncrease(userId, locale),
     ])
   ).flat();
 

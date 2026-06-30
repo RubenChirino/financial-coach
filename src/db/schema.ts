@@ -65,6 +65,12 @@ export const users = sqliteTable(
     // the demo but can't persist changes. Purged periodically; their session
     // cookie is session-only so it's gone when the browser closes.
     isGuest: integer("is_guest", { mode: "boolean" }).notNull().default(false),
+    /**
+     * Opt-in to the periodic email digest of insights. Off by default — email
+     * is the only feature that sends user-derived content off the box, so it's
+     * strictly opt-in and only delivered when an email + RESEND_API_KEY exist.
+     */
+    digestEmailOptIn: integer("digest_email_opt_in", { mode: "boolean" }).notNull().default(false),
     createdAt: timestamp("created_at"),
     updatedAt: timestamp("updated_at"),
   },
@@ -143,7 +149,7 @@ export const requisitions = sqliteTable(
      * for previews, TrueLayer sandbox, …) on the same accounts/transactions
      * tables. Rows written before this column existed default to "gocardless".
      */
-    provider: text("provider", { enum: ["gocardless", "demo", "truelayer"] })
+    provider: text("provider", { enum: ["gocardless", "demo", "truelayer", "manual"] })
       .notNull()
       .default("gocardless"),
     gocardlessRequisitionId: encryptedText("gocardless_requisition_id").notNull(),
@@ -178,10 +184,52 @@ export const accounts = sqliteTable(
     ownerName: text("owner_name"),
     balanceCents: integer("balance_cents", { mode: "number" }).notNull().default(0),
     currency: text("currency").notNull().default("EUR"),
+    /**
+     * Account category. Drives icon/grouping and lets net worth include non-bank
+     * holdings. `bank` (default) for PSD2/imported accounts; the others are
+     * user-entered manual accounts. Liabilities (`loan`) carry a NEGATIVE
+     * `balanceCents` so the existing `SUM(balanceCents)` net-worth query stays
+     * correct without special-casing.
+     */
+    kind: text("kind", {
+      enum: ["bank", "cash", "investment", "property", "vehicle", "loan", "other"],
+    })
+      .notNull()
+      .default("bank"),
+    /** True for user-entered manual accounts (no bank sync). */
+    isManual: integer("is_manual", { mode: "boolean" }).notNull().default(false),
     lastSyncedAt: integer("last_synced_at", { mode: "timestamp_ms" }),
     createdAt: timestamp("created_at"),
   },
   (t) => [index("accounts_requisition_idx").on(t.requisitionId)],
+);
+
+/**
+ * Daily snapshot of each account's balance so net worth can be charted over
+ * time — the live `accounts.balanceCents` is only "now". Written at most once
+ * per account per UTC day by `snapshotBalances` after a sync or a manual
+ * balance edit. See `src/lib/accounts/history.ts`.
+ */
+export const balanceHistory = sqliteTable(
+  "balance_history",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: integer("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    balanceCents: integer("balance_cents", { mode: "number" }).notNull(),
+    currency: text("currency").notNull().default("EUR"),
+    capturedAt: integer("captured_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [
+    index("balance_history_user_captured_idx").on(t.userId, t.capturedAt),
+    index("balance_history_account_idx").on(t.accountId),
+  ],
 );
 
 export const categories = sqliteTable("categories", {
@@ -275,6 +323,22 @@ export const transactions = sqliteTable(
     isRecurring: integer("is_recurring", { mode: "boolean" }).notNull().default(false),
     needsReview: integer("needs_review", { mode: "boolean" }).notNull().default(false),
     notes: text("notes"),
+    /**
+     * When set, this row is one leg of a detected internal transfer between two
+     * of the user's OWN accounts (e.g. checking → savings). Both legs share the
+     * same id. Transfer legs are excluded from income/expense/budget/forecast
+     * math — moving money between your own pockets is neither earning nor
+     * spending — but still count toward account balances and net worth. Null =
+     * an ordinary transaction. See `src/lib/transfers/detect.ts`.
+     */
+    transferGroupId: text("transfer_group_id"),
+    /**
+     * True when the user manually set or cleared the transfer link on this row.
+     * The auto-detector never touches manual rows, so a "these two ARE a
+     * transfer" (groupId set) or "this is NOT a transfer" (groupId null,
+     * manual true) decision survives re-detection. Manual override always wins.
+     */
+    transferManual: integer("transfer_manual", { mode: "boolean" }).notNull().default(false),
     createdAt: timestamp("created_at"),
     updatedAt: timestamp("updated_at"),
   },
@@ -283,6 +347,7 @@ export const transactions = sqliteTable(
     index("transactions_category_idx").on(t.categoryId),
     index("transactions_needs_review_idx").on(t.needsReview),
     index("transactions_user_date_idx").on(t.userId, t.bookingDate),
+    index("transactions_transfer_group_idx").on(t.transferGroupId),
   ],
 );
 
@@ -290,6 +355,17 @@ export const categoryRules = sqliteTable(
   "category_rules",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
+    /**
+     * Owner of a user-created rule. NULL = a built-in/seeded rule shared by all
+     * users; set = this user's personal rule, learned when they manually
+     * re-categorised a merchant. User rules are scoped per user and rank ABOVE
+     * the shared defaults (lower `priority`), so a personal correction always
+     * wins over a generic guess. See `src/lib/categorize/rules.ts`.
+     */
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+    createdBy: text("created_by", { enum: ["system", "user"] })
+      .notNull()
+      .default("system"),
     matchPattern: text("match_pattern").notNull(),
     matchType: text("match_type", {
       enum: ["contains", "regex", "merchant_exact"],
@@ -300,7 +376,10 @@ export const categoryRules = sqliteTable(
     priority: integer("priority").notNull().default(100),
     createdAt: timestamp("created_at"),
   },
-  (t) => [index("category_rules_priority_idx").on(t.priority)],
+  (t) => [
+    index("category_rules_priority_idx").on(t.priority),
+    index("category_rules_user_idx").on(t.userId),
+  ],
 );
 
 export const recurringSubscriptions = sqliteTable("recurring_subscriptions", {

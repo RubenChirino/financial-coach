@@ -20,13 +20,15 @@
 
 ## Trust boundaries
 
-The app makes exactly three kinds of outbound call, all server-side:
+The app makes three kinds of outbound call by default, all server-side, plus one
+optional, opt-in channel (the email digest):
 
 | Destination          | What crosses the boundary                                         |
 | -------------------- | ----------------------------------------------------------------- |
 | Database             | Full data, but secrets are AES-256-GCM ciphertext (file or Turso) |
 | Bank-data provider   | OAuth handshake + read-only AIS requests (no payment scopes)      |
 | LLM provider         | Redacted, rounded aggregates only — never transaction rows        |
+| Email (Resend, opt-in) | Only when `RESEND_API_KEY` **and** a per-user `digest_email_opt_in` are set: already-redacted, pre-localized insight summaries — never raw rows or PII |
 
 The browser talks only to the app server. The CSP `connect-src` is `'self'`
 (plus the local Ollama port in local mode), so a hypothetical XSS payload has no
@@ -54,6 +56,8 @@ exfiltration channel.
 | Credentials in git | `gitleaks` in pre-commit hook and CI; `.env*` and `data/` in `.gitignore`; PR template requires confirmation. |
 | Payment initiation abuse | Only PSD2 AIS scopes requested (`balances details transactions`); never PIS. Applies to GoCardless and TrueLayer alike. |
 | Stored provider credentials (TrueLayer / GoCardless keys) | Encrypted AES-256-GCM in `provider_credentials` with the per-user key; never written to `.env` or logs. |
+| Unauthorized trigger of scheduled jobs | `/api/cron/*` require an `Authorization: Bearer <CRON_SECRET>` match; with no `CRON_SECRET` set they return `503` — closed by default. The jobs make no bank-API calls (no per-user key handling headlessly). |
+| Email digest leaking financial data | Doubly gated: per-user `digest_email_opt_in` (off by default) **and** a configured `RESEND_API_KEY`. Only redacted, pre-localized insight summaries are sent — never raw transactions or PII. Disabled entirely in local mode. |
 
 ## Hosted-mode tradeoff (read this before deploying)
 

@@ -61,6 +61,13 @@ export async function updateUserHomeLocation(
     .where(eq(users.id, userId));
 }
 
+export async function updateUserDigestOptIn(userId: number, optIn: boolean): Promise<void> {
+  await db
+    .update(users)
+    .set({ digestEmailOptIn: optIn, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+}
+
 export async function recordCloudLlmConsent(userId: number): Promise<void> {
   await db
     .update(users)

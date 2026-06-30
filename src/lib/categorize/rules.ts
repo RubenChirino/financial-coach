@@ -2,9 +2,28 @@ import "server-only";
 
 import { db } from "@/db/client";
 import { categories, categoryRules, transactions } from "@/db/schema";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, isNull, or } from "drizzle-orm";
+import { cleanMerchant } from "./heuristics";
 
 export type MatchType = "merchant_exact" | "contains" | "regex";
+
+/** A learned rule's pattern must be at least this long to be reliable. */
+const MIN_PATTERN_LEN = 3;
+
+/**
+ * Derive the pattern a "always categorise this merchant" rule should match on.
+ * Uses the same merchant cleaning the categorizer applies, so the learned rule
+ * keys off the readable merchant (e.g. "mercadona") rather than the noisy raw
+ * description. Returns null when nothing usable remains (too short to be safe).
+ */
+export function deriveRulePattern(
+  merchantName: string | null,
+  rawDescription: string,
+): string | null {
+  const pattern = cleanMerchant(merchantName, rawDescription).toLowerCase().trim();
+  if (pattern.length < MIN_PATTERN_LEN) return null;
+  return pattern;
+}
 
 export interface RuleRow {
   id: number;
@@ -63,7 +82,13 @@ export function matchRule(input: RuleInput, rules: RuleRow[]): RuleRow | null {
   return null;
 }
 
-export async function loadRules(): Promise<RuleRow[]> {
+/**
+ * Load the rules that apply to a user: the shared built-in rules (`user_id IS
+ * NULL`) PLUS that user's own learned rules. User rules are inserted with a
+ * lower `priority` number, so `matchRule`'s priority sort makes a personal
+ * correction win over a generic default.
+ */
+export async function loadRules(userId: number): Promise<RuleRow[]> {
   const rows = await db
     .select({
       id: categoryRules.id,
@@ -73,6 +98,7 @@ export async function loadRules(): Promise<RuleRow[]> {
       priority: categoryRules.priority,
     })
     .from(categoryRules)
+    .where(or(isNull(categoryRules.userId), eq(categoryRules.userId, userId)))
     .orderBy(asc(categoryRules.priority));
   return rows;
 }

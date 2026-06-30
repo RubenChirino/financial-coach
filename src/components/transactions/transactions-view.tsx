@@ -6,8 +6,9 @@ import { PrivacyAmount } from "@/components/privacy-amount";
 import { Button } from "@/components/ui/button";
 import { type CategoryOption, loadMoreTransactionsAction } from "@/lib/transactions/actions";
 import type { TransactionRow } from "@/lib/transactions/list";
+import { unlinkTransferAction } from "@/lib/transfers/actions";
 import { cn } from "@/lib/utils";
-import { ArrowDownLeft, Loader2, SearchX, X } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, Loader2, SearchX, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useMemo, useRef, useState, useTransition } from "react";
@@ -81,6 +82,8 @@ function TransactionRowItem({
   categoryOptions,
   uncategorizedLabel,
   reviewLabel,
+  transferLabel,
+  transferRemoveLabel,
 }: {
   row: TransactionRow;
   locale: "es" | "en";
@@ -88,10 +91,14 @@ function TransactionRowItem({
   categoryOptions: CategoryOption[];
   uncategorizedLabel: string;
   reviewLabel: string;
+  transferLabel: string;
+  transferRemoveLabel: string;
 }) {
   const categoryName = locale === "es" ? row.categoryNameEs : row.categoryNameEn;
   const isIncome = row.amountCents > 0;
   const hasCategory = row.categoryIcon && row.categoryColor;
+  const isTransfer = Boolean(row.transferGroupId);
+  const [unlinking, startUnlink] = useTransition();
   const rowRef = useRef<HTMLDivElement | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
 
@@ -167,6 +174,29 @@ function TransactionRowItem({
           />
           <span className="truncate">{row.institutionName}</span>
           {row.ibanLast4 ? <span>· …{row.ibanLast4}</span> : null}
+          {isTransfer ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-[color:var(--brand-primary-soft)] px-1.5 py-0.5 text-[10.5px] font-medium text-[color:var(--brand-primary)]"
+              title={transferLabel}
+            >
+              <ArrowLeftRight className="h-3 w-3" strokeWidth={2} />
+              {transferLabel}
+              <button
+                type="button"
+                onClick={() =>
+                  startUnlink(async () => {
+                    await unlinkTransferAction(row.id);
+                  })
+                }
+                disabled={unlinking}
+                aria-label={transferRemoveLabel}
+                title={transferRemoveLabel}
+                className="ml-0.5 rounded-full p-0.5 hover:bg-[color:var(--brand-primary)]/15 disabled:opacity-50"
+              >
+                <X className="h-2.5 w-2.5" strokeWidth={2.5} />
+              </button>
+            </span>
+          ) : null}
         </div>
       </div>
       <div
@@ -228,6 +258,9 @@ export function TransactionsView(props: TransactionsViewProps) {
     let outCents = 0;
     const currency = filtered[0]?.currency ?? allRows[0]?.currency ?? props.fallbackCurrency;
     for (const r of filtered) {
+      // Internal transfers move money between the user's own accounts — they're
+      // neither income nor expense, so keep them out of the Money in/out totals.
+      if (r.transferGroupId) continue;
       if (r.amountCents > 0) inCents += r.amountCents;
       else outCents += Math.abs(r.amountCents);
     }
@@ -431,6 +464,8 @@ export function TransactionsView(props: TransactionsViewProps) {
                     categoryOptions={props.categoryOptions}
                     uncategorizedLabel={props.labels.uncategorized}
                     reviewLabel={props.labels.reviewBadge}
+                    transferLabel={t("transferBadge")}
+                    transferRemoveLabel={t("transferRemove")}
                   />
                 ))}
               </div>

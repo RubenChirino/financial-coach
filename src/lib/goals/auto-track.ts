@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/db/client";
 import { budgets, goals, transactions } from "@/db/schema";
-import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 
 /**
  * Given a goal that is linked to a category with a monthly budget, compute
@@ -53,6 +53,7 @@ async function computeSavedFromCategory(
         eq(transactions.categoryId, categoryId),
         gte(transactions.bookingDate, start),
         lt(transactions.bookingDate, endExclusive),
+        isNull(transactions.transferGroupId),
       ),
     )
     .groupBy(sql`strftime('%Y-%m', booking_date / 1000, 'unixepoch')`);

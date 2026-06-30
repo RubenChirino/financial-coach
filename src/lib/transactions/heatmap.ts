@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/db/client";
 import { accounts, transactions } from "@/db/schema";
-import { and, eq, gte, lt } from "drizzle-orm";
+import { and, eq, gte, isNull, lt } from "drizzle-orm";
 
 export interface HeatmapDay {
   /** 1-indexed day of the month. */
@@ -71,6 +71,8 @@ export async function getSpendingHeatmap(
         eq(transactions.userId, userId),
         gte(transactions.bookingDate, start),
         lt(transactions.bookingDate, end),
+        // Internal transfers aren't spending or income — keep them off the map.
+        isNull(transactions.transferGroupId),
       ),
     );
 
