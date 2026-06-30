@@ -49,6 +49,20 @@ const EnvSchema = z.object({
   OPENAI_MODEL: z.string().default("gpt-4o"),
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
   GOOGLE_MODEL: z.string().default("gemini-2.5-flash"),
+  /**
+   * Shared secret for the scheduled `/api/cron/*` endpoints (hosted mode). When
+   * set, Vercel Cron sends it as `Authorization: Bearer <CRON_SECRET>` and the
+   * handlers reject any request that doesn't match. Leave unset locally — the
+   * cron routes simply return 503 (disabled).
+   */
+  CRON_SECRET: z.string().optional(),
+  /**
+   * Email digest delivery (optional, hosted mode). When `RESEND_API_KEY` is set
+   * the digest cron emails opted-in users via Resend's HTTPS API (no SDK). Leave
+   * unset to disable email entirely — the rest of the app is unaffected.
+   */
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM: z.string().default("Financial Coach <onboarding@resend.dev>"),
   HOST: z.string().default("127.0.0.1"),
   PORT: z.coerce.number().default(3000),
   DEFAULT_LOCALE: z.enum(["es", "en"]).default("es"),

@@ -1,4 +1,5 @@
 import { LanguageToggle } from "@/components/language-toggle";
+import { AccountAvatar } from "@/components/shell/account-avatar";
 import { NavLink } from "@/components/shell/nav-link";
 import { SidebarShell } from "@/components/shell/sidebar-shell";
 import { TopbarActions } from "@/components/shell/topbar-actions";
@@ -12,7 +13,6 @@ import {
   ArrowLeftRight,
   Landmark,
   LayoutDashboard,
-  LifeBuoy,
   Lightbulb,
   type LucideIcon,
   PieChart,
@@ -23,7 +23,6 @@ import {
   Target,
   TrendingUp,
   Upload,
-  User,
 } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
@@ -122,25 +121,7 @@ export async function AppShell({ children, title, subtitle, coachUnread = 0 }: A
   const footer = (
     <div className="border-t border-[color:var(--border-default)] pt-3">
       <div className="flex items-center gap-2.5 rounded-[10px] p-2.5 hover:bg-[color:var(--brand-primary-soft)]">
-        {accountImage ? (
-          <img
-            src={accountImage}
-            alt=""
-            className="h-8 w-8 shrink-0 rounded-full object-cover"
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <div
-            aria-hidden
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
-            style={{
-              background: "linear-gradient(135deg, #FFD1DC, #FFBDCD)",
-              color: "#8B2D43",
-            }}
-          >
-            {isGuest ? <User className="h-4 w-4" /> : <LifeBuoy className="h-4 w-4" />}
-          </div>
-        )}
+        <AccountAvatar src={accountImage} isGuest={isGuest} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-semibold leading-tight">{accountName}</div>
           <div className="truncate text-[11px] text-[color:var(--text-tertiary)]">{accountSub}</div>

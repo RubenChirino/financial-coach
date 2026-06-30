@@ -66,6 +66,55 @@ export function monthlyEquivalentCents(averageAmountCents: number, frequencyDays
   return Math.round(averageAmountCents * perMonth);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export interface UpcomingRenewal {
+  id: number;
+  merchantName: string;
+  amountCents: number;
+  frequencyDays: number;
+  nextChargeAt: Date;
+  daysUntil: number;
+  categoryColor: string | null;
+  categoryIcon: string | null;
+}
+
+/**
+ * Active subscriptions whose next expected charge falls within `withinDays`.
+ * The next charge is `lastSeenAt + frequencyDays`, rolled forward by whole
+ * cycles until it lands in the future (so a sub last seen a cycle ago still
+ * projects to its upcoming date). Sorted soonest-first.
+ */
+export async function getUpcomingRenewals(
+  userId: number,
+  opts?: { withinDays?: number },
+): Promise<UpcomingRenewal[]> {
+  const withinDays = Math.max(1, Math.min(opts?.withinDays ?? 35, 95));
+  const subs = await listRecurringSubscriptions(userId);
+  const now = Date.now();
+  const out: UpcomingRenewal[] = [];
+  for (const s of subs) {
+    if (!s.isActive || s.frequencyDays <= 0) continue;
+    const cycleMs = s.frequencyDays * DAY_MS;
+    let next = s.lastSeenAt.getTime() + cycleMs;
+    while (next < now) next += cycleMs;
+    const daysUntil = Math.ceil((next - now) / DAY_MS);
+    if (daysUntil > withinDays) continue;
+    out.push({
+      id: s.id,
+      merchantName: s.merchantName,
+      amountCents: s.averageAmountCents,
+      frequencyDays: s.frequencyDays,
+      nextChargeAt: new Date(next),
+      daysUntil,
+      categoryColor: s.categoryColor,
+      categoryIcon: s.categoryIcon,
+    });
+  }
+  out.sort((a, b) => a.nextChargeAt.getTime() - b.nextChargeAt.getTime());
+  return out;
+}
+
 export interface SubscriptionsTotals {
   activeCount: number;
   monthlyTotalCents: number;

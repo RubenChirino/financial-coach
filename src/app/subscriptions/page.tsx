@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { CategoryIcon } from "@/components/category-icon";
 import { EmptyState } from "@/components/empty-state";
+import { PrivacyAmount } from "@/components/privacy-amount";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getAccountsTotal } from "@/lib/dashboard/summary";
@@ -8,11 +9,13 @@ import { formatAmount, formatDate } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
 import {
   type SubscriptionRow,
+  type UpcomingRenewal,
   getActiveSubscriptionsTotals,
+  getUpcomingRenewals,
   listRecurringSubscriptions,
   monthlyEquivalentCents,
 } from "@/lib/recurring/list";
-import { Repeat } from "lucide-react";
+import { CalendarClock, Repeat } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { RunDetectionButton } from "./run-detection-button";
@@ -24,12 +27,13 @@ export default async function SubscriptionsPage() {
   const session = await getCurrentSession();
   if (!session) redirect("/lock");
 
-  const [t, locale, subs, totals, accountsTotal] = await Promise.all([
+  const [t, locale, subs, totals, accountsTotal, renewals] = await Promise.all([
     getTranslations("subscriptions"),
     getLocale(),
     listRecurringSubscriptions(session.userId),
     getActiveSubscriptionsTotals(session.userId),
     getAccountsTotal(session.userId),
+    getUpcomingRenewals(session.userId, { withinDays: 35 }),
   ]);
   const intlLocale = locale === "es" ? "es-ES" : "en-US";
 
@@ -65,13 +69,25 @@ export default async function SubscriptionsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold tracking-tight">
-                  {formatAmount(totals.monthlyTotalCents, currency, intlLocale)}
+                  <PrivacyAmount
+                    value={formatAmount(totals.monthlyTotalCents, currency, intlLocale)}
+                  />
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {t("activeCount", { count: totals.activeCount })}
                 </p>
               </CardContent>
             </Card>
+
+            {renewals.length > 0 ? (
+              <RenewalsCard
+                renewals={renewals}
+                locale={locale}
+                intlLocale={intlLocale}
+                currency={currency}
+                t={t}
+              />
+            ) : null}
 
             {active.length > 0 ? (
               <Section
@@ -122,6 +138,65 @@ function frequencyLabel(days: number, t: Translator): string {
   return t("freqYearly");
 }
 
+function dueLabel(daysUntil: number, t: Translator): string {
+  if (daysUntil <= 0) return t("dueToday");
+  if (daysUntil === 1) return t("dueTomorrow");
+  return t("dueInDays", { days: daysUntil });
+}
+
+function RenewalsCard({
+  renewals,
+  intlLocale,
+  currency,
+  t,
+}: {
+  renewals: UpcomingRenewal[];
+  locale: "es" | "en";
+  intlLocale: string;
+  currency: string;
+  t: Translator;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <CalendarClock className="h-4 w-4 text-[color:var(--brand-primary)]" aria-hidden />
+          {t("upcomingTitle")}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="divide-y">
+          {renewals.map((r) => (
+            <li key={r.id} className="flex items-center justify-between gap-3 py-3">
+              <div className="min-w-0 flex items-center gap-3">
+                <span
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-sm"
+                  style={{
+                    backgroundColor: r.categoryColor ? `${r.categoryColor}22` : "rgba(0,0,0,0.05)",
+                    color: r.categoryColor ?? "currentColor",
+                  }}
+                  aria-hidden
+                >
+                  <CategoryIcon icon={r.categoryIcon ?? "Repeat"} className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{r.merchantName}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {dueLabel(r.daysUntil, t)} · {formatDate(r.nextChargeAt, intlLocale)}
+                  </div>
+                </div>
+              </div>
+              <div className="font-semibold tabular-nums">
+                <PrivacyAmount value={formatAmount(r.amountCents, currency, intlLocale)} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
 function Section({ title, rows, locale, intlLocale, currency, t, muted }: SectionProps) {
   return (
     <Card>
@@ -164,11 +239,15 @@ function Section({ title, rows, locale, intlLocale, currency, t, muted }: Sectio
                 <div className="flex items-center gap-3">
                   <div className="text-right">
                     <div className="font-semibold tabular-nums">
-                      {formatAmount(s.averageAmountCents, currency, intlLocale)}
+                      <PrivacyAmount
+                        value={formatAmount(s.averageAmountCents, currency, intlLocale)}
+                      />
                     </div>
                     <div className="text-xs text-muted-foreground tabular-nums">
-                      {t("monthlyEquivalent", {
-                        amount: formatAmount(monthly, currency, intlLocale),
+                      {t.rich("monthlyEquivalent", {
+                        amt: () => (
+                          <PrivacyAmount value={formatAmount(monthly, currency, intlLocale)} />
+                        ),
                       })}
                     </div>
                   </div>

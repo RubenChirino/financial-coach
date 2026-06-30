@@ -19,7 +19,7 @@ import {
 } from "@/lib/predictions/forecast";
 import { listRecurringSubscriptions, monthlyEquivalentCents } from "@/lib/recurring/list";
 import { redactPII } from "@/lib/redact";
-import { and, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 
 export interface AdvisorContext {
   generatedAt: string;
@@ -260,6 +260,7 @@ async function selectTopMerchants(
         lt(transactions.bookingDate, end),
         isNotNull(transactions.merchantName),
         lt(transactions.amountCents, 0),
+        isNull(transactions.transferGroupId),
       ),
     )
     .groupBy(transactions.merchantName, categories.slug)
@@ -295,7 +296,11 @@ async function selectBudgets(userId: number, anchorOffset = 0): Promise<AdvisorB
     .innerJoin(categories, eq(categories.id, budgets.categoryId))
     .leftJoin(
       transactions,
-      and(eq(transactions.categoryId, categories.id), eq(transactions.userId, userId)),
+      and(
+        eq(transactions.categoryId, categories.id),
+        eq(transactions.userId, userId),
+        isNull(transactions.transferGroupId),
+      ),
     )
     .where(eq(budgets.userId, userId))
     .groupBy(categories.id);

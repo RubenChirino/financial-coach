@@ -14,7 +14,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { BackupCard } from "./backup-card";
 import { CurrencySelector } from "./currency-selector";
+import { DigestToggle } from "./digest-toggle";
 import { LlmSelector } from "./llm-selector";
+import { RulesCard } from "./rules-card";
 import { SecurityCard } from "./security-card";
 
 export default async function SettingsPage() {
@@ -123,6 +125,28 @@ export default async function SettingsPage() {
             </Button>
           </CardHeader>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("rulesTitle")}</CardTitle>
+            <CardDescription>{t("rulesDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RulesCard />
+          </CardContent>
+        </Card>
+
+        {user?.email ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("digestTitle")}</CardTitle>
+              <CardDescription>{t("digestDescription")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DigestToggle initial={user.digestEmailOptIn} email={user.email} />
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardHeader>

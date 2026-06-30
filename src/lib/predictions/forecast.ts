@@ -4,7 +4,7 @@ import { db } from "@/db/client";
 import { recurringSubscriptions, transactions } from "@/db/schema";
 import { detectRecurringSubscriptions } from "@/lib/recurring/detect";
 import { listRecurringSubscriptions, monthlyEquivalentCents } from "@/lib/recurring/list";
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, sql } from "drizzle-orm";
 
 /**
  * Forecasting strategy
@@ -150,6 +150,8 @@ async function getMonthlyHistory(
     eq(transactions.userId, userId),
     gte(transactions.bookingDate, lookbackStart),
     lt(transactions.bookingDate, currentMonthStart),
+    // Internal transfers are neither income nor expense — exclude from history.
+    isNull(transactions.transferGroupId),
   ];
   const accountFilter = buildAccountFilter(accountId);
   if (accountFilter) conditions.push(accountFilter);
@@ -221,6 +223,8 @@ async function detectHabitualParties(
     gte(transactions.bookingDate, windowStart),
     lt(transactions.bookingDate, windowEnd),
     signFilter,
+    // Habitual spend/income shouldn't count money shuffled between own accounts.
+    isNull(transactions.transferGroupId),
   ];
   const accountFilter = buildAccountFilter(accountId);
   if (accountFilter) conditions.push(accountFilter);

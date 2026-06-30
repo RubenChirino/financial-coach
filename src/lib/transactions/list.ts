@@ -21,6 +21,8 @@ export interface TransactionRow {
   accountName: string;
   ibanLast4: string | null;
   institutionName: string;
+  /** Non-null when this row is one leg of a detected internal transfer. */
+  transferGroupId: string | null;
 }
 
 const PAGE_SIZE = 50;
@@ -86,6 +88,7 @@ export async function listTransactions(opts: {
       merchantName: transactions.merchantName,
       rawDescription: transactions.rawDescription,
       needsReview: transactions.needsReview,
+      transferGroupId: transactions.transferGroupId,
       categoryId: categories.id,
       categorySlug: categories.slug,
       categoryIcon: categories.icon,

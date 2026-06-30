@@ -1,10 +1,12 @@
 "use client";
 
 import { CategoryIcon } from "@/components/category-icon";
+import { createRuleFromTransactionAction } from "@/lib/categorize/rules-actions";
 import type { CategoryOption } from "@/lib/transactions/actions";
 import { setTransactionCategoryAction } from "@/lib/transactions/actions";
 import { cn } from "@/lib/utils";
-import { Check, Loader2, Tag, X } from "lucide-react";
+import { Check, Loader2, Sparkles, Tag, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 interface Props {
@@ -32,9 +34,13 @@ interface Props {
  * absolute, close on outside click / Escape. No external dep needed.
  */
 export function CategoryPicker(props: Props) {
+  const t = useTranslations("transactions");
   const [pending, startTransition] = useTransition();
+  const [savingRule, startSaveRule] = useTransition();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // After a manual pick, the server may suggest learning a reusable rule.
+  const [ruleOffer, setRuleOffer] = useState<{ merchant: string; categoryId: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -59,7 +65,21 @@ export function CategoryPicker(props: Props) {
   function pick(nextId: number | null) {
     setOpen(false);
     startTransition(async () => {
-      await setTransactionCategoryAction(props.txId, nextId);
+      const res = await setTransactionCategoryAction(props.txId, nextId);
+      if (res.ok && res.suggestRule && nextId != null) {
+        setRuleOffer({ merchant: res.suggestRule.merchant, categoryId: nextId });
+      } else {
+        setRuleOffer(null);
+      }
+    });
+  }
+
+  function saveRule() {
+    const offer = ruleOffer;
+    if (!offer) return;
+    startSaveRule(async () => {
+      await createRuleFromTransactionAction(props.txId, offer.categoryId);
+      setRuleOffer(null);
     });
   }
 
@@ -150,6 +170,37 @@ export function CategoryPicker(props: Props) {
                 </button>
               );
             })}
+          </div>
+        </div>
+      ) : null}
+      {ruleOffer && !open ? (
+        <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-[260px] rounded-xl border border-[color:var(--border-default)] bg-[color:var(--surface-card)] p-3 shadow-[var(--shadow-card)]">
+          <div className="flex items-start gap-2">
+            <Sparkles
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[color:var(--brand-primary)]"
+              aria-hidden
+            />
+            <p className="text-[12px] leading-snug text-[color:var(--text-secondary)]">
+              {t("ruleOfferTitle", { merchant: ruleOffer.merchant })}
+            </p>
+          </div>
+          <div className="mt-2.5 flex items-center justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => setRuleOffer(null)}
+              className="rounded-md px-2 py-1 text-[11.5px] text-[color:var(--text-tertiary)] hover:text-[color:var(--text-primary)]"
+            >
+              {t("ruleOfferDismiss")}
+            </button>
+            <button
+              type="button"
+              onClick={saveRule}
+              disabled={savingRule}
+              className="inline-flex items-center gap-1 rounded-md bg-[color:var(--brand-primary)] px-2.5 py-1 text-[11.5px] font-medium text-white disabled:opacity-60"
+            >
+              {savingRule ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              {t("ruleOfferConfirm")}
+            </button>
           </div>
         </div>
       ) : null}

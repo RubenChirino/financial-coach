@@ -371,9 +371,14 @@ The table families:
 - **Identity & auth** — `users` (holds *both* PIN-mode and OAuth-mode users, the
   unused columns simply NULL), `sessions`, `provider_credentials`.
 - **Banking** — `institutions`, `requisitions` (a bank *connection*, tagged with
-  its `provider`), `accounts`, `transactions`, `import_batches`.
+  its `provider` — `gocardless` / `truelayer` / `demo` / `manual`), `accounts`
+  (typed by `kind` + an `is_manual` flag, so cash, investments, property and
+  loans count toward net worth), `transactions` (a nullable `transfer_group_id`
+  links the two legs of an internal transfer), `import_batches`, and
+  `balance_history` (daily net-worth snapshots).
 - **Taxonomy & money rules** — `categories` (shared, system-seeded),
-  `category_rules`, `budgets` (per-user).
+  `category_rules` (built-in rules have `user_id IS NULL`; a user's learned rules
+  carry their id), `budgets` (per-user).
 - **Derived intelligence** — `recurring_subscriptions`, `insights`,
   `investor_profiles`, `goals`, plus the Travels caches (`travel_city_labels`,
   `city_countries`).
@@ -648,6 +653,16 @@ row, in order:
 > always terminates even if the LLM is offline (failed rows fall behind the cursor
 > and are retried next run, never stalling it).
 
+> **Decision — learn from corrections, scoped per user.** A manual re-categorize
+> doesn't just fix one row. The user can promote it to a reusable rule
+> ([`categorize/rules-actions.ts`](src/lib/categorize/rules-actions.ts)) keyed on
+> the cleaned merchant. Learned rules live in the *same* `category_rules` table
+> with a non-null `user_id` and a lower priority number, so `loadRules(userId)`
+> merges them ahead of the shared defaults — the next import of that merchant is
+> categorized for free, no LLM and no repeat correction. The taxonomy stays
+> shared; only the rule that maps to it is private. Creating a rule re-runs
+> `recorrectCategories` so existing rows snap to it too.
+
 ---
 
 ## 11. Derived intelligence
@@ -667,6 +682,26 @@ decision.
   cadences (weekly … yearly), and accepts a group only when amount variance is
   low. Inflows (payroll) use a tighter variance bar than outflows. Sign convention
   in the stored row lets the forecast bucket each as income vs. spending.
+  `getUpcomingRenewals` projects each active sub's next charge (`lastSeenAt +
+  frequencyDays`, rolled forward to the future) for a renewal calendar, and a
+  `recurring_increase` insight rule flags a charge that jumped ≥15% above its
+  average — the silent price hike.
+- **Internal transfers** ([`transfers/detect.ts`](src/lib/transfers/detect.ts)) —
+  pairs an outflow on one of your accounts with an equal, opposite, near-in-time
+  inflow on another, tags both legs with a shared `transfer_group_id`, and the
+  money-math queries exclude tagged rows. Moving €500 from checking to savings is
+  no longer counted as both €500 income *and* €500 expense — it's correctly
+  neither, while still flowing through to balances and net worth. A manual
+  "this isn't a transfer" / confirm decision (`transfer_manual`) always wins over
+  re-detection.
+- **Net-worth history** ([`accounts/history.ts`](src/lib/accounts/history.ts)) —
+  `snapshotBalances` writes one balance row per account per UTC day (after a sync
+  or a manual edit); `getNetWorthSeries` sums each day's snapshots — liabilities
+  stored negative, so the result is already net of debt — to draw a real
+  net-worth-over-time line instead of a reconstruction. Manual accounts
+  ([`accounts/manual.ts`](src/lib/accounts/manual.ts)) hang off a synthetic
+  "Manual" connection, reusing the import path's pattern so every existing join
+  keeps working.
 - **Predictions** ([`predictions/forecast.ts`](src/lib/predictions/forecast.ts)) —
   layers *fixed income* + *fixed outflows* + *habitual outflows* (stable monthly
   totals at frequent merchants) + a **median** of variable residuals. Median, not
@@ -696,6 +731,33 @@ decision.
 > What's expensive is asking an LLM "what country is 'Roma'?" So we cache *that*
 > answer (including "tried, not a real place") and recompute the trips freely. Know
 > which part of a computation is actually costly before you reach for a cache.
+
+### 11.1 Scheduled refresh & the email digest
+
+Most derivation runs lazily on page load or after a sync, which means it only
+happens while someone has the app open. In hosted mode a pair of cron endpoints
+([`api/cron/sync`](src/app/api/cron/sync/route.ts),
+[`api/cron/digest`](src/app/api/cron/digest/route.ts), wired from `vercel.json`)
+keep things fresh in the background. Both are gated by a `CRON_SECRET` bearer
+token — Vercel Cron sends it automatically — and return `503` when no secret is
+configured, so the surface is closed by default.
+
+- `cron/sync` runs the no-key-needed recompute for every non-guest user
+  ([`cron/jobs.ts`](src/lib/cron/jobs.ts)): refresh insights, re-detect
+  transfers, snapshot balances. Each user is isolated in its own try/catch so one
+  failure never aborts the batch. (Pulling *new* bank transactions headlessly is
+  deliberately out of scope — it's provider-specific and touches the sensitive
+  key-handling path; an in-app sync still does that.)
+- `cron/digest` emails opted-in users their active insights
+  ([`digest/deliver.ts`](src/lib/digest/deliver.ts)).
+
+> **Decision — the email digest is the one outbound channel, so it's doubly
+> gated.** Email is the only feature that sends user-derived content off the box.
+> It fires only when *both* a per-user `digest_email_opt_in` (off by default) and
+> a `RESEND_API_KEY` are present, and it reuses already-localized insight rows so
+> no extra data is shaped for it. Delivery uses Resend's HTTPS API via `fetch` —
+> no SDK dependency added. Web push (which needs VAPID signing and a heavier
+> library) is intentionally deferred.
 
 ---
 
@@ -813,7 +875,7 @@ distilled reasoning that recurs throughout the codebase:
 src/
 ├── proxy.ts                  # Next 16 middleware: auth gate + per-request CSP nonce
 ├── app/                      # App Router: pages (RSC), layouts, API route handlers
-│   ├── api/                  #   streaming chat, auth, backup, export, exchange-rate, health
+│   ├── api/                  #   streaming chat, auth, backup, export, exchange-rate, health, cron/*
 │   ├── (pages)/              #   dashboard, transactions, categories, subscriptions,
 │   │                         #   advisor, goals, predictions, opportunities, travels,
 │   │                         #   import, banks, settings, onboarding, lock
@@ -833,9 +895,12 @@ src/
 │   ├── advisor/              #   context builder, system prompt, conversations, digest
 │   ├── gocardless/ truelayer/ providers/demo/   # bank providers (client/credentials/normalize/sync)
 │   ├── import/               #   CSV/XLSX ingest + AI column mapper + batches
-│   ├── categorize/           #   rules → keywords → LLM ladder
+│   ├── categorize/           #   rules → keywords → LLM ladder + learned per-user rules
+│   ├── transfers/            #   internal-transfer pairing + exclusion
 │   ├── recurring/ predictions/ insights/ opportunities/ travels/   # derived intelligence
 │   ├── dashboard/ transactions/ categories/ goals/ accounts/       # read/write helpers per feature
+│   │                         #     (accounts/ = manual accounts + balance-history snapshots)
+│   ├── cron/ digest/         #   scheduled recompute jobs + opt-in email digest (hosted)
 │   ├── security/             #   csrf, rate-limit
 │   ├── i18n/ currency/ privacy/ format/ settings/                  # cross-cutting
 │   └── ...

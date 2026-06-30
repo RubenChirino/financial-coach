@@ -13,6 +13,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SyncButton } from "../settings/bank/sync-button";
 import { AccountRow } from "./account-row";
+import { ManualAccountButton } from "./manual-account-button";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,7 @@ export default async function BanksPage() {
           </div>
           <div className="flex items-center gap-2">
             <SyncButton label={t("syncAll")} />
+            <ManualAccountButton currency={currency} />
             <Button asChild>
               <Link href="/settings/bank">
                 <Plus className="h-3.5 w-3.5" />

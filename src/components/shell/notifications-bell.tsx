@@ -1,11 +1,12 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import {
+  dismissAllInsightsAction,
   dismissInsightAction,
   listInsightsAction,
   refreshInsightsAction,
 } from "@/lib/insights/actions";
-import { Bell, Loader2, RefreshCw, X } from "lucide-react";
+import { Bell, CheckCheck, Loader2, RefreshCw, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
@@ -74,6 +75,11 @@ export function NotificationsBell() {
     void dismissInsightAction(id);
   }
 
+  function onClearAll() {
+    setItems([]);
+    void dismissAllInsightsAction();
+  }
+
   function onManualRefresh() {
     startRefresh(async () => {
       await refreshInsightsAction();
@@ -106,18 +112,30 @@ export function NotificationsBell() {
         <div className="absolute right-0 top-full z-50 mt-2 w-[340px] rounded-xl border border-[color:var(--border-default)] bg-[color:var(--surface-card)] shadow-lg">
           <div className="flex items-center justify-between border-b border-[color:var(--border-default)] px-3 py-2">
             <span className="text-[13px] font-semibold">{t("notifications")}</span>
-            <button
-              type="button"
-              onClick={onManualRefresh}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
-            >
-              {loading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-              {t("notificationsRefresh")}
-            </button>
+            <div className="flex items-center gap-1">
+              {items.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={onClearAll}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  {t("notificationsClearAll")}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={onManualRefresh}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
+              >
+                {loading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                {t("notificationsRefresh")}
+              </button>
+            </div>
           </div>
           <div className="max-h-[420px] overflow-y-auto">
             {items.length === 0 ? (

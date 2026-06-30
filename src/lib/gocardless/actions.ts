@@ -3,10 +3,12 @@
 import { randomBytes } from "node:crypto";
 import { db } from "@/db/client";
 import { accounts, institutions, requisitions, users } from "@/db/schema";
+import { snapshotBalances } from "@/lib/accounts/history";
 import { getCurrentSession } from "@/lib/auth/session";
 import { categorizeBatchByRules, categorizeUncategorized } from "@/lib/categorize";
 import { decrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
+import { detectTransfers } from "@/lib/transfers/detect";
 import { and, desc, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { GoCardlessClient, GoCardlessError } from "./client";
@@ -222,6 +224,20 @@ export async function syncAllAccountsAction(): Promise<
 
     const ruleMatched = await categorizeBatchByRules(session.userId, allInsertedIds);
 
+    // Tag internal transfers so balances move between accounts without being
+    // double-counted as income + expense. Best-effort — never fail a sync.
+    try {
+      await detectTransfers({ userId: session.userId });
+    } catch (err) {
+      console.warn("post-sync transfer detection failed (non-fatal)", err);
+    }
+    // Record a balance snapshot for the net-worth-over-time chart.
+    try {
+      await snapshotBalances(session.userId);
+    } catch (err) {
+      console.warn("post-sync balance snapshot failed (non-fatal)", err);
+    }
+
     return {
       ok: true,
       data: { inserted, skipped, accounts: rows.length, ruleMatched },
@@ -252,7 +268,7 @@ export async function categorizeNowAction(maxLlm?: number): Promise<
 export interface BankConnectionSummary {
   requisitionId: number;
   status: string;
-  provider: "gocardless" | "demo" | "truelayer";
+  provider: "gocardless" | "demo" | "truelayer" | "manual";
   institutionName: string;
   institutionLogo: string | null;
   accountCount: number;

@@ -111,7 +111,7 @@ export interface RecorrectResult {
  * Manual picks (confidence 100) are never touched.
  */
 export async function recorrectCategories(userId: number): Promise<RecorrectResult> {
-  const rules = await loadRules();
+  const rules = await loadRules(userId);
   const rows = await db
     .select({
       id: transactions.id,
@@ -203,7 +203,7 @@ export async function categorizePendingBatch(opts: {
 }): Promise<BatchResult> {
   const afterId = opts.afterId ?? 0;
   const limit = Math.max(1, Math.min(opts.limit ?? 15, 100));
-  const rules = await loadRules();
+  const rules = await loadRules(opts.userId);
   const cats = await loadCategoryHints();
 
   const pending = await db
@@ -248,7 +248,7 @@ export async function categorizeUncategorized(opts: {
   userId: number;
   maxLlm?: number;
 }): Promise<CategorizeResult> {
-  const rules = await loadRules();
+  const rules = await loadRules(opts.userId);
   const cats = await loadCategoryHints();
 
   const pending = await db
@@ -312,7 +312,7 @@ export async function categorizeUncategorized(opts: {
  */
 export async function categorizeBatchByRules(userId: number, ids: number[]): Promise<number> {
   if (ids.length === 0) return 0;
-  const rules = await loadRules();
+  const rules = await loadRules(userId);
   let matched = 0;
   for (const id of ids) {
     const row = await db

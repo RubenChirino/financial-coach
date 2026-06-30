@@ -3,6 +3,7 @@
 import { db } from "@/db/client";
 import { categories, transactions } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
+import { deriveRulePattern } from "@/lib/categorize/rules";
 import { type TransactionRow, listTransactions } from "@/lib/transactions/list";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -10,6 +11,12 @@ import { revalidatePath } from "next/cache";
 export interface SetTxCategoryResult {
   ok: boolean;
   error?: string;
+  /**
+   * Present when the manual pick could become a reusable rule. The UI offers
+   * "always categorise {merchant}" → `createRuleFromTransactionAction`. Absent
+   * when the category was cleared or no stable merchant pattern is derivable.
+   */
+  suggestRule?: { merchant: string };
 }
 
 /**
@@ -34,6 +41,16 @@ export async function setTransactionCategoryAction(
     if (!cat[0]) return { ok: false, error: "categoryNotFound" };
   }
 
+  // Read the merchant before updating so we can offer a "remember this" rule.
+  const before = await db
+    .select({
+      merchantName: transactions.merchantName,
+      rawDescription: transactions.rawDescription,
+    })
+    .from(transactions)
+    .where(and(eq(transactions.id, txId), eq(transactions.userId, session.userId)))
+    .limit(1);
+
   await db
     .update(transactions)
     .set({
@@ -46,6 +63,17 @@ export async function setTransactionCategoryAction(
 
   revalidatePath("/transactions");
   revalidatePath("/");
+
+  // Offer to learn a rule only on a real assignment (not a clear), and only
+  // when a stable merchant pattern can be derived from the description.
+  const row = before[0];
+  if (categoryId != null && row) {
+    const pattern = deriveRulePattern(row.merchantName, row.rawDescription);
+    if (pattern) {
+      const merchant = (row.merchantName ?? row.rawDescription).trim().slice(0, 40);
+      return { ok: true, suggestRule: { merchant } };
+    }
+  }
   return { ok: true };
 }
 

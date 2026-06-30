@@ -15,7 +15,7 @@
  *
  * A future "truelayer" provider will plug into the same contract.
  */
-export type ProviderId = "gocardless" | "demo" | "truelayer";
+export type ProviderId = "gocardless" | "demo" | "truelayer" | "manual";
 
 export interface ProviderDescriptor {
   id: ProviderId;

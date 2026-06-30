@@ -46,7 +46,11 @@ Screenshots are in progress. Every feature listed below is shipped and live.
 - **Guest mode (hosted).** A read-only "try it" session seeded with demo data, so newcomers can explore a hosted instance without signing in or touching real accounts.
 - **AI advisor chat.** Grounded on your redacted transaction snapshot + detected subscriptions. Streaming responses, per-conversation history, optional cloud LLM with explicit per-provider consent. Digest tab shows auto-generated brief + insight cards before you even open chat.
 - **In-app LLM selector.** Switch between Ollama, Claude, OpenAI, and Gemini from Settings — no `.env.local` edits needed. Preference is stored per-user; env remains the fallback. In hosted mode, Gemini is the automatic fallback (serverless can't reach a local Ollama daemon).
-- **Recurring subscription detection.** Cadence snapping (weekly / biweekly / monthly / quarterly / yearly) + amount-stability heuristic. Dashboard widget with monthly-equivalent total.
+- **Recurring subscription detection.** Cadence snapping (weekly / biweekly / monthly / quarterly / yearly) + amount-stability heuristic. Dashboard widget with monthly-equivalent total. Plus an **upcoming-renewals calendar** (next charge per sub) and a **price-increase alert** when a charge jumps above its average.
+- **Complete net worth.** Add manual accounts the bank can't see — cash, investments, property, vehicles, and **loans** (subtracted as liabilities) — alongside your linked banks. A **net-worth-over-time** chart is backed by real daily balance snapshots, not a reconstruction.
+- **Internal transfer detection.** Moving money between your own accounts is auto-detected and excluded from income / expenses / budgets / forecast, so the numbers stop being double-counted. A one-tap "not a transfer" override always wins over detection.
+- **Categorization that learns.** Re-categorize a merchant and choose "Always" to create a reusable, per-user rule — so the same merchant is never miscategorized twice. Manage your rules from Settings.
+- **Scheduled refresh & email digest (hosted).** Optional Vercel cron keeps insights, transfers, and balance snapshots fresh in the background; an opt-in email digest delivers your insights even when the app is closed. Both are off unless you configure `CRON_SECRET` / `RESEND_API_KEY`.
 - **Goals.** Track savings targets with emoji, deadline, progress bar, and optional category linking.
 - **Insights engine.** Rule-based, idempotent alerts: uncategorized transactions, budget overruns, on-track savings, low balance, near-complete goals. Dismissible, severity-ranked.
 - **Privacy mode.** One-tap balance blur across the entire UI — persisted to `localStorage`. Works globally via a React pub-sub store, no provider needed.
@@ -151,6 +155,7 @@ Or use the TrueLayer connector if your bank has better Live coverage there — k
 - [x] **Phase 8** — Hosted deployment: Auth.js OAuth (Google / Microsoft / GitHub), libSQL/Turso driver, Vercel-compat Node engine relax, hosted-mode UI, Gemini auto-fallback, XLSX import, per-account predictions
 - [x] **Phase 9** — Intelligence & polish: Travels (trip detection + city labelling), Opportunities + investor profile, dedicated Predictions page, spending heatmap, multi-currency conversion, manual transaction entry, import history, encrypted backup/restore, TrueLayer connector, Demo provider, PWA install + pull-to-refresh
 - [x] **Phase 10** — Multi-user hardening: per-user data isolation (fail-closed `user_id` scoping across every table), read-only Guest mode, CSRF guards on `/api/*`, strict per-request CSP nonce, per-user LLM rate limiting
+- [x] **Phase 11** — Data quality & reach: internal transfer detection, complete net worth (manual assets/liabilities + balance-history chart), categorizer that learns from your corrections, subscription renewals + price-increase alerts, scheduled background refresh + opt-in email digest
 
 ## Architecture
 

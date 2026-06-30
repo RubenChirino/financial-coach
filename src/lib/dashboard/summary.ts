@@ -9,7 +9,7 @@ import {
   requisitions,
   transactions,
 } from "@/db/schema";
-import { and, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 
 export interface MonthSummary {
   month: string;
@@ -67,6 +67,8 @@ export async function getMonthSummary(userId: number, offset = 0): Promise<Month
         eq(transactions.userId, userId),
         gte(transactions.bookingDate, start),
         lt(transactions.bookingDate, end),
+        // Exclude internal transfers — they're not income or expense.
+        isNull(transactions.transferGroupId),
       ),
     );
 
@@ -109,6 +111,7 @@ export async function getTopCategoriesThisMonth(
         lt(transactions.bookingDate, end),
         isNotNull(transactions.categoryId),
         lt(transactions.amountCents, 0),
+        isNull(transactions.transferGroupId),
       ),
     )
     .groupBy(categories.id)
@@ -195,6 +198,7 @@ export async function getMonthlyFlowHistory(
           eq(transactions.userId, userId),
           gte(transactions.bookingDate, start),
           lt(transactions.bookingDate, end),
+          isNull(transactions.transferGroupId),
         ),
       );
     const income = Number(r[0]?.income) || 0;
