@@ -86,7 +86,7 @@ If you genuinely cannot tell, reply exactly: UNKNOWN`;
       model,
       prompt,
       temperature: 0,
-      maxTokens: 24,
+      maxOutputTokens: 24,
     });
     const city = text.trim().replace(/[.;,]+$/, "");
     if (!city || /unknown/i.test(city)) return null;

@@ -20,9 +20,27 @@ import type { NextRequest } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * The v5 client posts `UIMessage`s, whose text lives in a typed `parts` array
+ * rather than a `content` string. We only ever need the newest user turn — the
+ * rest of the history is re-read from the DB, which is the source of truth.
+ */
 interface ChatBody {
   conversationId?: number;
-  messages: { role: "user" | "assistant"; content: string }[];
+  messages: {
+    role: "user" | "assistant";
+    parts?: { type: string; text?: string }[];
+    /** v4 shape. Tolerated so a stale open tab mid-deploy still works. */
+    content?: string;
+  }[];
+}
+
+function textOf(message: ChatBody["messages"][number]): string {
+  if (typeof message.content === "string") return message.content;
+  return (message.parts ?? [])
+    .filter((p) => p.type === "text" && typeof p.text === "string")
+    .map((p) => p.text as string)
+    .join("");
 }
 
 /**
@@ -109,7 +127,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     return new Response("missing messages", { status: 400 });
   }
   const lastUser = [...body.messages].reverse().find((m) => m.role === "user");
-  if (!lastUser || !lastUser.content.trim()) {
+  const lastUserText = lastUser ? textOf(lastUser) : "";
+  if (!lastUserText.trim()) {
     return new Response("missing user message", { status: 400 });
   }
 
@@ -128,8 +147,8 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   // Persist the inbound user message before doing any LLM work, so we don't lose
   // it on a server crash or stream cancellation.
-  await appendMessage(conversationId, "user", lastUser.content);
-  await maybeAutoTitle(conversationId, lastUser.content);
+  await appendMessage(conversationId, "user", lastUserText);
+  await maybeAutoTitle(conversationId, lastUserText);
 
   // History from DB is the source of truth (the client may be out of sync after
   // refresh). We pass the full history every turn — at typical sizes this fits
@@ -160,7 +179,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     },
   });
 
-  const response = result.toDataStreamResponse();
+  // v5 renamed the data-stream protocol to the UI-message stream; the client
+  // hook consumes it the same way.
+  const response = result.toUIMessageStreamResponse();
   // Surface the conversation ID so the client can save it for follow-up turns.
   response.headers.set("X-Conversation-Id", String(conversationId));
   return response;

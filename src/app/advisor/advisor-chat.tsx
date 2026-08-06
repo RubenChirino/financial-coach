@@ -12,7 +12,8 @@ import {
 import type { ConversationSummary } from "@/lib/advisor/conversations";
 import type { ChatContextSnapshot } from "@/lib/advisor/digest";
 import { cn } from "@/lib/utils";
-import { useChat } from "ai/react";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import {
   ArrowLeftRight,
   Landmark,
@@ -28,7 +29,15 @@ import {
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+
+/** Concatenate the text parts of a v5 `UIMessage` back into a plain string. */
+function messageText(m: UIMessage): string {
+  return m.parts
+    .filter((p): p is { type: "text"; text: string } => p.type === "text")
+    .map((p) => p.text)
+    .join("");
+}
 
 interface Labels {
   empty: string;
@@ -77,28 +86,54 @@ export function AdvisorChat(props: Props) {
   const [pendingDelete, startDelete] = useTransition();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // v5 removed `onResponse`, so the two things we read off the raw response —
+  // the 403 consent signal and the `X-Conversation-Id` header for a brand-new
+  // conversation — are picked up by wrapping the transport's fetch instead.
+  // `conversationIdRef` keeps the wrapper reading the *current* id without
+  // rebuilding the transport (and tearing down the stream) on every change.
+  const conversationIdRef = useRef(conversationId);
+  conversationIdRef.current = conversationId;
+
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport<UIMessage>({
+        api: "/api/advisor/chat",
+        body: () => ({ conversationId: conversationIdRef.current }),
+        fetch: async (input, init) => {
+          const response = await fetch(input as RequestInfo, init);
+          if (response.status === 403) {
+            setShowConsent(true);
+            return response;
+          }
+          const newId = response.headers.get("X-Conversation-Id");
+          if (newId && conversationIdRef.current == null) {
+            const n = Number(newId);
+            if (Number.isFinite(n)) {
+              setConversationId(n);
+              const url = new URL(window.location.href);
+              url.searchParams.set("c", String(n));
+              url.searchParams.set("tab", "chat");
+              window.history.replaceState({}, "", url.toString());
+            }
+          }
+          return response;
+        },
+      }),
+    [],
+  );
+
   const chat = useChat({
-    api: "/api/advisor/chat",
     id: String(conversationId ?? "new"),
-    initialMessages: props.initialMessages.filter((m) => m.role !== "system") as never,
-    body: { conversationId },
-    onResponse(response) {
-      if (response.status === 403) {
-        setShowConsent(true);
-        return;
-      }
-      const newId = response.headers.get("X-Conversation-Id");
-      if (newId && conversationId == null) {
-        const n = Number(newId);
-        if (Number.isFinite(n)) {
-          setConversationId(n);
-          const url = new URL(window.location.href);
-          url.searchParams.set("c", String(n));
-          url.searchParams.set("tab", "chat");
-          window.history.replaceState({}, "", url.toString());
-        }
-      }
-    },
+    transport,
+    // v5 renamed `initialMessages` to `messages` and moved message text into a
+    // typed `parts` array.
+    messages: props.initialMessages
+      .filter((m) => m.role !== "system")
+      .map((m) => ({
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        parts: [{ type: "text" as const, text: m.content }],
+      })),
     onError() {
       setErrorMsg(props.labels.errorRequest);
     },
@@ -107,6 +142,11 @@ export function AdvisorChat(props: Props) {
     },
   });
 
+  // `input` / `handleInputChange` / `handleSubmit` were dropped from the hook
+  // in v5 — the composer owns its own state now.
+  const [input, setInput] = useState("");
+  const isStreaming = chat.status === "submitted" || chat.status === "streaming";
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-run on new message.
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -114,12 +154,15 @@ export function AdvisorChat(props: Props) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const text = input.trim();
+    if (!text) return;
     setErrorMsg(null);
     if (props.providerState.consentNeeded) {
       setShowConsent(true);
       return;
     }
-    chat.handleSubmit(e);
+    setInput("");
+    chat.sendMessage({ text });
   }
 
   function sendSuggestion(text: string) {
@@ -128,7 +171,7 @@ export function AdvisorChat(props: Props) {
       setShowConsent(true);
       return;
     }
-    chat.append({ role: "user", content: text });
+    chat.sendMessage({ text });
   }
 
   async function handleConsent() {
@@ -198,7 +241,7 @@ export function AdvisorChat(props: Props) {
               <button
                 type="button"
                 onClick={() => sendSuggestion(s)}
-                disabled={chat.isLoading}
+                disabled={isStreaming}
                 className="w-full rounded-lg border border-[color:var(--border-default)] px-3 py-2 text-left text-[12.5px] text-[color:var(--text-primary)] transition-colors hover:border-[color:var(--brand-primary-border)] hover:bg-[color:var(--brand-primary-soft)] disabled:opacity-50"
               >
                 {s}
@@ -302,12 +345,12 @@ export function AdvisorChat(props: Props) {
                   </div>
                 ) : null}
                 <div className={chatBubbleClass(m.role)}>
-                  <ChatMessageContent content={m.content} role={m.role} />
+                  <ChatMessageContent content={messageText(m)} role={m.role} />
                 </div>
               </div>
             ))
           )}
-          {chat.isLoading && chat.messages[chat.messages.length - 1]?.role === "user" ? (
+          {isStreaming && chat.messages[chat.messages.length - 1]?.role === "user" ? (
             <div className="flex gap-2.5">
               <div
                 className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white"
@@ -339,12 +382,12 @@ export function AdvisorChat(props: Props) {
           className="flex items-end gap-2 border-t border-[color:var(--border-default)] p-3"
         >
           <textarea
-            value={chat.input}
-            onChange={chat.handleInputChange}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (chat.input.trim()) {
+                if (input.trim()) {
                   handleSubmit(e as unknown as React.FormEvent);
                 }
               }
@@ -352,9 +395,9 @@ export function AdvisorChat(props: Props) {
             placeholder={props.labels.placeholder}
             rows={2}
             className="flex-1 resize-none rounded-lg border border-[color:var(--border-default)] bg-[color:var(--surface-app)] px-3 py-2 text-[13.5px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)]"
-            disabled={chat.isLoading}
+            disabled={isStreaming}
           />
-          {chat.isLoading ? (
+          {isStreaming ? (
             <Button
               type="button"
               variant="outline"
@@ -368,7 +411,7 @@ export function AdvisorChat(props: Props) {
             <Button
               type="submit"
               size="icon"
-              disabled={!chat.input.trim()}
+              disabled={!input.trim()}
               aria-label={props.labels.send}
             >
               <Send className="h-4 w-4" />
