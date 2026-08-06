@@ -170,8 +170,8 @@ UI as exhaustive unions, so adding a status forces every `switch` to be revisite
 > TypeScript is the path of least resistance there, and Next.js lets the same
 > language and types span client and server. The frontier of LLM tooling (the
 > Vercel AI SDK, provider clients) is also TS-first. Node 24 LTS is pinned via
-> `.nvmrc`; the lower bound is Node 20 (`package.json` `engines`) so Vercel's
-> runtime is supported.
+> `.nvmrc`; the lower bound is Node 22 (`package.json` `engines`), raised from
+> 20 because the AI SDK v7 requires it.
 
 ### 4.2 Framework — Next.js 16 (App Router) + React 19
 
@@ -249,10 +249,10 @@ can read and audit.
 
 ### 4.5 The LLM layer — Vercel AI SDK + a provider seam
 
-The [Vercel AI SDK](https://sdk.vercel.ai) (`ai` v4) gives one `streamText` /
+The [Vercel AI SDK](https://sdk.vercel.ai) (`ai` v7) gives one `streamText` /
 `generateObject` interface across providers. Concrete adapters —
 `@ai-sdk/anthropic`, `@ai-sdk/openai`, `@ai-sdk/google`, and
-`ollama-ai-provider` — are selected behind a single resolver in
+`ollama-ai-provider-v2` — are selected behind a single resolver in
 [`src/lib/llm/provider.ts`](src/lib/llm/provider.ts).
 
 > **Decision — an SDK abstraction vs. calling each vendor's REST API directly.**

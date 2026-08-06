@@ -6,11 +6,11 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 // `ollama-ai-provider` was archived at the AI SDK v4 provider spec
-// (LanguageModelV1) and can't talk to v5. `ollama-ai-provider-v2` is the
-// maintained continuation; the 1.5.x line is the one built against
-// `@ai-sdk/provider@2` (LanguageModelV2), which is what `ai@5` speaks. Later
-// majors target the v3 spec and pair with `ai@6`/`ai@7` instead — bump both
-// together or not at all.
+// (LanguageModelV1); `ollama-ai-provider-v2` is the maintained continuation.
+// Its major line tracks the provider spec, not the `ai` version, so the two
+// must move together: 4.x is built against `@ai-sdk/provider@4`, which is what
+// `ai@7` speaks. Downgrading `ai` without downgrading this (or vice versa)
+// produces a model object the runtime rejects.
 import { createOllama } from "ollama-ai-provider-v2";
 
 export type LlmProvider = "ollama" | "anthropic" | "openai" | "google";

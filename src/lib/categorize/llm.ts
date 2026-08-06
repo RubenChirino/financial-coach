@@ -85,7 +85,7 @@ export async function categorizeWithLlm(
   const { object } = await generateObject({
     model,
     schema: OutputSchema,
-    system: SYSTEM,
+    instructions: SYSTEM,
     prompt,
     temperature: 0.1,
     maxRetries: 1,
