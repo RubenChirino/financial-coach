@@ -156,18 +156,21 @@ export async function POST(req: NextRequest): Promise<Response> {
   const persisted = await getConversationMessages(session.userId, conversationId);
   const language = user.language === "en" ? "en" : "es";
   const ctx = await buildAdvisorContext({ monthsBack: 3, userId: session.userId });
-  const system = buildSystemPrompt(language, ctx);
+  const instructions = buildSystemPrompt(language, ctx);
 
   const { model } = getLanguageModel(prefs);
 
   const result = streamText({
     model,
-    system,
+    // v7 renamed `system` to `instructions` and `onFinish` to `onEnd`. The old
+    // names still work as deprecated aliases; using the current ones keeps the
+    // next major from breaking silently.
+    instructions,
     messages: persisted
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({ role: m.role, content: m.content })),
     temperature: 0.4,
-    onFinish: async ({ text, usage }) => {
+    onEnd: async ({ text, usage }) => {
       try {
         await appendMessage(conversationId, "assistant", text, {
           tokenCount: usage?.totalTokens ?? 0,

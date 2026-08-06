@@ -248,7 +248,7 @@ export async function inferMapping(
   const { object } = await generateObject({
     model,
     schema: CsvMappingSchema,
-    system: SYSTEM_PROMPT,
+    instructions: SYSTEM_PROMPT,
     prompt,
     temperature: 0,
     maxRetries: 1,

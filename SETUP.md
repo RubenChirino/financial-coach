@@ -43,7 +43,7 @@ Estimated time: 20–30 minutes, most of it waiting for the LLM model to downloa
 
 ### Windows
 
-1. Download and run the Node.js 20+ installer from [nodejs.org](https://nodejs.org/) (24 LTS recommended). Accept all the defaults.
+1. Download and run the Node.js 22+ installer from [nodejs.org](https://nodejs.org/) (24 LTS recommended). Accept all the defaults.
 2. Open **PowerShell** (Start menu → type "PowerShell").
 3. Install pnpm:
    ```powershell
@@ -58,7 +58,7 @@ Estimated time: 20–30 minutes, most of it waiting for the LLM model to downloa
 ### Linux (Debian / Ubuntu)
 
 ```sh
-curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -   # or setup_20.x for Node 20
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -   # or setup_22.x for Node 22
 sudo apt install -y nodejs
 sudo npm install -g pnpm
 ```
