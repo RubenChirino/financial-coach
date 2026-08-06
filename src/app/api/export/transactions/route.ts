@@ -1,4 +1,5 @@
 import { getCurrentSession } from "@/lib/auth/session";
+import { escapeCsvCell } from "@/lib/export/csv-escape";
 import { guardCsrf } from "@/lib/security/csrf";
 import { listTransactions } from "@/lib/transactions/list";
 import { NextResponse } from "next/server";
@@ -72,9 +73,4 @@ export async function GET(req: Request): Promise<Response> {
   });
 }
 
-function escapeCsv(value: string): string {
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
+const escapeCsv = (value: string): string => escapeCsvCell(value);

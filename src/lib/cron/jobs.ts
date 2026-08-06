@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash, timingSafeEqual } from "node:crypto";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { snapshotBalances } from "@/lib/accounts/history";
@@ -12,11 +13,19 @@ import { detectTransfers } from "@/lib/transfers/detect";
  * as `Authorization: Bearer <secret>`. We accept only an exact match. When no
  * secret is configured the cron surface is considered disabled (the caller
  * returns 503 before reaching here).
+ *
+ * The comparison is constant-time: `===` on strings bails at the first
+ * differing byte, which leaks the secret's prefix to an attacker who can time
+ * enough requests against these unauthenticated endpoints. Hashing both sides
+ * first keeps the compared buffers the same length regardless of what the
+ * caller sent, so `timingSafeEqual` can't throw on a length mismatch either.
  */
 export function isCronAuthorized(req: Request): boolean {
   const secret = env().CRON_SECRET;
   if (!secret) return false;
-  return req.headers.get("authorization") === `Bearer ${secret}`;
+  const presented = req.headers.get("authorization") ?? "";
+  const digest = (v: string) => createHash("sha256").update(v).digest();
+  return timingSafeEqual(digest(presented), digest(`Bearer ${secret}`));
 }
 
 export interface RecomputeSummary {

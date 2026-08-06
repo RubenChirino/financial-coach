@@ -51,6 +51,13 @@ export interface SecurityActionResult {
 export async function changePinAction(formData: FormData): Promise<SecurityActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "notAuthenticated" };
+  // PIN-mode only. `destroyAllSessions()` below is global — in a multi-user
+  // (oauth) deployment it would sign every other user out. See the note on
+  // `deleteAllDataAction` for why we gate on the mode rather than on whether
+  // this particular caller happens to have a PIN.
+  if (env().AUTH_MODE === "oauth" || session.isGuest) {
+    return { ok: false, error: "notAvailable" };
+  }
 
   const currentPin = String(formData.get("currentPin") ?? "");
   const newPin = String(formData.get("newPin") ?? "");
@@ -103,10 +110,21 @@ export async function changePinAction(formData: FormData): Promise<SecurityActio
  * (cascades through all foreign keys — accounts, transactions, institutions
  * via requisitions, goals, insights, categories rules, advisor conversations,
  * sessions). Clears the session cookie. Redirects to /onboarding.
+ *
+ * SINGLE-USER (local/PIN) MODE ONLY. The cleanup pass at the bottom issues
+ * unscoped `DELETE FROM <table>` statements — correct on a self-hosted install
+ * where the one user *is* the database, catastrophic on a shared oauth
+ * deployment where it would erase every other user's financial history. The
+ * PIN check alone is not a sufficient guard: it only holds while no PIN-bearing
+ * row can exist in an oauth database, which a local→hosted migration would
+ * break. Gate on the mode, exactly like `/api/backup` and `/api/backup/restore`.
  */
 export async function deleteAllDataAction(formData: FormData): Promise<SecurityActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "notAuthenticated" };
+  if (env().AUTH_MODE === "oauth" || session.isGuest) {
+    return { ok: false, error: "notAvailable" };
+  }
 
   const pin = String(formData.get("pin") ?? "");
   if (!PinDigits.safeParse(pin).success) return { ok: false, error: "invalidPin" };

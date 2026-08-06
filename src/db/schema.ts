@@ -39,10 +39,16 @@ export const users = sqliteTable(
     // only thing standing between a compromised DB and plaintext).
     encryptionSalt: text("encryption_salt").notNull(),
     // OAuth identity (populated only when AUTH_MODE=oauth and the user came
-    // through Google/Microsoft). `email` is the canonical lookup key — same
-    // user signing in with both providers gets the same `users` row as long
-    // as both providers expose the same verified email.
+    // through Google/Microsoft/GitHub). `email` is the lookup key, but it is
+    // NOT sufficient on its own: matching on email alone means anyone who can
+    // get *any* supported provider to assert the victim's address inherits the
+    // victim's account and all their financial data. `oauthProvider` pins the
+    // row to the provider that created it, so a second provider claiming the
+    // same address is rejected instead of silently linked. NULL for local/PIN
+    // users and for OAuth rows created before this column existed — those are
+    // stamped on their next sign-in.
     email: text("email"),
+    oauthProvider: text("oauth_provider"),
     emailVerifiedAt: integer("email_verified_at", { mode: "timestamp_ms" }),
     name: text("name"),
     image: text("image"),
