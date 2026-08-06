@@ -359,7 +359,7 @@ Prefer Claude, GPT-4, or Gemini over a local model? The app redacts IBANs, card 
    ```
    LLM_PROVIDER=google
    GOOGLE_GENERATIVE_AI_API_KEY=...
-   GOOGLE_MODEL=gemini-2.5-flash
+   GOOGLE_MODEL=gemini-3.6-flash
    ```
 
 Restart the app after changing `.env.local`. You can always switch back to Ollama by setting `LLM_PROVIDER=ollama`.
@@ -441,7 +441,7 @@ automatically falls back to **Gemini** in hosted mode regardless of
 
 ```
 GOOGLE_GENERATIVE_AI_API_KEY=...
-GOOGLE_MODEL=gemini-2.5-flash
+GOOGLE_MODEL=gemini-3.6-flash
 ```
 
 Free Gemini tier is enough for personal use.

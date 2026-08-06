@@ -48,7 +48,7 @@ const EnvSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default("gpt-4o"),
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
-  GOOGLE_MODEL: z.string().default("gemini-2.5-flash"),
+  GOOGLE_MODEL: z.string().default("gemini-3.6-flash"),
   /**
    * Shared secret for the scheduled `/api/cron/*` endpoints (hosted mode). When
    * set, Vercel Cron sends it as `Authorization: Bearer <CRON_SECRET>` and the
