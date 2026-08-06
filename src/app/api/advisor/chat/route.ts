@@ -93,10 +93,15 @@ export async function POST(req: NextRequest): Promise<Response> {
     });
   }
 
-  // Bound request body before parsing to defend against a malformed
-  // Content-Length lie. 256 KB is generous for a chat turn (≈100k chars).
-  const contentLength = Number(req.headers.get("content-length") ?? 0);
-  if (contentLength > 256 * 1024) {
+  // Bound the request body before parsing. 256 KB is generous for a chat turn
+  // (≈100k chars). A missing Content-Length is rejected rather than defaulted
+  // to 0: `fetch` always sets it for the string bodies our client sends, so the
+  // only callers without one are hand-rolled chunked uploads — exactly the
+  // shape that would otherwise stream an unbounded body straight into
+  // `req.json()` and past this check.
+  const rawLength = req.headers.get("content-length");
+  const contentLength = Number(rawLength);
+  if (rawLength == null || !Number.isFinite(contentLength) || contentLength > 256 * 1024) {
     return new Response("payload too large", { status: 413 });
   }
   const body = (await req.json()) as ChatBody;

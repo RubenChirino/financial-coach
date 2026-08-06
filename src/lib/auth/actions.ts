@@ -6,9 +6,14 @@ import { deriveEncryptionKey, generateSalt, hashPin, verifyPin } from "@/lib/cry
 import { env } from "@/lib/env";
 import { type Locale, isLocale } from "@/lib/i18n/config";
 import { setLocale } from "@/lib/i18n/locale";
-import { checkAttempt, recordFailure, recordSuccess } from "@/lib/security/rate-limit";
+import {
+  checkAttempt,
+  consumeQuota,
+  recordFailure,
+  recordSuccess,
+} from "@/lib/security/rate-limit";
 import { eq } from "drizzle-orm";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { SESSION_COOKIE } from "./constants";
@@ -45,6 +50,13 @@ export interface ActionResult {
 }
 
 export async function setupPinAction(formData: FormData): Promise<ActionResult> {
+  // Server Actions are ordinary HTTP endpoints — the `/onboarding` page guard
+  // does not protect this one. In oauth (hosted) mode there is no PIN flow at
+  // all, so an unauthenticated caller must never be able to provision a user
+  // row here: on a freshly-deployed instance `userExists()` is still false and
+  // the check below would happily let a stranger claim the first account.
+  if (env().AUTH_MODE === "oauth") return { ok: false, error: "notAvailable" };
+
   const pin = String(formData.get("pin") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
   const language = String(formData.get("language") ?? "es");
@@ -170,6 +182,15 @@ export async function lockAction(): Promise<void> {
  */
 export async function enterGuestModeAction(): Promise<void> {
   if (env().AUTH_MODE !== "oauth") redirect("/lock");
+
+  // Every call INSERTs a throwaway `users` row that only gets reaped after the
+  // 24h TTL, so an unauthenticated caller could hammer this action and grow the
+  // table without bound. Cap it per client: a human clicking "try it" needs one
+  // or two, never 5 a minute.
+  const h = await headers();
+  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown";
+  if (!consumeQuota(`guest:${ip}`, 5, 60_000).allowed) redirect("/lock?error=rateLimited");
+
   await enterGuestMode();
   redirect("/?guest=1");
 }

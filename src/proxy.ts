@@ -8,6 +8,13 @@ const ASSET_PREFIXES = [
   // Auth.js routes must be reachable without a session — the user hits them
   // *to* obtain a session via OAuth handshake.
   "/api/auth",
+  // Scheduled jobs. Vercel Cron calls these server-to-server with no session
+  // cookie, so the auth gate below would bounce them to /lock and the jobs
+  // would silently never run. They carry their own, stronger gate instead:
+  // `isCronAuthorized` requires `Authorization: Bearer $CRON_SECRET` compared
+  // in constant time, and the handlers return 503 when no secret is set — so
+  // an unconfigured deployment exposes nothing here.
+  "/api/cron",
   "/icons",
   "/manifest.json",
   "/sw.js",

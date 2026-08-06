@@ -107,9 +107,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const email = user.email?.toLowerCase();
       if (!email) return false;
 
+      const provider = account?.provider;
+      if (!provider) return false;
+
       // Google exposes `email_verified` on the profile — reject unverified
       // accounts to avoid account takeover via temporarily-claimed email.
-      if (account?.provider === "google") {
+      if (provider === "google") {
         const verified = (profile as { email_verified?: boolean } | undefined)?.email_verified;
         if (verified === false) return false;
       }
@@ -117,7 +120,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const existing = await db.query.users.findFirst({
         where: eq(users.email, email),
       });
-      if (existing) return true;
+      if (existing) {
+        // Account-binding check. Auto-linking two OAuth identities purely
+        // because they report the same address is an account-takeover path:
+        // not every provider guarantees the address is verified, so an
+        // attacker who registers the victim's email with a *different*
+        // provider would otherwise land straight in the victim's account.
+        //
+        // Rows created before this column existed carry NULL — accept those
+        // once and stamp the provider so the binding applies from then on.
+        if (existing.oauthProvider == null) {
+          await db
+            .update(users)
+            .set({ oauthProvider: provider, updatedAt: new Date() })
+            .where(eq(users.id, existing.id));
+          return true;
+        }
+        return existing.oauthProvider === provider;
+      }
 
       // First sign-in for this email: provision a fresh user row. PIN columns
       // stay NULL — this user authenticates exclusively via OAuth. The
@@ -126,6 +146,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const now = new Date();
       await db.insert(users).values({
         email,
+        oauthProvider: provider,
         emailVerifiedAt: now,
         name: user.name ?? null,
         image: user.image ?? null,
