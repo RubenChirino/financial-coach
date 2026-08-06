@@ -40,8 +40,8 @@ supports also works):
 - **Anthropic:** `claude-sonnet-4-5`, `claude-haiku-4-5`, `claude-opus-4-5`,
   `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`
 - **OpenAI:** `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-3.5-turbo`
-- **Google:** `gemini-2.5-flash` (default), `gemini-2.0-flash`, `gemini-1.5-pro`,
-  `gemini-1.5-flash`
+- **Google:** `gemini-3.6-flash` (default), `gemini-3.5-flash`,
+  `gemini-3.5-flash-lite`, `gemini-2.5-flash`
 
 ## Ollama (default, recommended for privacy)
 
@@ -92,7 +92,7 @@ There's a generous free tier.
 ```bash
 LLM_PROVIDER=google
 GOOGLE_GENERATIVE_AI_API_KEY=...
-GOOGLE_MODEL=gemini-2.5-flash
+GOOGLE_MODEL=gemini-3.6-flash
 ```
 
 ## Hosted mode (Vercel) — automatic Gemini fallback
