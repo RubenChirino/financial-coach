@@ -5,7 +5,13 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
-import { createOllama } from "ollama-ai-provider";
+// `ollama-ai-provider` was archived at the AI SDK v4 provider spec
+// (LanguageModelV1) and can't talk to v5. `ollama-ai-provider-v2` is the
+// maintained continuation; the 1.5.x line is the one built against
+// `@ai-sdk/provider@2` (LanguageModelV2), which is what `ai@5` speaks. Later
+// majors target the v3 spec and pair with `ai@6`/`ai@7` instead — bump both
+// together or not at all.
+import { createOllama } from "ollama-ai-provider-v2";
 
 export type LlmProvider = "ollama" | "anthropic" | "openai" | "google";
 

@@ -142,7 +142,7 @@ Items:
 ${JSON.stringify(batch)}`;
 
     try {
-      const { text } = await generateText({ model, prompt, temperature: 0, maxTokens: 2500 });
+      const { text } = await generateText({ model, prompt, temperature: 0, maxOutputTokens: 2500 });
       const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
       const parsed = JSON.parse(json) as Record<string, unknown>;
       for (const city of batch) {
