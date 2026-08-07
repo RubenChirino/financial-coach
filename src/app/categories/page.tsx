@@ -5,8 +5,8 @@ import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { CategoryRow } from "@/components/budgets/category-row";
 import { CategoryIcon } from "@/components/category-icon";
+import { ConvertedAmount } from "@/components/converted-amount";
 import { EmptyState } from "@/components/empty-state";
-import { PrivacyAmount } from "@/components/privacy-amount";
 import { Button } from "@/components/ui/button";
 import { getCurrentSession } from "@/lib/auth/session";
 import type { CategoryWithSpend } from "@/lib/categories/list";
@@ -104,23 +104,18 @@ function categoryRowProps(
   const budget = c.budgetMonthlyCents ?? 0;
   const pct = budget > 0 ? (c.spentThisMonthCents / budget) * 100 : 0;
   const over = budget > 0 && c.spentThisMonthCents > budget;
-  const remainingFormatted =
-    budget > 0
-      ? formatAmount(Math.max(0, budget - c.spentThisMonthCents), ctx.currency, ctx.intlLocale)
-      : "";
-  const budgetFormatted =
-    budget > 0 ? fmtRound(budget, ctx.currency, ctx.intlLocale) : ctx.noBudgetLabel;
   return {
     id: c.id,
     name,
     icon: c.icon,
     color: c.color,
-    spentFormatted: formatAmount(c.spentThisMonthCents, ctx.currency, ctx.intlLocale),
-    budgetFormatted,
+    spentCents: c.spentThisMonthCents,
+    budgetCents: budget > 0 ? budget : null,
+    currency: ctx.currency,
+    intlLocale: ctx.intlLocale,
+    noBudgetLabel: ctx.noBudgetLabel,
     pct,
     over,
-    remainingFormatted,
-    overByFormatted: formatAmount(c.spentThisMonthCents - budget, ctx.currency, ctx.intlLocale),
     selected: c.id === ctx.selectedId,
     locale: ctx.locale,
     leftLabel: ctx.leftLabel,
@@ -245,7 +240,7 @@ export default async function CategoriesPage({
               {t("incomeThisMonth")}
             </div>
             <div className="tnum mt-1 text-[22px] font-semibold tracking-[-0.015em]">
-              <PrivacyAmount value={formatAmount(totalIncome, currency, intlLocale)} />
+              <ConvertedAmount cents={totalIncome} currency={currency} intlLocale={intlLocale} />
             </div>
             {incomeDeltaPct != null ? (
               <DeltaPill pct={incomeDeltaPct} vsLabel={t("vsLastMonth")} />
@@ -257,7 +252,7 @@ export default async function CategoriesPage({
               {t("spent")}
             </div>
             <div className="tnum mt-1 text-[22px] font-semibold tracking-[-0.015em]">
-              <PrivacyAmount value={formatAmount(totalSpent, currency, intlLocale)} />
+              <ConvertedAmount cents={totalSpent} currency={currency} intlLocale={intlLocale} />
             </div>
             {spentDeltaPct != null ? (
               <DeltaPill pct={spentDeltaPct} vsLabel={t("vsLastMonth")} goodWhenDown />
@@ -293,7 +288,7 @@ export default async function CategoriesPage({
               {t("savedThisMonth")}
             </div>
             <div className="tnum mt-1 text-[22px] font-semibold tracking-[-0.015em]">
-              <PrivacyAmount value={formatAmount(saved, currency, intlLocale)} />
+              <ConvertedAmount cents={saved} currency={currency} intlLocale={intlLocale} />
             </div>
             <div className="mt-0.5 text-[11.5px] opacity-90">
               {t("savingsRate", { pct: Math.round(pctSaved) })}
@@ -366,8 +361,10 @@ export default async function CategoriesPage({
                     {t("spent")}
                   </div>
                   <div className="tnum mt-0.5 text-[18px] font-semibold">
-                    <PrivacyAmount
-                      value={formatAmount(selected.spentThisMonthCents, currency, intlLocale)}
+                    <ConvertedAmount
+                      cents={selected.spentThisMonthCents}
+                      currency={currency}
+                      intlLocale={intlLocale}
                     />
                   </div>
                 </div>
@@ -394,12 +391,10 @@ export default async function CategoriesPage({
                     className="tnum mt-0.5 text-[18px] font-semibold"
                     style={{ color: selectedOver ? "#DC2626" : "#059669" }}
                   >
-                    <PrivacyAmount
-                      value={formatAmount(
-                        Math.abs(selectedBudget - selected.spentThisMonthCents),
-                        currency,
-                        intlLocale,
-                      )}
+                    <ConvertedAmount
+                      cents={Math.abs(selectedBudget - selected.spentThisMonthCents)}
+                      currency={currency}
+                      intlLocale={intlLocale}
                     />
                   </div>
                 </div>
@@ -440,8 +435,10 @@ export default async function CategoriesPage({
                         }).format(tx.bookingDate)}
                       </div>
                       <div className="tnum text-[13px] font-semibold whitespace-nowrap">
-                        <PrivacyAmount
-                          value={formatAmount(tx.amountCents, tx.currency, intlLocale)}
+                        <ConvertedAmount
+                          cents={tx.amountCents}
+                          currency={tx.currency}
+                          intlLocale={intlLocale}
                         />
                       </div>
                     </li>

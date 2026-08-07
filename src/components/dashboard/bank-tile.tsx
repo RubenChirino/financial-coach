@@ -1,6 +1,6 @@
 import { ChevronRight, Plus, Wallet } from "lucide-react";
 import Link from "next/link";
-import { PrivacyAmount } from "@/components/privacy-amount";
+import { ConvertedAmount } from "@/components/converted-amount";
 import { cn } from "@/lib/utils";
 
 export interface BankTileProps {
@@ -8,7 +8,9 @@ export interface BankTileProps {
   institutionLogoUrl?: string | null;
   accountLabel: string;
   last4?: string | null;
-  balanceFormatted: string;
+  balanceCents: number;
+  currency: string;
+  intlLocale: string;
   href: string;
   compact?: boolean;
 }
@@ -22,7 +24,9 @@ export function BankTile({
   institutionLogoUrl,
   accountLabel,
   last4,
-  balanceFormatted,
+  balanceCents,
+  currency,
+  intlLocale,
   href,
   compact,
 }: BankTileProps) {
@@ -49,7 +53,7 @@ export function BankTile({
             compact ? "text-[18px]" : "text-[22px]",
           )}
         >
-          <PrivacyAmount value={balanceFormatted} />
+          <ConvertedAmount cents={balanceCents} currency={currency} intlLocale={intlLocale} />
         </div>
       </div>
     </Link>

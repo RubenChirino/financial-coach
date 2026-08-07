@@ -22,8 +22,12 @@ export const useCurrencyStore = create<CurrencyState>()(
       fetching: false,
 
       async setDisplayCurrency(currency: string, baseCurrency = "EUR") {
-        const current = get().displayCurrency;
-        if (current === currency) return;
+        const { displayCurrency: current, rate } = get();
+        // Skip only when nothing would change. A non-base currency with rate=1
+        // means "selection restored from localStorage but rate never fetched"
+        // (only the selection is persisted) — the mount-time refresh must
+        // proceed in that case or every reload renders unconverted values.
+        if (current === currency && (currency === baseCurrency || rate !== 1)) return;
 
         set({ displayCurrency: currency, fetching: true });
 
@@ -53,6 +57,29 @@ export const useCurrencyStore = create<CurrencyState>()(
   ),
 );
 
+export interface ConvertFmtOptions {
+  /** Intl sign display: "always" renders +€x for positives. Default "auto". */
+  signDisplay?: "auto" | "always" | "exceptZero" | "never";
+  /** Round to whole units (KPI-style "€1,495" instead of "€1,495.00"). */
+  round?: boolean;
+}
+
+/**
+ * Hook: returns a formatter bound to the current display-currency selection.
+ * `fmt(cents, fromCurrency, opts?)` converts a stored amount to the selected
+ * display currency (live ECB rate) and formats it for the given locale.
+ * Components using it re-render automatically when the user flips the EUR/USD
+ * toggle.
+ */
+export function useConvertedFmt(
+  intlLocale: string,
+): (cents: number, fromCurrency: string, opts?: ConvertFmtOptions) => string {
+  const displayCurrency = useCurrencyStore((s) => s.displayCurrency);
+  const rate = useCurrencyStore((s) => s.rate);
+  return (cents, fromCurrency, opts) =>
+    convertAndFormat(cents, fromCurrency, intlLocale, displayCurrency, rate, opts);
+}
+
 /**
  * Convert a cents value from the base currency to the currently selected
  * display currency, then format it.
@@ -67,6 +94,7 @@ export function convertAndFormat(
   intlLocale: string,
   displayCurrency: string,
   rate: number,
+  opts?: ConvertFmtOptions,
 ): string {
   const toCurrency = displayCurrency;
   const appliedRate = fromCurrency === toCurrency ? 1 : rate;
@@ -74,5 +102,7 @@ export function convertAndFormat(
   return new Intl.NumberFormat(intlLocale, {
     style: "currency",
     currency: toCurrency,
+    signDisplay: opts?.signDisplay ?? "auto",
+    ...(opts?.round ? { maximumFractionDigits: 0 } : {}),
   }).format(converted);
 }

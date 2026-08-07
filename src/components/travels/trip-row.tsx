@@ -3,7 +3,7 @@
 import { Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
-import { PrivacyAmount } from "@/components/privacy-amount";
+import { ConvertedAmount } from "@/components/converted-amount";
 import { cn } from "@/lib/utils";
 
 /**
@@ -16,7 +16,9 @@ export function TripRow({
   flag,
   title,
   subtitle,
-  totalFormatted,
+  totalCents,
+  currency,
+  intlLocale,
   metaLabel,
   selected,
 }: {
@@ -26,7 +28,9 @@ export function TripRow({
   title: string;
   /** Secondary line — date range (+ country when a city is shown). */
   subtitle: string;
-  totalFormatted: string;
+  totalCents: number;
+  currency: string;
+  intlLocale: string;
   /** e.g. "12 payments". */
   metaLabel: string;
   selected: boolean;
@@ -73,7 +77,7 @@ export function TripRow({
             ) : null}
           </div>
           <div className="tnum whitespace-nowrap text-[12.5px] font-semibold">
-            <PrivacyAmount value={totalFormatted} />
+            <ConvertedAmount cents={totalCents} currency={currency} intlLocale={intlLocale} />
           </div>
         </div>
         <div className="mt-0.5 flex justify-between gap-2 text-[11px] text-[color:var(--text-tertiary)]">

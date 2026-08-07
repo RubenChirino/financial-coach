@@ -1,14 +1,16 @@
 import { Donut, type DonutSegment } from "@/components/charts/donut";
-import { PrivacyAmount } from "@/components/privacy-amount";
+import { ConvertedAmount } from "@/components/converted-amount";
 
 export interface DonutCardProps {
   title: string;
   subtitle: string;
   segments: DonutSegment[];
-  totalFormatted: string;
+  totalCents: number;
+  currency: string;
+  intlLocale: string;
   totalCaption: string;
   /** Top entries to list next to the donut. */
-  legend: { label: string; color: string; valueFormatted: string }[];
+  legend: { label: string; color: string; valueCents: number }[];
   emptyLabel: string;
 }
 
@@ -16,7 +18,9 @@ export function DonutCard({
   title,
   subtitle,
   segments,
-  totalFormatted,
+  totalCents,
+  currency,
+  intlLocale,
   totalCaption,
   legend,
   emptyLabel,
@@ -41,7 +45,12 @@ export function DonutCard({
             center={
               <>
                 <div className="text-[20px] font-semibold tracking-[-0.015em] tnum">
-                  <PrivacyAmount value={totalFormatted} />
+                  <ConvertedAmount
+                    cents={totalCents}
+                    currency={currency}
+                    intlLocale={intlLocale}
+                    round
+                  />
                 </div>
                 <div className="text-[11px] text-[color:var(--text-tertiary)]">{totalCaption}</div>
               </>
@@ -57,7 +66,11 @@ export function DonutCard({
                 />
                 <span className="flex-1 truncate font-medium">{l.label}</span>
                 <span className="tnum font-semibold">
-                  <PrivacyAmount value={l.valueFormatted} />
+                  <ConvertedAmount
+                    cents={l.valueCents}
+                    currency={currency}
+                    intlLocale={intlLocale}
+                  />
                 </span>
               </li>
             ))}

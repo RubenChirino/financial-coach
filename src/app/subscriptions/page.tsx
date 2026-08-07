@@ -3,12 +3,12 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { CategoryIcon } from "@/components/category-icon";
+import { ConvertedAmount } from "@/components/converted-amount";
 import { EmptyState } from "@/components/empty-state";
-import { PrivacyAmount } from "@/components/privacy-amount";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getAccountsTotal } from "@/lib/dashboard/summary";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
 import {
   getActiveSubscriptionsTotals,
@@ -69,8 +69,10 @@ export default async function SubscriptionsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold tracking-tight">
-                  <PrivacyAmount
-                    value={formatAmount(totals.monthlyTotalCents, currency, intlLocale)}
+                  <ConvertedAmount
+                    cents={totals.monthlyTotalCents}
+                    currency={currency}
+                    intlLocale={intlLocale}
                   />
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -187,7 +189,11 @@ function RenewalsCard({
                 </div>
               </div>
               <div className="font-semibold tabular-nums">
-                <PrivacyAmount value={formatAmount(r.amountCents, currency, intlLocale)} />
+                <ConvertedAmount
+                  cents={r.amountCents}
+                  currency={currency}
+                  intlLocale={intlLocale}
+                />
               </div>
             </li>
           ))}
@@ -239,14 +245,20 @@ function Section({ title, rows, locale, intlLocale, currency, t, muted }: Sectio
                 <div className="flex items-center gap-3">
                   <div className="text-right">
                     <div className="font-semibold tabular-nums">
-                      <PrivacyAmount
-                        value={formatAmount(s.averageAmountCents, currency, intlLocale)}
+                      <ConvertedAmount
+                        cents={s.averageAmountCents}
+                        currency={currency}
+                        intlLocale={intlLocale}
                       />
                     </div>
                     <div className="text-xs text-muted-foreground tabular-nums">
                       {t.rich("monthlyEquivalent", {
                         amt: () => (
-                          <PrivacyAmount value={formatAmount(monthly, currency, intlLocale)} />
+                          <ConvertedAmount
+                            cents={monthly}
+                            currency={currency}
+                            intlLocale={intlLocale}
+                          />
                         ),
                       })}
                     </div>

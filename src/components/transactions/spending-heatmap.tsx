@@ -3,6 +3,7 @@
 import { ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState, useTransition } from "react";
+import { useConvertedFmt } from "@/lib/currency/store";
 import type { SpendingHeatmap as SpendingHeatmapData } from "@/lib/transactions/heatmap";
 
 export interface SpendingHeatmapLabels {
@@ -95,12 +96,8 @@ export function SpendingHeatmap({
     pushDates(new Set());
   }, [pushDates]);
 
-  const fmt = new Intl.NumberFormat(intlLocale, {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const convFmt = useConvertedFmt(intlLocale);
+  const fmt = (cents: number) => convFmt(cents, currency);
   const dateFmt = new Intl.DateTimeFormat(intlLocale, {
     day: "numeric",
     month: "short",
@@ -282,7 +279,7 @@ function MonthGrid({
   receivedOnDayLabel: string;
   noActivityLabel: string;
   futureLabel: string;
-  fmt: Intl.NumberFormat;
+  fmt: (cents: number) => string;
   dateFmt: Intl.DateTimeFormat;
   selected: Set<string>;
   onToggle: (dateStr: string) => void;
@@ -301,9 +298,9 @@ function MonthGrid({
       ? { backgroundColor: "rgba(239, 68, 68, 0.10)" }
       : {};
   const badgeText = isSavingMonth
-    ? `${savedLabel} ${fmt.format(netCents / 100)}`
+    ? `${savedLabel} ${fmt(netCents)}`
     : netCents < 0
-      ? `${overspentLabel} ${fmt.format(-netCents / 100)}`
+      ? `${overspentLabel} ${fmt(-netCents)}`
       : "";
 
   return (
@@ -360,15 +357,13 @@ function MonthGrid({
             const dateLabel = dateFmt.format(cellDate);
             if (d.spentCents > 0)
               parts.push(
-                spentOnDayLabel
-                  .replace("{date}", dateLabel)
-                  .replace("{amount}", fmt.format(d.spentCents / 100)),
+                spentOnDayLabel.replace("{date}", dateLabel).replace("{amount}", fmt(d.spentCents)),
               );
             if (d.receivedCents > 0)
               parts.push(
                 receivedOnDayLabel
                   .replace("{date}", dateLabel)
-                  .replace("{amount}", fmt.format(d.receivedCents / 100)),
+                  .replace("{amount}", fmt(d.receivedCents)),
               );
             title = parts.join("\n");
           } else {

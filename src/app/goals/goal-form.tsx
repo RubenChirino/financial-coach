@@ -112,7 +112,7 @@ export function GoalForm({ goal, labels, currency, onClose }: GoalFormProps) {
       <dialog
         open
         aria-modal="true"
-        className="coin-card w-full max-w-md p-6"
+        className="coin-card static w-full max-w-md p-6"
         aria-labelledby={`${fid}-title`}
       >
         <div className="flex items-center justify-between">

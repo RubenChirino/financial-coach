@@ -8,6 +8,7 @@ import { CategoryPicker } from "@/app/transactions/category-picker";
 import { CategoryIcon } from "@/components/category-icon";
 import { PrivacyAmount } from "@/components/privacy-amount";
 import { Button } from "@/components/ui/button";
+import { useConvertedFmt } from "@/lib/currency/store";
 import { type CategoryOption, loadMoreTransactionsAction } from "@/lib/transactions/actions";
 import type { TransactionRow } from "@/lib/transactions/list";
 import { unlinkTransferAction } from "@/lib/transfers/actions";
@@ -48,18 +49,11 @@ export interface TransactionsViewProps {
   labels: TxLabels;
 }
 
-function formatAmount(cents: number, currency: string, intlLocale: string): string {
-  return new Intl.NumberFormat(intlLocale, {
-    style: "currency",
-    currency,
-  }).format(cents / 100);
-}
-
-function formatSigned(cents: number, currency: string, intlLocale: string): string {
-  const s = formatAmount(Math.abs(cents), currency, intlLocale);
-  if (cents > 0) return `+${s}`;
-  if (cents < 0) return `-${s}`;
-  return s;
+/** Prefix an already-converted absolute amount with an explicit +/− sign. */
+function signed(cents: number, formattedAbs: string): string {
+  if (cents > 0) return `+${formattedAbs}`;
+  if (cents < 0) return `-${formattedAbs}`;
+  return formattedAbs;
 }
 
 function rowMatches(r: TransactionRow, bankFilter: string, catFilter: string, q: string): boolean {
@@ -95,6 +89,7 @@ function TransactionRowItem({
   transferRemoveLabel: string;
 }) {
   const categoryName = locale === "es" ? row.categoryNameEs : row.categoryNameEn;
+  const fmt = useConvertedFmt(intlLocale);
   const isIncome = row.amountCents > 0;
   const hasCategory = row.categoryIcon && row.categoryColor;
   const isTransfer = Boolean(row.transferGroupId);
@@ -205,9 +200,7 @@ function TransactionRowItem({
           color: isIncome ? "#059669" : "var(--text-primary)",
         }}
       >
-        <PrivacyAmount
-          value={`${isIncome ? "+" : ""}${formatAmount(row.amountCents, row.currency, intlLocale)}`}
-        />
+        <PrivacyAmount value={`${isIncome ? "+" : ""}${fmt(row.amountCents, row.currency)}`} />
       </div>
     </div>
   );
@@ -215,6 +208,7 @@ function TransactionRowItem({
 
 export function TransactionsView(props: TransactionsViewProps) {
   const t = useTranslations("transactions");
+  const fmt = useConvertedFmt(props.intlLocale);
   const [search, setSearch] = useState(props.initialSearch ?? "");
   const [bankFilter, setBankFilter] = useState<string>("all");
   const [catFilter, setCatFilter] = useState<string>("all");
@@ -323,9 +317,7 @@ export function TransactionsView(props: TransactionsViewProps) {
             className="tnum mt-1 text-[22px] font-semibold tracking-[-0.015em]"
             style={{ color: "#059669" }}
           >
-            <PrivacyAmount
-              value={`+${formatAmount(totals.inCents, totals.currency, props.intlLocale)}`}
-            />
+            <PrivacyAmount value={`+${fmt(totals.inCents, totals.currency)}`} />
           </div>
         </div>
         <div className="coin-card p-5">
@@ -333,9 +325,7 @@ export function TransactionsView(props: TransactionsViewProps) {
             {props.labels.moneyOut}
           </div>
           <div className="tnum mt-1 text-[22px] font-semibold tracking-[-0.015em]">
-            <PrivacyAmount
-              value={`-${formatAmount(totals.outCents, totals.currency, props.intlLocale)}`}
-            />
+            <PrivacyAmount value={`-${fmt(totals.outCents, totals.currency)}`} />
           </div>
         </div>
         <div className="coin-card p-5">
@@ -347,7 +337,7 @@ export function TransactionsView(props: TransactionsViewProps) {
             style={{ color: totals.netCents >= 0 ? "#059669" : "#DC2626" }}
           >
             <PrivacyAmount
-              value={formatSigned(totals.netCents, totals.currency, props.intlLocale)}
+              value={signed(totals.netCents, fmt(Math.abs(totals.netCents), totals.currency))}
             />
           </div>
         </div>
@@ -452,7 +442,7 @@ export function TransactionsView(props: TransactionsViewProps) {
                 <div className="flex items-center justify-between border-t border-[color:var(--border-default)] bg-[color:var(--surface-app)] px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.04em] text-[color:var(--text-secondary)] first:border-t-0">
                   <span>{fmtGroupDate(g.date)}</span>
                   <span className="tnum">
-                    <PrivacyAmount value={formatSigned(daySum, dayCurrency, props.intlLocale)} />
+                    <PrivacyAmount value={signed(daySum, fmt(Math.abs(daySum), dayCurrency))} />
                   </span>
                 </div>
                 {g.rows.map((r) => (

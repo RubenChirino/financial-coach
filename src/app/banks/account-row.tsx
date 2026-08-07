@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useTransition } from "react";
-import { PrivacyAmount } from "@/components/privacy-amount";
+import { ConvertedAmount } from "@/components/converted-amount";
 import { useToast } from "@/components/toaster";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { deleteAccountAction } from "@/lib/accounts/actions";
@@ -14,10 +14,12 @@ interface Props {
   id: number;
   name: string;
   ibanLast4: string | null;
-  balanceFormatted: string;
+  balanceCents: number;
+  currency: string;
+  intlLocale: string;
 }
 
-export function AccountRow({ id, name, ibanLast4, balanceFormatted }: Props) {
+export function AccountRow({ id, name, ibanLast4, balanceCents, currency, intlLocale }: Props) {
   const router = useRouter();
   const confirm = useConfirm();
   const toast = useToast();
@@ -64,7 +66,7 @@ export function AccountRow({ id, name, ibanLast4, balanceFormatted }: Props) {
             ) : null}
           </div>
           <div className="tnum shrink-0 text-[14px] font-semibold">
-            <PrivacyAmount value={balanceFormatted} />
+            <ConvertedAmount cents={balanceCents} currency={currency} intlLocale={intlLocale} />
           </div>
         </Link>
         <button

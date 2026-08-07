@@ -2,8 +2,8 @@ import { MapPin, Plane } from "lucide-react";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
+import { ConvertedAmount } from "@/components/converted-amount";
 import { EmptyState } from "@/components/empty-state";
-import { PrivacyAmount } from "@/components/privacy-amount";
 import { CityEditor } from "@/components/travels/city-editor";
 import { HomeLocationForm } from "@/components/travels/home-location-form";
 import { PaymentRow } from "@/components/travels/payment-row";
@@ -12,7 +12,6 @@ import { TripRow } from "@/components/travels/trip-row";
 import { getAdvisorProviderStateAction } from "@/lib/advisor/actions";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getUser } from "@/lib/auth/user";
-import { formatAmount } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
 import { getCityLabels } from "@/lib/travels/city";
 import { countryName, countryOptions } from "@/lib/travels/countries";
@@ -186,7 +185,9 @@ export default async function TravelsPage({
                     flag={trip.flag}
                     title={city ?? place}
                     subtitle={`${place} · ${range}`}
-                    totalFormatted={formatAmount(trip.totalSpentCents, trip.currency, intlLocale)}
+                    totalCents={trip.totalSpentCents}
+                    currency={trip.currency}
+                    intlLocale={intlLocale}
                     metaLabel={t("payments", { count: trip.txCount })}
                     selected={trip.tripKey === selected.tripKey}
                   />
@@ -222,8 +223,10 @@ export default async function TravelsPage({
                     {t("totalSpent")}
                   </div>
                   <div className="tnum mt-0.5 text-[18px] font-semibold">
-                    <PrivacyAmount
-                      value={formatAmount(selected.totalSpentCents, selected.currency, intlLocale)}
+                    <ConvertedAmount
+                      cents={selected.totalSpentCents}
+                      currency={selected.currency}
+                      intlLocale={intlLocale}
                     />
                   </div>
                 </div>
@@ -275,7 +278,9 @@ export default async function TravelsPage({
                     city={tx.city}
                     dateShort={shortDate.format(tx.bookingDate)}
                     dateFull={longDate.format(tx.bookingDate)}
-                    amountFormatted={formatAmount(tx.amountCents, tx.currency, intlLocale)}
+                    amountCents={tx.amountCents}
+                    currency={tx.currency}
+                    intlLocale={intlLocale}
                     labels={{
                       description: t("detailDescription"),
                       city: t("city"),

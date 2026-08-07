@@ -1,4 +1,7 @@
+"use client";
+
 import { type BarDatum, Bars } from "@/components/charts/bars";
+import { useConvertedFmt } from "@/lib/currency/store";
 
 export interface MonthlyFlowCardProps {
   title: string;
@@ -6,17 +9,29 @@ export interface MonthlyFlowCardProps {
   incomeLabel: string;
   expenseLabel: string;
   data: BarDatum[];
-  formatted: { income: string; expense: string }[];
+  currency: string;
+  intlLocale: string;
 }
 
+/**
+ * Client component so the per-bar tooltip amounts follow the live EUR/USD
+ * display-currency toggle instead of being frozen at render time.
+ */
 export function MonthlyFlowCard({
   title,
   subtitle,
   incomeLabel,
   expenseLabel,
   data,
-  formatted,
+  currency,
+  intlLocale,
 }: MonthlyFlowCardProps) {
+  const fmt = useConvertedFmt(intlLocale);
+  const formatted = data.map((p) => ({
+    income: fmt(p.incomeCents, currency),
+    expense: fmt(p.expenseCents, currency),
+  }));
+
   return (
     <section className="coin-card p-6 h-full">
       <div className="mb-3.5 flex items-center justify-between gap-4">
