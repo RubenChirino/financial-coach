@@ -1,5 +1,5 @@
-import { createTestDb } from "@/test/db-fixture";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestDb } from "@/test/db-fixture";
 
 // Replace the real db before importing summary.ts.
 const fixture = await createTestDb();

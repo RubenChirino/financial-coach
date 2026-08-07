@@ -10,13 +10,7 @@ import { cn } from "@/lib/utils";
  * Usage:
  *   <PrivacyAmount value="€ 1,495" />
  */
-export function PrivacyAmount({
-  value,
-  className,
-}: {
-  value: string;
-  className?: string;
-}) {
+export function PrivacyAmount({ value, className }: { value: string; className?: string }) {
   const [isHidden] = usePrivacy();
 
   if (isHidden) {

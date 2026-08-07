@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -8,18 +8,19 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "ignore": [
-      "node_modules",
-      ".next",
-      "dist",
-      "out",
-      "coverage",
-      "data",
-      "public/sw.js",
-      "src/db/migrations/**",
-      "design/**",
-      "next-env.d.ts",
-      "*.min.js"
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/.next",
+      "!**/dist",
+      "!**/out",
+      "!**/coverage",
+      "!**/data",
+      "!**/public/sw.js",
+      "!**/src/db/migrations",
+      "!**/design",
+      "!**/next-env.d.ts",
+      "!**/*.min.js"
     ]
   },
   "formatter": {
@@ -29,11 +30,11 @@
     "lineWidth": 100,
     "lineEnding": "lf"
   },
-  "organizeImports": { "enabled": true },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "correctness": {
         "noUnusedVariables": "warn",
         "noUnusedImports": "warn",
@@ -44,11 +45,14 @@
         "useImportType": "error",
         "useNodejsImportProtocol": "error"
       },
+      "performance": {
+        "noImgElement": "warn"
+      },
       "suspicious": {
         "noExplicitAny": "warn",
         "noConsole": { "level": "warn", "options": { "allow": ["warn", "error", "info"] } }
       },
-      "a11y": { "recommended": true },
+      "a11y": { "preset": "recommended" },
       "complexity": {
         "noExcessiveCognitiveComplexity": {
           "level": "warn",
@@ -69,6 +73,7 @@
     "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 }
   },
   "css": {
-    "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 }
+    "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 },
+    "parser": { "tailwindDirectives": true }
   }
 }

@@ -1,3 +1,8 @@
+import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
+import { NextIntlClientProvider } from "next-intl";
+import { getMessages } from "next-intl/server";
+import { type ReactNode, Suspense } from "react";
 import { CurrencyInitializer } from "@/components/currency-initializer";
 import { FloatingProgressStack } from "@/components/floating-progress-stack";
 import { PwaRegister } from "@/components/pwa-register";
@@ -6,11 +11,6 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/toaster";
 import { ConfirmProvider } from "@/components/ui/confirm-dialog";
 import { getLocale } from "@/lib/i18n/locale";
-import type { Metadata, Viewport } from "next";
-import { NextIntlClientProvider } from "next-intl";
-import { getMessages } from "next-intl/server";
-import { headers } from "next/headers";
-import { type ReactNode, Suspense } from "react";
 import "./globals.css";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://financial-coach-ai.vercel.app";

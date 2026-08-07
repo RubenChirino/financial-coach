@@ -1,6 +1,8 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
+import { and, desc, eq } from "drizzle-orm";
+import { headers } from "next/headers";
 import { db } from "@/db/client";
 import { accounts, institutions, requisitions, users } from "@/db/schema";
 import { snapshotBalances } from "@/lib/accounts/history";
@@ -9,8 +11,6 @@ import { categorizeBatchByRules, categorizeUncategorized } from "@/lib/categoriz
 import { decrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { detectTransfers } from "@/lib/transfers/detect";
-import { and, desc, eq } from "drizzle-orm";
-import { headers } from "next/headers";
 import { GoCardlessClient, GoCardlessError } from "./client";
 import {
   deleteGoCardlessCredentials,

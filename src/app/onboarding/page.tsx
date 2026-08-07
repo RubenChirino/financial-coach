@@ -1,9 +1,9 @@
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { OnboardingFlow } from "@/app/onboarding/flow";
 import { userExists } from "@/lib/auth/user";
 import { env } from "@/lib/env";
 import { getLocale } from "@/lib/i18n/locale";
-import { getTranslations } from "next-intl/server";
-import { redirect } from "next/navigation";
 
 export default async function OnboardingPage() {
   // In oauth mode /onboarding is never shown — users sign in via Google/Microsoft

@@ -1,9 +1,9 @@
 "use client";
 
-import type { SpendingHeatmap as SpendingHeatmapData } from "@/lib/transactions/heatmap";
 import { ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState, useTransition } from "react";
+import type { SpendingHeatmap as SpendingHeatmapData } from "@/lib/transactions/heatmap";
 
 export interface SpendingHeatmapLabels {
   title: string;
@@ -401,6 +401,10 @@ function MonthGrid({
             return (
               <span
                 key={d.day}
+                // A future cell is not interactive, so it needs an explicit role
+                // for `aria-label` to be exposed — it reads as a graphic, like the
+                // interactive cells below read as buttons.
+                role="img"
                 title={title}
                 aria-label={title}
                 className={`aspect-square rounded-[3px] border ${borderClass}`}

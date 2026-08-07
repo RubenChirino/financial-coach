@@ -1,12 +1,12 @@
 "use client";
 
+import { ArrowRight, Check, Eye, Landmark, Loader2, Search, XCircle } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useMemo, useState, useTransition } from "react";
 import { startBankLinkAction } from "@/lib/gocardless/actions";
 import type { Institution } from "@/lib/gocardless/types";
 import { cn } from "@/lib/utils";
-import { ArrowRight, Check, Eye, Landmark, Loader2, Search, XCircle } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
 
 const COUNTRIES: { code: string; labelKey: string }[] = [
   { code: "ES", labelKey: "ES" },

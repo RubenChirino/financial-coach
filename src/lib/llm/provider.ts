@@ -1,6 +1,5 @@
 import "server-only";
 
-import { env } from "@/lib/env";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -12,6 +11,7 @@ import type { LanguageModel } from "ai";
 // `ai@7` speaks. Downgrading `ai` without downgrading this (or vice versa)
 // produces a model object the runtime rejects.
 import { createOllama } from "ollama-ai-provider-v2";
+import { env } from "@/lib/env";
 
 export type LlmProvider = "ollama" | "anthropic" | "openai" | "google";
 

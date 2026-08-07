@@ -1,8 +1,8 @@
 import "server-only";
 
+import { and, eq, gte, isNotNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import { recurringSubscriptions, transactions } from "@/db/schema";
-import { and, eq, gte, isNotNull } from "drizzle-orm";
 
 /**
  * Recurring-subscription detector.

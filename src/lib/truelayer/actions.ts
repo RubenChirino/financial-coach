@@ -1,6 +1,8 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
+import { and, eq } from "drizzle-orm";
+import { headers } from "next/headers";
 import { db } from "@/db/client";
 import { accounts, requisitions } from "@/db/schema";
 import { snapshotBalances } from "@/lib/accounts/history";
@@ -9,8 +11,6 @@ import { categorizeBatchByRules } from "@/lib/categorize";
 import { decrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { detectTransfers } from "@/lib/transfers/detect";
-import { and, eq } from "drizzle-orm";
-import { headers } from "next/headers";
 import { TrueLayerClient, type TrueLayerCredentials, TrueLayerError } from "./client";
 import {
   deleteTrueLayerCredentials,

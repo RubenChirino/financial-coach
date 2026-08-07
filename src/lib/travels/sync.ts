@@ -1,11 +1,11 @@
 import "server-only";
 
-import { db } from "@/db/client";
-import { transactions } from "@/db/schema";
 import type { LanguageModel } from "ai";
 import { eq } from "drizzle-orm";
+import { db } from "@/db/client";
+import { transactions } from "@/db/schema";
 import { esRegion } from "./es-regions";
-import { type ResolvedCity, cacheCities, getCachedCities, resolveCitiesWithAi } from "./locations";
+import { cacheCities, getCachedCities, type ResolvedCity, resolveCitiesWithAi } from "./locations";
 import { isOnlinePayment } from "./online-merchants";
 import { cityKey, parseLocation } from "./parse-location";
 

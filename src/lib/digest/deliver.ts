@@ -1,10 +1,10 @@
 import "server-only";
 
+import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import { type Insight, users } from "@/db/schema";
 import { env } from "@/lib/env";
 import { listActiveInsights } from "@/lib/insights/engine";
-import { and, eq, isNotNull } from "drizzle-orm";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://financial-coach-ai.vercel.app";
 

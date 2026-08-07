@@ -1,10 +1,10 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { importSampleDataAction } from "@/lib/import/actions";
 import { CheckCircle2, Loader2, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { Button } from "@/components/ui/button";
+import { importSampleDataAction } from "@/lib/import/actions";
 
 /**
  * One-click "try with sample data" button. Runs the same server action as the

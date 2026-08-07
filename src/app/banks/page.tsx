@@ -1,3 +1,7 @@
+import { Landmark, Plus, Settings2 } from "lucide-react";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { PrivacyAmount } from "@/components/privacy-amount";
@@ -7,10 +11,6 @@ import { getUser } from "@/lib/auth/user";
 import { getAccountsTotal, listInstitutionGroups } from "@/lib/dashboard/summary";
 import { formatAmount } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
-import { Landmark, Plus, Settings2 } from "lucide-react";
-import { getTranslations } from "next-intl/server";
-import Link from "next/link";
-import { redirect } from "next/navigation";
 import { SyncButton } from "../settings/bank/sync-button";
 import { AccountRow } from "./account-row";
 import { ManualAccountButton } from "./manual-account-button";
@@ -163,13 +163,7 @@ export default async function BanksPage() {
 }
 
 /** Institution logo or initial fallback — same style as BankTile. */
-function InstitutionLogo({
-  name,
-  logoUrl,
-}: {
-  name: string;
-  logoUrl: string | null;
-}) {
+function InstitutionLogo({ name, logoUrl }: { name: string; logoUrl: string | null }) {
   if (logoUrl) {
     return (
       <div className="h-9 w-9 shrink-0 overflow-hidden rounded-[10px] bg-white">

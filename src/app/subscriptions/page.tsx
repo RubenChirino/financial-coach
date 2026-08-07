@@ -1,3 +1,6 @@
+import { CalendarClock, Repeat } from "lucide-react";
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { CategoryIcon } from "@/components/category-icon";
 import { EmptyState } from "@/components/empty-state";
@@ -8,16 +11,13 @@ import { getAccountsTotal } from "@/lib/dashboard/summary";
 import { formatAmount, formatDate } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
 import {
-  type SubscriptionRow,
-  type UpcomingRenewal,
   getActiveSubscriptionsTotals,
   getUpcomingRenewals,
   listRecurringSubscriptions,
   monthlyEquivalentCents,
+  type SubscriptionRow,
+  type UpcomingRenewal,
 } from "@/lib/recurring/list";
-import { CalendarClock, Repeat } from "lucide-react";
-import { getTranslations } from "next-intl/server";
-import { redirect } from "next/navigation";
 import { RunDetectionButton } from "./run-detection-button";
 import { ToggleActiveButton } from "./toggle-active-button";
 

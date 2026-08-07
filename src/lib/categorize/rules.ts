@@ -1,8 +1,8 @@
 import "server-only";
 
+import { asc, eq, isNull, or } from "drizzle-orm";
 import { db } from "@/db/client";
 import { categories, categoryRules, transactions } from "@/db/schema";
-import { asc, eq, isNull, or } from "drizzle-orm";
 import { cleanMerchant } from "./heuristics";
 
 export type MatchType = "merchant_exact" | "contains" | "regex";

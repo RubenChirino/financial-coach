@@ -1,10 +1,14 @@
 "use server";
 
+import { eq } from "drizzle-orm";
+import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { z } from "zod";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { deriveEncryptionKey, generateSalt, hashPin, verifyPin } from "@/lib/crypto";
 import { env } from "@/lib/env";
-import { type Locale, isLocale } from "@/lib/i18n/config";
+import { isLocale, type Locale } from "@/lib/i18n/config";
 import { setLocale } from "@/lib/i18n/locale";
 import {
   checkAttempt,
@@ -12,10 +16,6 @@ import {
   recordFailure,
   recordSuccess,
 } from "@/lib/security/rate-limit";
-import { eq } from "drizzle-orm";
-import { cookies, headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { z } from "zod";
 import { SESSION_COOKIE } from "./constants";
 import {
   clearSessionCookie,

@@ -1,5 +1,5 @@
-import { createTestDb } from "@/test/db-fixture";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestDb } from "@/test/db-fixture";
 
 /**
  * These tests lock in the fix for the lock-page reload bug. The previous

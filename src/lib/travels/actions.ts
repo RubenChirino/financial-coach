@@ -1,12 +1,12 @@
 "use server";
 
+import { eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getUser, updateUserHomeLocation } from "@/lib/auth/user";
 import { getLanguageModel, providerInfo } from "@/lib/llm/provider";
-import { eq } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { generateCity, getCityLabels, upsertCity } from "./city";
 import { countryName } from "./countries";
 import { listTravels } from "./detect";

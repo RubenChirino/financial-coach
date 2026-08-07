@@ -1,8 +1,8 @@
 import "server-only";
 
+import { and, desc, eq, gt } from "drizzle-orm";
 import { db } from "@/db/client";
 import { categories, recurringSubscriptions } from "@/db/schema";
-import { and, desc, eq, gt } from "drizzle-orm";
 
 export interface SubscriptionRow {
   id: number;

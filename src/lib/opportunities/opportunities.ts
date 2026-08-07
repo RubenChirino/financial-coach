@@ -1,11 +1,11 @@
 import "server-only";
 
+import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { goals } from "@/db/schema";
 import { getMonthSummary, getTopCategoriesThisMonth } from "@/lib/dashboard/summary";
 import { getSpendingForecast } from "@/lib/predictions/forecast";
 import { listRecurringSubscriptions, monthlyEquivalentCents } from "@/lib/recurring/list";
-import { eq } from "drizzle-orm";
 
 /**
  * Opportunities are deterministic, data-grounded suggestions — NOT investment

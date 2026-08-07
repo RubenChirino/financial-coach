@@ -36,8 +36,7 @@ export function Donut({
 
   return (
     <div
-      role={ariaLabel ? "img" : "presentation"}
-      aria-label={ariaLabel}
+      {...(ariaLabel ? { role: "img", "aria-label": ariaLabel } : { role: "presentation" })}
       style={{ position: "relative", width: size, height: size }}
     >
       <svg
