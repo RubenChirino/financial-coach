@@ -17,7 +17,7 @@ export function PinDots({ filled, length = 4, error = false }: PinDotsProps) {
   return (
     <div
       className={cn("flex items-center justify-center gap-4 py-2", error && "pin-shake")}
-      aria-live="polite"
+      role="status"
       aria-label={`PIN: ${filled} of ${length} digits entered`}
     >
       {Array.from({ length }, (_, i) => (

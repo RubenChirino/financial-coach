@@ -1,5 +1,9 @@
 "use client";
 
+import { Loader2, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useState, useTransition } from "react";
 import { useToast } from "@/components/toaster";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -9,10 +13,6 @@ import {
   wipeDemoDataAction,
 } from "@/lib/providers/demo/actions";
 import { cn } from "@/lib/utils";
-import { Loader2, Sparkles } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
 
 type Tab = "gocardless" | "truelayer" | "demo";
 

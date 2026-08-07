@@ -1,8 +1,8 @@
 import "server-only";
 
+import { and, asc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, balanceHistory } from "@/db/schema";
-import { and, asc, eq, gte, sql } from "drizzle-orm";
 
 /** Start of the current UTC day. */
 function startOfTodayUTC(): Date {

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCurrencyStore } from "@/lib/currency/store";
 import { useEffect } from "react";
+import { useCurrencyStore } from "@/lib/currency/store";
 
 /**
  * Invisible initializer that re-fetches the live exchange rate on mount when

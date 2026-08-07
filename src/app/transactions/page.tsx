@@ -1,3 +1,7 @@
+import { Download, ListMinus } from "lucide-react";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { PullToRefresh } from "@/components/pull-to-refresh";
@@ -11,10 +15,6 @@ import { getLocale } from "@/lib/i18n/locale";
 import { listCategoryOptionsAction } from "@/lib/transactions/actions";
 import { getSpendingHeatmap } from "@/lib/transactions/heatmap";
 import { getTransactionStats, listTransactions } from "@/lib/transactions/list";
-import { Download, ListMinus } from "lucide-react";
-import { getTranslations } from "next-intl/server";
-import Link from "next/link";
-import { redirect } from "next/navigation";
 import { CategorizeNowButton } from "./categorize-now-button";
 
 export const dynamic = "force-dynamic";

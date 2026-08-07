@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type RuleRow, deriveRulePattern, matchRule } from "./rules";
+import { deriveRulePattern, matchRule, type RuleRow } from "./rules";
 
 const r = (
   id: number,

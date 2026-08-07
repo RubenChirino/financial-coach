@@ -1,9 +1,9 @@
 import "server-only";
 
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, institutions, requisitions, transactions } from "@/db/schema";
 import { encrypt } from "@/lib/crypto";
-import { and, eq, inArray } from "drizzle-orm";
 import type { GoCardlessClient } from "./client";
 import { normalizeTransaction, pickPrimaryBalance, toCents } from "./normalize";
 import type { Institution, Requisition } from "./types";

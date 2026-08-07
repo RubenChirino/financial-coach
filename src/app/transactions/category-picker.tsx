@@ -1,13 +1,13 @@
 "use client";
 
+import { Check, Loader2, Sparkles, Tag, X } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { CategoryIcon } from "@/components/category-icon";
 import { createRuleFromTransactionAction } from "@/lib/categorize/rules-actions";
 import type { CategoryOption } from "@/lib/transactions/actions";
 import { setTransactionCategoryAction } from "@/lib/transactions/actions";
 import { cn } from "@/lib/utils";
-import { Check, Loader2, Sparkles, Tag, X } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useEffect, useRef, useState, useTransition } from "react";
 
 interface Props {
   txId: number;

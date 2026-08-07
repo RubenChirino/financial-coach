@@ -1,10 +1,10 @@
 "use client";
 
+import { TrendingDown, TrendingUp } from "lucide-react";
 import { Sparkline } from "@/components/charts/sparkline";
 import { PrivacyAmount } from "@/components/privacy-amount";
 import { convertAndFormat, useCurrencyStore } from "@/lib/currency/store";
 import { cn } from "@/lib/utils";
-import { TrendingDown, TrendingUp } from "lucide-react";
 
 export interface TotalBalanceCardProps {
   netWorthLabel: string;

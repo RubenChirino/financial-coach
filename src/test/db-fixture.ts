@@ -1,8 +1,8 @@
 import path from "node:path";
-import * as schema from "@/db/schema";
 import { type Client, createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
+import * as schema from "@/db/schema";
 
 export type TestDb = {
   db: ReturnType<typeof drizzle<typeof schema>>;

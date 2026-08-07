@@ -1,8 +1,8 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { cn } from "@/lib/utils";
 
 /**
  * Chat bubble content.

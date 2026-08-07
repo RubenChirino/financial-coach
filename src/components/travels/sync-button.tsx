@@ -1,8 +1,8 @@
 "use client";
 
+import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useDetectStore } from "@/lib/travels/detect-store";
-import { Loader2, RefreshCw } from "lucide-react";
 
 export interface SyncButtonLabels {
   sync: string;

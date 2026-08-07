@@ -1,9 +1,9 @@
 import "server-only";
 
-import { getLanguageModel } from "@/lib/llm/provider";
-import { redactPII } from "@/lib/redact";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { getLanguageModel } from "@/lib/llm/provider";
+import { redactPII } from "@/lib/redact";
 import { cleanMerchant } from "./heuristics";
 
 export interface LlmCategorizeInput {

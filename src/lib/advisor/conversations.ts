@@ -1,8 +1,8 @@
 import "server-only";
 
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { advisorConversations, advisorMessages } from "@/db/schema";
-import { and, desc, eq } from "drizzle-orm";
 
 export interface ConversationSummary {
   id: number;

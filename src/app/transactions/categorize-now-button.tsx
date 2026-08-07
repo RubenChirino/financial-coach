@@ -1,8 +1,8 @@
 "use client";
 
+import { Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCategorizeStore } from "@/lib/categorize/store";
-import { Loader2, Sparkles } from "lucide-react";
 
 /**
  * "Categorize with AI" button on the /transactions header.
@@ -12,13 +12,7 @@ import { Loader2, Sparkles } from "lucide-react";
  * floating card (`CategorizeProgress`), which persists across navigation — so
  * the button doesn't hold a spinner for the whole run.
  */
-export function CategorizeNowButton({
-  label,
-  busyLabel,
-}: {
-  label: string;
-  busyLabel: string;
-}) {
+export function CategorizeNowButton({ label, busyLabel }: { label: string; busyLabel: string }) {
   const status = useCategorizeStore((s) => s.status);
   const start = useCategorizeStore((s) => s.start);
   const running = status === "running";

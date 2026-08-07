@@ -1,4 +1,8 @@
 "use client";
+import { Bell, CheckCheck, Loader2, RefreshCw, X } from "lucide-react";
+import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
   dismissAllInsightsAction,
@@ -6,10 +10,6 @@ import {
   listInsightsAction,
   refreshInsightsAction,
 } from "@/lib/insights/actions";
-import { Bell, CheckCheck, Loader2, RefreshCw, X } from "lucide-react";
-import { useTranslations } from "next-intl";
-import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 interface InsightRow {
   id: number;

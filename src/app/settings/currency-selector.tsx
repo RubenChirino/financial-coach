@@ -1,9 +1,9 @@
 "use client";
 
-import { updateCurrencyAction } from "@/lib/settings/actions";
-import { SUPPORTED_CURRENCIES } from "@/lib/settings/constants";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { updateCurrencyAction } from "@/lib/settings/actions";
+import { SUPPORTED_CURRENCIES } from "@/lib/settings/constants";
 
 export function CurrencySelector({
   current,

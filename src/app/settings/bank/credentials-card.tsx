@@ -1,5 +1,9 @@
 "use client";
 
+import { KeyRound, ShieldCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useState, useTransition } from "react";
 import { useToast } from "@/components/toaster";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,10 +11,6 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { deleteBankCredentialsAction, saveBankCredentialsAction } from "@/lib/gocardless/actions";
-import { KeyRound, ShieldCheck } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
 
 export function BankCredentialsCard({ hasCredentials }: { hasCredentials: boolean }) {
   const t = useTranslations("bank.credentials");

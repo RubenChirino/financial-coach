@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
+import { type NextRequest, NextResponse } from "next/server";
 import { localDbPath } from "@/db/client";
 import { getCurrentSession } from "@/lib/auth/session";
 import { env } from "@/lib/env";
 import { guardCsrf } from "@/lib/security/csrf";
-import { type NextRequest, NextResponse } from "next/server";
 
 /**
  * GET /api/backup — downloads a snapshot of the local SQLite database file.

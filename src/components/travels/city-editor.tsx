@@ -1,10 +1,10 @@
 "use client";
 
+import { Check, Loader2, MapPin, Sparkles } from "lucide-react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { guessCityAction, setCityAction } from "@/lib/travels/actions";
-import { Check, Loader2, MapPin, Sparkles } from "lucide-react";
-import { useState, useTransition } from "react";
 
 export interface CityEditorLabels {
   cityLabel: string;

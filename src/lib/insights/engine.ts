@@ -1,5 +1,6 @@
 import "server-only";
 
+import { and, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, insights, requisitions, transactions } from "@/db/schema";
 import {
@@ -8,7 +9,6 @@ import {
   getTopCategoriesThisMonth,
 } from "@/lib/dashboard/summary";
 import { listRecurringSubscriptions } from "@/lib/recurring/list";
-import { and, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 
 /**
  * Insight rule engine (Phase 7h).

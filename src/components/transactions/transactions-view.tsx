@@ -1,5 +1,9 @@
 "use client";
 
+import { ArrowDownLeft, ArrowLeftRight, Loader2, SearchX, X } from "lucide-react";
+import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { CategoryPicker } from "@/app/transactions/category-picker";
 import { CategoryIcon } from "@/components/category-icon";
 import { PrivacyAmount } from "@/components/privacy-amount";
@@ -8,10 +12,6 @@ import { type CategoryOption, loadMoreTransactionsAction } from "@/lib/transacti
 import type { TransactionRow } from "@/lib/transactions/list";
 import { unlinkTransferAction } from "@/lib/transfers/actions";
 import { cn } from "@/lib/utils";
-import { ArrowDownLeft, ArrowLeftRight, Loader2, SearchX, X } from "lucide-react";
-import { useTranslations } from "next-intl";
-import Link from "next/link";
-import { useMemo, useRef, useState, useTransition } from "react";
 
 export interface TxLabels {
   searchPlaceholder: string;

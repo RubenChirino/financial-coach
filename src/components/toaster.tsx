@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import {
   Toast,
   ToastClose,
@@ -10,7 +11,6 @@ import {
   ToastTitle,
   ToastViewport,
 } from "@/components/ui/toast";
-import * as React from "react";
 
 /**
  * Global toast manager.

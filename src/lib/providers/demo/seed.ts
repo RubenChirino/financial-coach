@@ -1,9 +1,9 @@
 import "server-only";
 
+import { and, eq, like } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, categories, institutions, requisitions, transactions } from "@/db/schema";
 import { encrypt } from "@/lib/crypto";
-import { and, eq, like } from "drizzle-orm";
 
 /**
  * Deterministic fake-bank seeder used by the Demo provider.

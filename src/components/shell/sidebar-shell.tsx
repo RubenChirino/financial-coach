@@ -1,9 +1,9 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 import { SidebarContext } from "./sidebar-context";
 
 interface SidebarShellProps {

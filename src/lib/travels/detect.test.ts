@@ -1,5 +1,5 @@
-import { createTestDb } from "@/test/db-fixture";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestDb } from "@/test/db-fixture";
 
 const fixture = await createTestDb();
 vi.mock("@/db/client", () => ({ db: fixture.db, client: fixture.client }));

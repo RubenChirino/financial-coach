@@ -1,7 +1,7 @@
 "use client";
 
-import { useToast } from "@/components/toaster";
 import * as React from "react";
+import { useToast } from "@/components/toaster";
 
 /**
  * Fire a toast once when this component mounts.

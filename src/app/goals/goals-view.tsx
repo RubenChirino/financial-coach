@@ -1,10 +1,10 @@
 "use client";
-import { PrivacyAmount } from "@/components/privacy-amount";
-import type { Goal } from "@/db/schema";
-import { recomputeGoalsProgressAction } from "@/lib/goals/actions";
 import { Loader2, Plus, RefreshCw, Target } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { PrivacyAmount } from "@/components/privacy-amount";
+import type { Goal } from "@/db/schema";
+import { recomputeGoalsProgressAction } from "@/lib/goals/actions";
 import { GoalCard } from "./goal-card";
 import { GoalForm } from "./goal-form";
 

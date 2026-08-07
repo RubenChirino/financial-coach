@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  type CsvMappingSpec,
   applyMapping,
+  type CsvMappingSpec,
   parseAmountWithSpec,
   parseDateWithSpec,
   sniffDelimiter,

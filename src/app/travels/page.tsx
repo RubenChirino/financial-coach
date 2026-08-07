@@ -1,3 +1,6 @@
+import { MapPin, Plane } from "lucide-react";
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { PrivacyAmount } from "@/components/privacy-amount";
@@ -13,11 +16,8 @@ import { formatAmount } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
 import { getCityLabels } from "@/lib/travels/city";
 import { countryName, countryOptions } from "@/lib/travels/countries";
-import { type Travel, listTravels } from "@/lib/travels/detect";
+import { listTravels, type Travel } from "@/lib/travels/detect";
 import { inferHomeLocation } from "@/lib/travels/sync";
-import { MapPin, Plane } from "lucide-react";
-import { getTranslations } from "next-intl/server";
-import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 

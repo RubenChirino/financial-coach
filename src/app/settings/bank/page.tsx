@@ -1,3 +1,7 @@
+import { Building2 } from "lucide-react";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
@@ -6,10 +10,6 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { hasBankCredentialsAction, listBankConnectionsAction } from "@/lib/gocardless/actions";
 import { hasDemoConnectionsAction } from "@/lib/providers/demo/actions";
 import { hasTrueLayerCredentialsAction } from "@/lib/truelayer/actions";
-import { Building2 } from "lucide-react";
-import { getTranslations } from "next-intl/server";
-import Link from "next/link";
-import { redirect } from "next/navigation";
 import { ConnectionRow } from "./connection-row";
 import { BankCredentialsCard } from "./credentials-card";
 import { ProviderPanel } from "./provider-panel";

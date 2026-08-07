@@ -1,14 +1,14 @@
 "use client";
 
+import { Loader2, Trash2, Wallet } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useTransition } from "react";
 import { PrivacyAmount } from "@/components/privacy-amount";
 import { useToast } from "@/components/toaster";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { deleteAccountAction } from "@/lib/accounts/actions";
-import { Loader2, Trash2, Wallet } from "lucide-react";
-import { useTranslations } from "next-intl";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useTransition } from "react";
 
 interface Props {
   id: number;
