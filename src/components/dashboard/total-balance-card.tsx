@@ -8,8 +8,6 @@ import { cn } from "@/lib/utils";
 
 export interface TotalBalanceCardProps {
   netWorthLabel: string;
-  netWorthFormatted: string;
-  /** Raw cents — used for live currency conversion when displayCurrency ≠ baseCurrency. */
   netWorthCents: number;
   baseCurrency: string;
   intlLocale: string;
@@ -23,7 +21,6 @@ export interface TotalBalanceCardProps {
   kpis: {
     key: string;
     label: string;
-    valueFormatted: string;
     /** Raw cents for conversion. */
     valueCents: number;
   }[];
@@ -38,7 +35,6 @@ export interface TotalBalanceCardProps {
  */
 export function TotalBalanceCard({
   netWorthLabel,
-  netWorthFormatted,
   netWorthCents,
   baseCurrency,
   intlLocale,
@@ -48,11 +44,14 @@ export function TotalBalanceCard({
   kpis,
 }: TotalBalanceCardProps) {
   const { displayCurrency, rate } = useCurrencyStore();
-  const converting = displayCurrency !== baseCurrency;
 
-  const displayNetWorth = converting
-    ? convertAndFormat(netWorthCents, baseCurrency, intlLocale, displayCurrency, rate)
-    : netWorthFormatted;
+  const displayNetWorth = convertAndFormat(
+    netWorthCents,
+    baseCurrency,
+    intlLocale,
+    displayCurrency,
+    rate,
+  );
 
   return (
     <section className="coin-card p-6 h-full">
@@ -96,9 +95,14 @@ export function TotalBalanceCard({
 
       <div className="grid grid-cols-3 gap-3">
         {kpis.map((k) => {
-          const displayValue = converting
-            ? convertAndFormat(k.valueCents, baseCurrency, intlLocale, displayCurrency, rate)
-            : k.valueFormatted;
+          const displayValue = convertAndFormat(
+            k.valueCents,
+            baseCurrency,
+            intlLocale,
+            displayCurrency,
+            rate,
+            { round: true },
+          );
           return (
             <div key={k.key}>
               <div className="text-[11px] font-medium uppercase tracking-[0.04em] text-[color:var(--text-tertiary)]">

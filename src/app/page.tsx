@@ -181,19 +181,16 @@ export default async function DashboardPage({
     {
       key: "income",
       label: t("income"),
-      valueFormatted: fmtAmount(thisMonth.incomeCents, currency, intlLocale, true),
       valueCents: thisMonth.incomeCents,
     },
     {
       key: "expenses",
       label: t("expenses"),
-      valueFormatted: fmtAmount(Math.abs(thisMonth.expenseCents), currency, intlLocale, true),
       valueCents: Math.abs(thisMonth.expenseCents),
     },
     {
       key: "saved",
       label: t("saved"),
-      valueFormatted: fmtAmount(savedThisMonthCents, currency, intlLocale, true),
       valueCents: savedThisMonthCents,
     },
   ];
@@ -202,10 +199,6 @@ export default async function DashboardPage({
     label: p.shortLabel,
     incomeCents: p.incomeCents,
     expenseCents: p.expenseCents,
-  }));
-  const monthlyFlowFormatted = monthlyFlow.map((p) => ({
-    income: formatAmount(p.incomeCents, currency, intlLocale),
-    expense: formatAmount(p.expenseCents, currency, intlLocale),
   }));
 
   // Donut segments: top categories this month, expense side only.
@@ -218,7 +211,7 @@ export default async function DashboardPage({
   const donutLegend = topCategories.slice(0, 3).map((c) => ({
     label: locale === "es" ? c.nameEs : c.nameEn,
     color: c.color,
-    valueFormatted: formatAmount(c.spentCents, currency, intlLocale),
+    valueCents: c.spentCents,
   }));
 
   // Category spend rows (Bento "Spending by category" card).
@@ -230,8 +223,8 @@ export default async function DashboardPage({
       name: locale === "es" ? c.nameEs : c.nameEn,
       icon: c.icon,
       color: c.color,
-      spentFormatted: formatAmount(c.spentCents, currency, intlLocale),
-      budgetFormatted: budget > 0 ? fmtAmount(budget, currency, intlLocale, true) : null,
+      spentCents: c.spentCents,
+      budgetCents: budget > 0 ? budget : null,
       pct,
       over: budget > 0 && c.spentCents > budget,
     };
@@ -249,8 +242,8 @@ export default async function DashboardPage({
       id: r.id,
       merchant: r.merchantName ?? r.rawDescription,
       subLabel: sub,
-      amountFormatted: formatAmount(Math.abs(r.amountCents), r.currency, intlLocale),
       amountCents: r.amountCents,
+      currency: r.currency,
       categoryIcon: r.categoryIcon,
       categoryColor: r.categoryColor,
     };
@@ -300,7 +293,6 @@ export default async function DashboardPage({
           />
           <TotalBalanceCard
             netWorthLabel={t("netWorth")}
-            netWorthFormatted={formatAmount(accountsTotal.totalCents, currency, intlLocale)}
             netWorthCents={accountsTotal.totalCents}
             baseCurrency={currency}
             intlLocale={intlLocale}
@@ -332,7 +324,6 @@ export default async function DashboardPage({
           <div className="col-span-12 lg:col-span-8">
             <TotalBalanceCard
               netWorthLabel={t("netWorth")}
-              netWorthFormatted={formatAmount(accountsTotal.totalCents, currency, intlLocale)}
               netWorthCents={accountsTotal.totalCents}
               baseCurrency={currency}
               intlLocale={intlLocale}
@@ -375,7 +366,9 @@ export default async function DashboardPage({
                   institutionLogoUrl={a.institutionLogoUrl}
                   accountLabel={a.accountName}
                   last4={a.ibanLast4}
-                  balanceFormatted={formatAmount(a.balanceCents, a.currency, intlLocale)}
+                  balanceCents={a.balanceCents}
+                  currency={a.currency}
+                  intlLocale={intlLocale}
                   href={`/transactions?accountId=${a.id}`}
                 />
               ))}
@@ -395,7 +388,8 @@ export default async function DashboardPage({
               incomeLabel={t("income")}
               expenseLabel={t("expenses")}
               data={monthlyFlowData}
-              formatted={monthlyFlowFormatted}
+              currency={currency}
+              intlLocale={intlLocale}
             />
           </div>
           <div className="col-span-12 lg:col-span-5">
@@ -403,7 +397,9 @@ export default async function DashboardPage({
               title={t("monthSpend", { month: monthlyFlow.at(-1)?.shortLabel ?? "" })}
               subtitle={t("monthSpendSub")}
               segments={donutSegments}
-              totalFormatted={fmtAmount(donutTotal, currency, intlLocale, true)}
+              totalCents={donutTotal}
+              currency={currency}
+              intlLocale={intlLocale}
               totalCaption={t("thisMonth")}
               legend={donutLegend}
               emptyLabel={t("noCategorySpend")}
@@ -417,6 +413,7 @@ export default async function DashboardPage({
               seeAllLabel={t("viewAll")}
               emptyLabel={t("noActivity")}
               rows={recentRows}
+              intlLocale={intlLocale}
             />
           </div>
           <div className="col-span-12 lg:col-span-5">
@@ -425,6 +422,8 @@ export default async function DashboardPage({
               viewAllLabel={t("viewAll")}
               rows={categoryRows}
               emptyLabel={t("noCategorySpend")}
+              currency={currency}
+              intlLocale={intlLocale}
             />
           </div>
 

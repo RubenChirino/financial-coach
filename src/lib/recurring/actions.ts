@@ -22,6 +22,7 @@ export interface ActionResult {
 export async function runRecurringDetectionAction(): Promise<ActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
+  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
   const detected = await detectRecurringSubscriptions({ userId: session.userId });
   revalidatePath("/subscriptions");
   revalidatePath("/");

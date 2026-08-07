@@ -1,7 +1,7 @@
 import { ArrowDownLeft, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { CategoryIcon } from "@/components/category-icon";
-import { PrivacyAmount } from "@/components/privacy-amount";
+import { ConvertedAmount } from "@/components/converted-amount";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -9,8 +9,8 @@ export interface RecentTransactionRow {
   id: number;
   merchant: string;
   subLabel: string; // "Category · Institution"
-  amountFormatted: string;
   amountCents: number;
+  currency: string;
   categoryIcon: string | null;
   categoryColor: string | null;
 }
@@ -20,11 +20,13 @@ export function RecentTransactionsCard({
   seeAllLabel,
   emptyLabel,
   rows,
+  intlLocale,
 }: {
   title: string;
   seeAllLabel: string;
   emptyLabel: string;
   rows: RecentTransactionRow[];
+  intlLocale: string;
 }) {
   return (
     <section className="coin-card flex h-full flex-col p-6">
@@ -85,7 +87,12 @@ export function RecentTransactionsCard({
                     positive && "text-emerald-600 dark:text-emerald-400",
                   )}
                 >
-                  <PrivacyAmount value={`${positive ? "+" : ""}${r.amountFormatted}`} />
+                  <ConvertedAmount
+                    cents={r.amountCents}
+                    currency={r.currency}
+                    intlLocale={intlLocale}
+                    signDisplay="exceptZero"
+                  />
                 </div>
               </li>
             );

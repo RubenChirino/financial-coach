@@ -3,13 +3,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
+import { ConvertedAmount } from "@/components/converted-amount";
 import { EmptyState } from "@/components/empty-state";
-import { PrivacyAmount } from "@/components/privacy-amount";
 import { Button } from "@/components/ui/button";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getUser } from "@/lib/auth/user";
 import { getAccountsTotal, listInstitutionGroups } from "@/lib/dashboard/summary";
-import { formatAmount } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
 import { SyncButton } from "../settings/bank/sync-button";
 import { AccountRow } from "./account-row";
@@ -31,8 +30,6 @@ export default async function BanksPage() {
 
   const intlLocale = locale === "es" ? "es-ES" : "en-GB";
   const currency = user?.currency ?? accountsTotal.currency;
-
-  const totalFormatted = formatAmount(accountsTotal.totalCents, currency, intlLocale);
 
   return (
     <AppShell>
@@ -64,7 +61,11 @@ export default async function BanksPage() {
               {t("totalBalance")}
             </div>
             <div className="tnum mt-1.5 text-[36px] font-semibold leading-none tracking-[-0.02em]">
-              <PrivacyAmount value={totalFormatted} />
+              <ConvertedAmount
+                cents={accountsTotal.totalCents}
+                currency={currency}
+                intlLocale={intlLocale}
+              />
             </div>
             <div className="mt-2 text-[12.5px] text-[color:var(--text-secondary)]">
               {t("accountsCount", { count: accountsTotal.accountCount })}
@@ -88,11 +89,7 @@ export default async function BanksPage() {
           <div className="space-y-4">
             {groups.map((group) => {
               const groupTotal = group.accounts.reduce((s, a) => s + a.balanceCents, 0);
-              const groupTotalFormatted = formatAmount(
-                groupTotal,
-                group.accounts[0]?.currency ?? currency,
-                intlLocale,
-              );
+              const groupCurrency = group.accounts[0]?.currency ?? currency;
               const syncedAgo = group.lastSyncedAt
                 ? formatRelativeTime(group.lastSyncedAt, intlLocale)
                 : t("neverSynced");
@@ -120,7 +117,11 @@ export default async function BanksPage() {
                     </div>
                     <div className="text-right">
                       <div className="tnum text-[15px] font-semibold">
-                        <PrivacyAmount value={groupTotalFormatted} />
+                        <ConvertedAmount
+                          cents={groupTotal}
+                          currency={groupCurrency}
+                          intlLocale={intlLocale}
+                        />
                       </div>
                       <div className="text-[11px] text-[color:var(--text-tertiary)]">
                         {t("accountsCount", { count: group.accounts.length })}
@@ -136,7 +137,9 @@ export default async function BanksPage() {
                         id={acc.id}
                         name={acc.name}
                         ibanLast4={acc.ibanLast4}
-                        balanceFormatted={formatAmount(acc.balanceCents, acc.currency, intlLocale)}
+                        balanceCents={acc.balanceCents}
+                        currency={acc.currency}
+                        intlLocale={intlLocale}
                       />
                     ))}
                   </ul>

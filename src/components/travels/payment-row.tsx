@@ -2,7 +2,7 @@
 
 import { ChevronDown, MapPin } from "lucide-react";
 import { useState } from "react";
-import { PrivacyAmount } from "@/components/privacy-amount";
+import { ConvertedAmount } from "@/components/converted-amount";
 
 export interface PaymentRowLabels {
   description: string;
@@ -23,7 +23,9 @@ export function PaymentRow({
   city,
   dateShort,
   dateFull,
-  amountFormatted,
+  amountCents,
+  currency,
+  intlLocale,
   labels,
 }: {
   title: string;
@@ -31,7 +33,9 @@ export function PaymentRow({
   city: string | null;
   dateShort: string;
   dateFull: string;
-  amountFormatted: string;
+  amountCents: number;
+  currency: string;
+  intlLocale: string;
   labels: PaymentRowLabels;
 }) {
   const [open, setOpen] = useState(false);
@@ -53,7 +57,7 @@ export function PaymentRow({
         <div className="flex-1 min-w-0 truncate text-[13px] font-medium">{title}</div>
         <div className="text-[11px] text-[color:var(--text-tertiary)]">{dateShort}</div>
         <div className="tnum text-[13px] font-semibold whitespace-nowrap">
-          <PrivacyAmount value={amountFormatted} />
+          <ConvertedAmount cents={amountCents} currency={currency} intlLocale={intlLocale} />
         </div>
       </button>
 
@@ -75,7 +79,7 @@ export function PaymentRow({
           </DetailField>
           <DetailField label={labels.amount}>
             <span className="tnum font-semibold">
-              <PrivacyAmount value={amountFormatted} />
+              <ConvertedAmount cents={amountCents} currency={currency} intlLocale={intlLocale} />
             </span>
           </DetailField>
         </dl>

@@ -4,14 +4,14 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
-import { PrivacyAmount } from "@/components/privacy-amount";
+import { PredAmount } from "@/components/predictions/amount";
 import { TourButton } from "@/components/tour-button";
 import { Button } from "@/components/ui/button";
 import { getCurrentSession } from "@/lib/auth/session";
 import { listAccountsWithInstitutions } from "@/lib/dashboard/summary";
-import { formatAmount } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
 import { getSpendingForecast } from "@/lib/predictions/forecast";
+import { RecalculateButton } from "./recalculate-button";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +49,6 @@ export default async function PredictionsPage({
     accountId: selectedAccount?.id,
   });
 
-  const fmt = (cents: number) => formatAmount(cents, forecast.currency, intlLocale);
   const fmtMonth = (yyyymm: string): string => {
     const [y, m] = yyyymm.split("-").map((p) => Number.parseInt(p, 10));
     if (!y || !m) return yyyymm;
@@ -83,8 +82,10 @@ export default async function PredictionsPage({
                     </div>
                   </div>
                   <div className="tnum text-[13.5px] font-medium">
-                    <PrivacyAmount
-                      value={formatAmount(acc.balanceCents, acc.currency, intlLocale)}
+                    <PredAmount
+                      cents={acc.balanceCents}
+                      currency={acc.currency}
+                      intlLocale={intlLocale}
                     />
                   </div>
                 </Link>
@@ -134,40 +135,43 @@ export default async function PredictionsPage({
               {t("explainer")}
             </p>
           </div>
-          <TourButton
-            label={locale === "es" ? "¿Cómo funciona?" : "How it works"}
-            prevBtnText="←"
-            nextBtnText="→"
-            doneBtnText="✓"
-            steps={[
-              {
-                title: locale === "es" ? "¿Qué son las Predicciones?" : "What are Predictions?",
-                description:
-                  locale === "es"
-                    ? "Esta página proyecta tus ingresos, gastos y ahorro para los próximos meses usando tus transacciones históricas. No usamos IA — los números vienen directamente de tus datos."
-                    : "This page projects your income, spending, and savings for the next few months using your historical transactions. No AI is involved — the numbers come straight from your data.",
-              },
-              {
-                element: "#pred-cumulative",
-                title:
-                  locale === "es" ? "Ahorro acumulado previsto" : "Projected cumulative savings",
-                description:
-                  locale === "es"
-                    ? "La suma total de lo que esperamos que ahorres (o pierdas) en el horizonte de predicción. Verde = estás en camino de ahorrar; rojo = el gasto supera al ingreso."
-                    : "The total sum of what we expect you to save (or lose) over the forecast window. Green = on track to save; red = spending exceeds income.",
-                side: "bottom",
-              },
-              {
-                element: "#pred-inputs",
-                title: locale === "es" ? "Ingresos y gastos fijos" : "Fixed income & spending",
-                description:
-                  locale === "es"
-                    ? "Separamos lo predecible (nómina, suscripciones, gasto habitual en supermercado) de lo variable. Cuanto mayor sea la parte fija, más fiable es la previsión."
-                    : "We split the predictable part (payroll, subscriptions, habitual grocery spend) from the variable. The bigger the fixed share, the more reliable the projection.",
-                side: "top",
-              },
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            <RecalculateButton />
+            <TourButton
+              label={locale === "es" ? "¿Cómo funciona?" : "How it works"}
+              prevBtnText="←"
+              nextBtnText="→"
+              doneBtnText="✓"
+              steps={[
+                {
+                  title: locale === "es" ? "¿Qué son las Predicciones?" : "What are Predictions?",
+                  description:
+                    locale === "es"
+                      ? "Esta página proyecta tus ingresos, gastos y ahorro para los próximos meses usando tus transacciones históricas. No usamos IA — los números vienen directamente de tus datos."
+                      : "This page projects your income, spending, and savings for the next few months using your historical transactions. No AI is involved — the numbers come straight from your data.",
+                },
+                {
+                  element: "#pred-cumulative",
+                  title:
+                    locale === "es" ? "Ahorro acumulado previsto" : "Projected cumulative savings",
+                  description:
+                    locale === "es"
+                      ? "La suma total de lo que esperamos que ahorres (o pierdas) en el horizonte de predicción. Verde = estás en camino de ahorrar; rojo = el gasto supera al ingreso."
+                      : "The total sum of what we expect you to save (or lose) over the forecast window. Green = on track to save; red = spending exceeds income.",
+                  side: "bottom",
+                },
+                {
+                  element: "#pred-inputs",
+                  title: locale === "es" ? "Ingresos y gastos fijos" : "Fixed income & spending",
+                  description:
+                    locale === "es"
+                      ? "Separamos lo predecible (nómina, suscripciones, gasto habitual en supermercado) de lo variable. Cuanto mayor sea la parte fija, más fiable es la previsión."
+                      : "We split the predictable part (payroll, subscriptions, habitual grocery spend) from the variable. The bigger the fixed share, the more reliable the projection.",
+                  side: "top",
+                },
+              ]}
+            />
+          </div>
         </header>
 
         {selectedAccount ? (
@@ -204,8 +208,11 @@ export default async function PredictionsPage({
                 : "text-red-600 dark:text-red-400"
             }`}
           >
-            <PrivacyAmount
-              value={`${cumulativePositive ? "+" : ""}${fmt(forecast.cumulativeNetCents)}`}
+            <PredAmount
+              cents={forecast.cumulativeNetCents}
+              currency={forecast.currency}
+              intlLocale={intlLocale}
+              prefix={cumulativePositive ? "+" : ""}
             />
           </div>
           <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-default)] px-2 py-0.5 text-[11px] text-[color:var(--text-secondary)]">
@@ -244,19 +251,34 @@ export default async function PredictionsPage({
                       : "text-red-600 dark:text-red-400"
                   }`}
                 >
-                  <PrivacyAmount value={`${positive ? "+" : ""}${fmt(m.projectedNetCents)}`} />
+                  <PredAmount
+                    cents={m.projectedNetCents}
+                    currency={forecast.currency}
+                    intlLocale={intlLocale}
+                    prefix={positive ? "+" : ""}
+                  />
                 </div>
                 <dl className="mt-3 space-y-1 text-[12px]">
                   <div className="flex items-center justify-between">
                     <dt className="text-[color:var(--text-tertiary)]">{t("incomeLine")}</dt>
                     <dd className="tabular-nums text-emerald-600 dark:text-emerald-400">
-                      <PrivacyAmount value={`+${fmt(m.projectedIncomeCents)}`} />
+                      <PredAmount
+                        cents={m.projectedIncomeCents}
+                        currency={forecast.currency}
+                        intlLocale={intlLocale}
+                        prefix="+"
+                      />
                     </dd>
                   </div>
                   <div className="flex items-center justify-between">
                     <dt className="text-[color:var(--text-tertiary)]">{t("expenseLine")}</dt>
                     <dd className="tabular-nums text-red-600 dark:text-red-400">
-                      <PrivacyAmount value={`−${fmt(m.projectedExpenseCents)}`} />
+                      <PredAmount
+                        cents={m.projectedExpenseCents}
+                        currency={forecast.currency}
+                        intlLocale={intlLocale}
+                        prefix="−"
+                      />
                     </dd>
                   </div>
                 </dl>
@@ -278,32 +300,74 @@ export default async function PredictionsPage({
           <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 text-[13px] sm:grid-cols-2">
             <InputRow
               label={t("inputFixedIncome")}
-              value={`+${fmt(fixedIncomeCents)}`}
+              amount={
+                <PredAmount
+                  cents={fixedIncomeCents}
+                  currency={forecast.currency}
+                  intlLocale={intlLocale}
+                  prefix="+"
+                />
+              }
               valueColor="text-emerald-600 dark:text-emerald-400"
             />
             <InputRow
               label={t("inputAvgIncome")}
-              value={`+${fmt(forecast.inputs.avgMonthlyIncomeCents)}`}
+              amount={
+                <PredAmount
+                  cents={forecast.inputs.avgMonthlyIncomeCents}
+                  currency={forecast.currency}
+                  intlLocale={intlLocale}
+                  prefix="+"
+                />
+              }
               valueColor="text-emerald-600 dark:text-emerald-400"
             />
             <InputRow
               label={t("inputRecurringOut")}
-              value={`−${fmt(forecast.inputs.recurringMonthlyOutCents)}`}
+              amount={
+                <PredAmount
+                  cents={forecast.inputs.recurringMonthlyOutCents}
+                  currency={forecast.currency}
+                  intlLocale={intlLocale}
+                  prefix="−"
+                />
+              }
               valueColor="text-red-600 dark:text-red-400"
             />
             <InputRow
               label={t("inputHabitualOut")}
-              value={`−${fmt(forecast.inputs.habitualMonthlyOutCents)}`}
+              amount={
+                <PredAmount
+                  cents={forecast.inputs.habitualMonthlyOutCents}
+                  currency={forecast.currency}
+                  intlLocale={intlLocale}
+                  prefix="−"
+                />
+              }
               valueColor="text-red-600 dark:text-red-400"
             />
             <InputRow
               label={t("inputVariableOut")}
-              value={`−${fmt(forecast.inputs.variableMonthlyExpenseCents)}`}
+              amount={
+                <PredAmount
+                  cents={forecast.inputs.variableMonthlyExpenseCents}
+                  currency={forecast.currency}
+                  intlLocale={intlLocale}
+                  prefix="−"
+                />
+              }
               valueColor="text-[color:var(--text-secondary)]"
             />
             <InputRow
               label={t("inputAvgExpense")}
-              value={`−${fmt(forecast.inputs.avgMonthlyExpenseCents)}`}
+              amount={
+                <PredAmount
+                  cents={forecast.inputs.avgMonthlyExpenseCents}
+                  currency={forecast.currency}
+                  intlLocale={intlLocale}
+                  prefix="−"
+                />
+              }
               valueColor="text-[color:var(--text-secondary)]"
             />
           </dl>
@@ -321,7 +385,13 @@ export default async function PredictionsPage({
                   >
                     <span className="truncate">{s.source}</span>
                     <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
-                      <PrivacyAmount value={`+${fmt(s.monthlyEquivCents)}${t("monthlySuffix")}`} />
+                      <PredAmount
+                        cents={s.monthlyEquivCents}
+                        currency={forecast.currency}
+                        intlLocale={intlLocale}
+                        prefix="+"
+                        suffix={t("monthlySuffix")}
+                      />
                     </span>
                   </li>
                 ))}
@@ -336,8 +406,12 @@ export default async function PredictionsPage({
                         {t("monthsSeenSuffix", { n: s.monthsSeen })}
                       </span>
                       <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
-                        <PrivacyAmount
-                          value={`+${fmt(s.monthlyMedianCents)}${t("monthlySuffix")}`}
+                        <PredAmount
+                          cents={s.monthlyMedianCents}
+                          currency={forecast.currency}
+                          intlLocale={intlLocale}
+                          prefix="+"
+                          suffix={t("monthlySuffix")}
                         />
                       </span>
                     </span>
@@ -363,7 +437,12 @@ export default async function PredictionsPage({
                   <li key={s.merchant} className="flex items-center justify-between text-[13px]">
                     <span className="truncate">{s.merchant}</span>
                     <span className="tabular-nums text-[color:var(--text-secondary)]">
-                      <PrivacyAmount value={`${fmt(s.monthlyEquivCents)}${t("monthlySuffix")}`} />
+                      <PredAmount
+                        cents={s.monthlyEquivCents}
+                        currency={forecast.currency}
+                        intlLocale={intlLocale}
+                        suffix={t("monthlySuffix")}
+                      />
                     </span>
                   </li>
                 ))}
@@ -388,8 +467,11 @@ export default async function PredictionsPage({
                         {t("monthsSeenSuffix", { n: h.monthsSeen })}
                       </span>
                       <span className="tabular-nums text-[color:var(--text-secondary)]">
-                        <PrivacyAmount
-                          value={`${fmt(h.monthlyMedianCents)}${t("monthlySuffix")}`}
+                        <PredAmount
+                          cents={h.monthlyMedianCents}
+                          currency={forecast.currency}
+                          intlLocale={intlLocale}
+                          suffix={t("monthlySuffix")}
                         />
                       </span>
                     </span>
@@ -416,10 +498,20 @@ export default async function PredictionsPage({
                   <span className="text-[13px] font-medium">{fmtMonth(m.month)}</span>
                   <div className="flex items-center gap-4 text-[12px] tabular-nums">
                     <span className="text-emerald-600 dark:text-emerald-400">
-                      <PrivacyAmount value={`+${fmt(m.incomeCents)}`} />
+                      <PredAmount
+                        cents={m.incomeCents}
+                        currency={forecast.currency}
+                        intlLocale={intlLocale}
+                        prefix="+"
+                      />
                     </span>
                     <span className="text-red-600 dark:text-red-400">
-                      <PrivacyAmount value={`−${fmt(m.expenseCents)}`} />
+                      <PredAmount
+                        cents={m.expenseCents}
+                        currency={forecast.currency}
+                        intlLocale={intlLocale}
+                        prefix="−"
+                      />
                     </span>
                     <span
                       className={`font-medium ${
@@ -428,7 +520,12 @@ export default async function PredictionsPage({
                           : "text-red-600 dark:text-red-400"
                       }`}
                     >
-                      <PrivacyAmount value={`${m.netCents >= 0 ? "+" : ""}${fmt(m.netCents)}`} />
+                      <PredAmount
+                        cents={m.netCents}
+                        currency={forecast.currency}
+                        intlLocale={intlLocale}
+                        prefix={m.netCents >= 0 ? "+" : ""}
+                      />
                     </span>
                   </div>
                 </li>
@@ -445,19 +542,17 @@ export default async function PredictionsPage({
 
 function InputRow({
   label,
-  value,
+  amount,
   valueColor,
 }: {
   label: string;
-  value: string;
+  amount: React.ReactNode;
   valueColor: string;
 }) {
   return (
     <div className="flex items-center justify-between">
       <dt className="text-[color:var(--text-tertiary)]">{label}</dt>
-      <dd className={`tabular-nums font-medium ${valueColor}`}>
-        <PrivacyAmount value={value} />
-      </dd>
+      <dd className={`tabular-nums font-medium ${valueColor}`}>{amount}</dd>
     </div>
   );
 }

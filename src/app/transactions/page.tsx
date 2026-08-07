@@ -1,4 +1,4 @@
-import { Download, ListMinus } from "lucide-react";
+import { ListMinus } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
@@ -6,11 +6,12 @@ import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { TourButton } from "@/components/tour-button";
+import { ExportButton } from "@/components/transactions/export-dialog";
 import { SpendingHeatmap } from "@/components/transactions/spending-heatmap";
 import { TransactionsView } from "@/components/transactions/transactions-view";
 import { Button } from "@/components/ui/button";
 import { getCurrentSession } from "@/lib/auth/session";
-import { getAccountsTotal } from "@/lib/dashboard/summary";
+import { getAccountsTotal, listAccountsWithInstitutions } from "@/lib/dashboard/summary";
 import { getLocale } from "@/lib/i18n/locale";
 import { listCategoryOptionsAction } from "@/lib/transactions/actions";
 import { getSpendingHeatmap } from "@/lib/transactions/heatmap";
@@ -44,22 +45,32 @@ export default async function TransactionsPage({
       ? requestedYear
       : "auto";
 
-  const [t, tNav, locale, { rows, nextCursor }, options, accountsTotal, heatmap, stats] =
-    await Promise.all([
-      getTranslations("transactions"),
-      getTranslations("nav"),
-      getLocale(),
-      listTransactions({
-        userId: session.userId,
-        needsReviewOnly: reviewOnly,
-        query: searchQuery || undefined,
-        dates: selectedDates.length ? selectedDates : undefined,
-      }),
-      listCategoryOptionsAction(),
-      getAccountsTotal(session.userId),
-      getSpendingHeatmap(session.userId, heatmapYearArg),
-      getTransactionStats(session.userId),
-    ]);
+  const [
+    t,
+    tNav,
+    locale,
+    { rows, nextCursor },
+    options,
+    accountsTotal,
+    heatmap,
+    stats,
+    accountsList,
+  ] = await Promise.all([
+    getTranslations("transactions"),
+    getTranslations("nav"),
+    getLocale(),
+    listTransactions({
+      userId: session.userId,
+      needsReviewOnly: reviewOnly,
+      query: searchQuery || undefined,
+      dates: selectedDates.length ? selectedDates : undefined,
+    }),
+    listCategoryOptionsAction(),
+    getAccountsTotal(session.userId),
+    getSpendingHeatmap(session.userId, heatmapYearArg),
+    getTransactionStats(session.userId),
+    listAccountsWithInstitutions(session.userId),
+  ]);
   // The list above is only the FIRST PAGE — show the real total in the header
   // (otherwise users think their import didn't work).
   const totalCount = Number(stats.count) || rows.length;
@@ -109,11 +120,15 @@ export default async function TransactionsPage({
                   },
                 ]}
               />
-              <Button asChild variant="outline" size="sm" className="gap-1.5">
-                <a href="/api/export/transactions" download>
-                  <Download className="h-3.5 w-3.5" /> {t("exportCsv")}
-                </a>
-              </Button>
+              <ExportButton
+                accounts={accountsList.map((a) => ({
+                  id: a.id,
+                  label: `${a.institutionName} · ${a.accountName}${a.ibanLast4 ? ` ··${a.ibanLast4}` : ""}`,
+                }))}
+                currency={accountsTotal.currency}
+                intlLocale={intlLocale}
+                locale={locale}
+              />
               <CategorizeNowButton label={t("categorizeNow")} busyLabel={t("categorizing")} />
             </div>
           </header>

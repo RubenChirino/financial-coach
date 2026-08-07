@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 import { CategoryIcon } from "@/components/category-icon";
-import { PrivacyAmount } from "@/components/privacy-amount";
+import { ConvertedAmount } from "@/components/converted-amount";
 import { cn } from "@/lib/utils";
 
 /**
@@ -16,12 +16,13 @@ export function CategoryRow({
   name,
   icon,
   color,
-  spentFormatted,
-  budgetFormatted,
+  spentCents,
+  budgetCents,
+  currency,
+  intlLocale,
+  noBudgetLabel,
   pct,
   over,
-  remainingFormatted,
-  overByFormatted,
   selected,
   locale: _locale,
   leftLabel,
@@ -31,12 +32,14 @@ export function CategoryRow({
   name: string;
   icon: string;
   color: string;
-  spentFormatted: string;
-  budgetFormatted: string;
+  spentCents: number;
+  /** Null = no budget set for this category. */
+  budgetCents: number | null;
+  currency: string;
+  intlLocale: string;
+  noBudgetLabel: string;
   pct: number;
   over: boolean;
-  remainingFormatted: string;
-  overByFormatted: string;
   selected: boolean;
   locale: "es" | "en";
   leftLabel: string;
@@ -91,10 +94,20 @@ export function CategoryRow({
             ) : null}
           </div>
           <div className="tnum whitespace-nowrap text-[12.5px] font-semibold">
-            <PrivacyAmount value={spentFormatted} />
+            <ConvertedAmount cents={spentCents} currency={currency} intlLocale={intlLocale} />
             <span className="font-normal text-[color:var(--text-tertiary)]">
               {" "}
-              / <PrivacyAmount value={budgetFormatted} />
+              /{" "}
+              {budgetCents != null ? (
+                <ConvertedAmount
+                  cents={budgetCents}
+                  currency={currency}
+                  intlLocale={intlLocale}
+                  round
+                />
+              ) : (
+                noBudgetLabel
+              )}
             </span>
           </div>
         </div>
@@ -118,11 +131,20 @@ export function CategoryRow({
           >
             {over ? (
               <>
-                <PrivacyAmount value={overByFormatted} /> {overSuffix}
+                <ConvertedAmount
+                  cents={spentCents - (budgetCents ?? 0)}
+                  currency={currency}
+                  intlLocale={intlLocale}
+                />{" "}
+                {overSuffix}
               </>
-            ) : (
-              <PrivacyAmount value={remainingFormatted} />
-            )}
+            ) : budgetCents != null ? (
+              <ConvertedAmount
+                cents={Math.max(0, budgetCents - spentCents)}
+                currency={currency}
+                intlLocale={intlLocale}
+              />
+            ) : null}
           </span>
         </div>
       </div>

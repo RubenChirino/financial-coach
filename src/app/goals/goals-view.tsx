@@ -2,7 +2,7 @@
 import { Loader2, Plus, RefreshCw, Target } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { PrivacyAmount } from "@/components/privacy-amount";
+import { ConvertedAmount } from "@/components/converted-amount";
 import type { Goal } from "@/db/schema";
 import { recomputeGoalsProgressAction } from "@/lib/goals/actions";
 import { GoalCard } from "./goal-card";
@@ -65,13 +65,6 @@ export function GoalsView({ goals, currency, intlLocale, labels }: GoalsViewProp
       setTimeout(() => setSyncMsg(null), 3500);
     });
   }
-
-  const fmt = new Intl.NumberFormat(intlLocale, {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 
   function deadlineLabel(goal: Goal): string | null {
     if (!goal.deadline) return null;
@@ -165,8 +158,10 @@ export function GoalsView({ goals, currency, intlLocale, labels }: GoalsViewProp
               {labels.saved}
             </div>
             <div className="mt-1 text-[18px] font-bold tabular-nums" style={{ color: "#059669" }}>
-              <PrivacyAmount
-                value={fmt.format(goals.reduce((s, g) => s + g.savedCents, 0) / 100)}
+              <ConvertedAmount
+                cents={goals.reduce((s, g) => s + g.savedCents, 0)}
+                currency={currency}
+                intlLocale={intlLocale}
               />
             </div>
           </div>
@@ -175,8 +170,10 @@ export function GoalsView({ goals, currency, intlLocale, labels }: GoalsViewProp
               {labels.targetLabel}
             </div>
             <div className="mt-1 text-[18px] font-bold tabular-nums text-[color:var(--text-secondary)]">
-              <PrivacyAmount
-                value={fmt.format(goals.reduce((s, g) => s + g.targetCents, 0) / 100)}
+              <ConvertedAmount
+                cents={goals.reduce((s, g) => s + g.targetCents, 0)}
+                currency={currency}
+                intlLocale={intlLocale}
               />
             </div>
           </div>
@@ -214,8 +211,8 @@ export function GoalsView({ goals, currency, intlLocale, labels }: GoalsViewProp
                 <GoalCard
                   key={g.id}
                   goal={g}
-                  formattedTarget={fmt.format(g.targetCents / 100)}
-                  formattedSaved={fmt.format(g.savedCents / 100)}
+                  currency={currency}
+                  intlLocale={intlLocale}
                   progressPct={pct}
                   deadlineLabel={deadlineLabel(g)}
                   labels={cardLabels}

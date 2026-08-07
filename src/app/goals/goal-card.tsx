@@ -4,7 +4,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useTransition } from "react";
-import { PrivacyAmount } from "@/components/privacy-amount";
+import { ConvertedAmount } from "@/components/converted-amount";
 import { useToast } from "@/components/toaster";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import type { Goal } from "@/db/schema";
@@ -13,8 +13,8 @@ import { cn } from "@/lib/utils";
 
 interface GoalCardProps {
   goal: Goal;
-  formattedTarget: string;
-  formattedSaved: string;
+  currency: string;
+  intlLocale: string;
   progressPct: number;
   deadlineLabel: string | null;
   labels: {
@@ -32,8 +32,8 @@ interface GoalCardProps {
 
 export function GoalCard({
   goal,
-  formattedTarget,
-  formattedSaved,
+  currency,
+  intlLocale,
   progressPct,
   deadlineLabel,
   labels,
@@ -116,9 +116,14 @@ export function GoalCard({
         <div className="mb-1.5 flex items-baseline justify-between text-[12px]">
           <span className="text-[color:var(--text-secondary)]">
             <span className="font-semibold text-[color:var(--text-primary)]">
-              <PrivacyAmount value={formattedSaved} />
+              <ConvertedAmount
+                cents={goal.savedCents}
+                currency={currency}
+                intlLocale={intlLocale}
+              />
             </span>{" "}
-            {labels.of} <PrivacyAmount value={formattedTarget} />
+            {labels.of}{" "}
+            <ConvertedAmount cents={goal.targetCents} currency={currency} intlLocale={intlLocale} />
           </span>
           <span
             className={cn(

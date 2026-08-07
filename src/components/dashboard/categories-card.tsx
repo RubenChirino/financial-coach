@@ -1,7 +1,7 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { CategoryIcon } from "@/components/category-icon";
-import { PrivacyAmount } from "@/components/privacy-amount";
+import { ConvertedAmount } from "@/components/converted-amount";
 import { Button } from "@/components/ui/button";
 
 export interface CategorySpendRow {
@@ -9,8 +9,8 @@ export interface CategorySpendRow {
   name: string;
   icon: string;
   color: string;
-  spentFormatted: string;
-  budgetFormatted: string | null;
+  spentCents: number;
+  budgetCents: number | null;
   /** 0–100, clamped. */
   pct: number;
   over: boolean;
@@ -21,11 +21,15 @@ export function CategoriesCard({
   viewAllLabel,
   rows,
   emptyLabel,
+  currency,
+  intlLocale,
 }: {
   title: string;
   viewAllLabel: string;
   rows: CategorySpendRow[];
   emptyLabel: string;
+  currency: string;
+  intlLocale: string;
 }) {
   return (
     <section className="coin-card p-6 h-full">
@@ -59,11 +63,21 @@ export function CategoriesCard({
                   </span>
                   <span className="flex-1 truncate text-[13px] font-medium">{r.name}</span>
                   <span className="tnum shrink-0 text-[12px] font-semibold">
-                    <PrivacyAmount value={r.spentFormatted} />
-                    {r.budgetFormatted ? (
+                    <ConvertedAmount
+                      cents={r.spentCents}
+                      currency={currency}
+                      intlLocale={intlLocale}
+                      round
+                    />
+                    {r.budgetCents != null ? (
                       <span className="font-normal text-[color:var(--text-tertiary)]">
                         {" / "}
-                        <PrivacyAmount value={r.budgetFormatted} />
+                        <ConvertedAmount
+                          cents={r.budgetCents}
+                          currency={currency}
+                          intlLocale={intlLocale}
+                          round
+                        />
                       </span>
                     ) : null}
                   </span>
