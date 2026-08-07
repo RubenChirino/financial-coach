@@ -42,17 +42,19 @@
     "lock": "Bloquear app"
   },
   "common": {
-    "continue": "Continuar",
     "back": "Atrás",
     "cancel": "Cancelar",
-    "save": "Guardar",
+    "comingSoon": "Próximamente",
+    "connectBank": "Conectar banco",
+    "continue": "Continuar",
     "delete": "Eliminar",
     "edit": "Editar",
-    "loading": "Cargando…",
     "error": "Error",
-    "success": "Hecho",
+    "importTransactions": "Importar movimientos",
+    "loading": "Cargando…",
     "notAvailable": "No disponible",
-    "comingSoon": "Próximamente"
+    "save": "Guardar",
+    "success": "Hecho"
   },
   "onboarding": {
     "welcome": {
@@ -332,6 +334,8 @@
     "subtitle": "Detectamos pagos recurrentes en tus movimientos para que sepas cuánto te cuestan al mes.",
     "emptyTitle": "Aún no hay suscripciones detectadas",
     "emptyBody": "Ejecuta la detección para buscar pagos recurrentes en los últimos 6 meses.",
+    "noDataTitle": "Todavía no hay nada donde buscar suscripciones",
+    "noDataBody": "Suscripciones encuentra cargos recurrentes analizando tus movimientos. Conecta un banco o importa un extracto primero — la detección necesita algo que revisar.",
     "runDetection": "Detectar suscripciones",
     "running": "Detectando…",
     "monthlyTotal": "Coste mensual estimado",
@@ -376,6 +380,8 @@
     "guestNudge": "Inicia sesión para guardar cambios — el modo invitado es solo lectura.",
     "emptyTitle": "Aún no se han detectado viajes",
     "emptyBody": "No encontramos pagos hechos fuera de {country}. Pulsa «Detectar viajes» para analizar tus movimientos — los pagos en el extranjero se agruparán aquí en viajes.",
+    "noDataTitle": "Todavía no hay nada que agrupar en viajes",
+    "noDataBody": "Viajes agrupa por país los pagos que hiciste fuera de casa. Conecta un banco o importa un extracto primero — cuando haya movimientos te preguntaremos dónde vives para distinguir casa del extranjero.",
     "allTrips": "Todos los viajes",
     "tripCount": "{count, plural, one {# viaje} other {# viajes}}",
     "payments": "{count, plural, one {# pago} other {# pagos}}",
@@ -866,6 +872,8 @@
     "explainer": "Cada oportunidad se calcula a partir de tus números reales. Mostramos ahorros concretos, proyecciones de objetivos y referencias de fondo de emergencia — nunca productos de inversión específicos.",
     "opportunitiesTitle": "Tus principales oportunidades",
     "noOpportunities": "Nada destacable ahora mismo. ¡Sigue así!",
+    "noDataTitle": "Todavía no hay números con los que trabajar",
+    "noDataBody": "Las oportunidades se calculan a partir de tus movimientos reales — ahorros detectados, proyecciones de objetivos y fondo de emergencia. Conecta un banco o importa un extracto y aparecerán aquí.",
     "viewLabel": "Abrir",
     "subOverlapTitle": "{n} suscripciones en {category}",
     "subOverlapBody": "Cancelar la más barata ahorra unos {amount}/mes.",

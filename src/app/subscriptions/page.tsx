@@ -5,7 +5,9 @@ import { AppShell } from "@/components/app-shell";
 import { CategoryIcon } from "@/components/category-icon";
 import { ConvertedAmount } from "@/components/converted-amount";
 import { EmptyState } from "@/components/empty-state";
+import { NoDataState } from "@/components/no-data-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { hasFinancialData } from "@/lib/accounts/has-data";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getAccountsTotal } from "@/lib/dashboard/summary";
 import { formatDate } from "@/lib/format";
@@ -27,13 +29,14 @@ export default async function SubscriptionsPage() {
   const session = await getCurrentSession();
   if (!session) redirect("/lock");
 
-  const [t, locale, subs, totals, accountsTotal, renewals] = await Promise.all([
+  const [t, locale, subs, totals, accountsTotal, renewals, hasData] = await Promise.all([
     getTranslations("subscriptions"),
     getLocale(),
     listRecurringSubscriptions(session.userId),
     getActiveSubscriptionsTotals(session.userId),
     getAccountsTotal(session.userId),
     getUpcomingRenewals(session.userId, { withinDays: 35 }),
+    hasFinancialData(session.userId),
   ]);
   const intlLocale = locale === "es" ? "es-ES" : "en-US";
 
@@ -49,10 +52,14 @@ export default async function SubscriptionsPage() {
             <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
             <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
           </div>
-          <RunDetectionButton label={t("runDetection")} busyLabel={t("running")} />
+          {hasData ? (
+            <RunDetectionButton label={t("runDetection")} busyLabel={t("running")} />
+          ) : null}
         </header>
 
-        {subs.length === 0 ? (
+        {!hasData ? (
+          <NoDataState Icon={Repeat} title={t("noDataTitle")} description={t("noDataBody")} />
+        ) : subs.length === 0 ? (
           <EmptyState
             Icon={Repeat}
             title={t("emptyTitle")}
