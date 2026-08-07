@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, importBatches, institutions, requisitions, transactions } from "@/db/schema";
 import { categorizeBatchByRules } from "@/lib/categorize";
@@ -8,7 +9,6 @@ import { encrypt } from "@/lib/crypto";
 import { formatIban } from "@/lib/format/iban";
 import { detectRecurringSubscriptions } from "@/lib/recurring/detect";
 import { detectTransfers } from "@/lib/transfers/detect";
-import { and, eq, inArray, sql } from "drizzle-orm";
 import type { ParsedCsvRow } from "./csv";
 
 /**

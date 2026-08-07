@@ -1,10 +1,10 @@
 "use server";
 
-import { db } from "@/db/client";
-import { goals } from "@/db/schema";
-import type { Goal } from "@/db/schema";
-import { getCurrentSession } from "@/lib/auth/session";
 import { and, desc, eq } from "drizzle-orm";
+import { db } from "@/db/client";
+import type { Goal } from "@/db/schema";
+import { goals } from "@/db/schema";
+import { getCurrentSession } from "@/lib/auth/session";
 import { recomputeAllGoalsProgress } from "./auto-track";
 
 export interface GoalActionOk<T = undefined> {

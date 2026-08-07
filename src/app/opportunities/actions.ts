@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { getCurrentSession } from "@/lib/auth/session";
 import {
   AGE_RANGES,
@@ -11,8 +13,6 @@ import {
   RISK_TOLERANCES,
   saveInvestorProfile,
 } from "@/lib/opportunities/profile";
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
 
 const ProfileSchema = z.object({
   ageRange: z.enum(AGE_RANGES),

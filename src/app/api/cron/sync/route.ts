@@ -1,6 +1,6 @@
+import { NextResponse } from "next/server";
 import { isCronAuthorized, recomputeAllUsers } from "@/lib/cron/jobs";
 import { env } from "@/lib/env";
-import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 // Give the batch room to run across all users without hitting the default

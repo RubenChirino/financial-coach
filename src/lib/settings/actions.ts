@@ -1,9 +1,9 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getUser, updateUserCurrency, updateUserDigestOptIn, updateUserLlm } from "@/lib/auth/user";
 import type { LlmProvider } from "@/lib/llm/provider";
-import { revalidatePath } from "next/cache";
 
 export async function updateCurrencyAction(currency: string): Promise<void> {
   const session = await getCurrentSession();

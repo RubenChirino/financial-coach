@@ -1,9 +1,9 @@
+import { ArrowDownLeft, ArrowRight } from "lucide-react";
+import Link from "next/link";
 import { CategoryIcon } from "@/components/category-icon";
 import { PrivacyAmount } from "@/components/privacy-amount";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ArrowDownLeft, ArrowRight } from "lucide-react";
-import Link from "next/link";
 
 export interface RecentTransactionRow {
   id: number;

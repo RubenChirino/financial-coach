@@ -1,5 +1,6 @@
 import "server-only";
 
+import { and, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { budgets, categories, goals, transactions } from "@/db/schema";
 import {
@@ -8,8 +9,8 @@ import {
   getTopCategoriesThisMonth,
 } from "@/lib/dashboard/summary";
 import {
-  type InvestorProfile,
   getInvestorProfile,
+  type InvestorProfile,
   summarizeProfileForLlm,
 } from "@/lib/opportunities/profile";
 import {
@@ -19,7 +20,6 @@ import {
 } from "@/lib/predictions/forecast";
 import { listRecurringSubscriptions, monthlyEquivalentCents } from "@/lib/recurring/list";
 import { redactPII } from "@/lib/redact";
-import { and, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 
 export interface AdvisorContext {
   generatedAt: string;

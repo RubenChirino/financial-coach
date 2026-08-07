@@ -1,10 +1,10 @@
 "use server";
 
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import { insights } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getLocale } from "@/lib/i18n/locale";
-import { and, eq, isNull } from "drizzle-orm";
 import { listActiveInsights, runInsightEngine } from "./engine";
 
 export async function refreshInsightsAction(): Promise<void> {

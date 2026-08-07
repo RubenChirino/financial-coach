@@ -1,12 +1,12 @@
 import "server-only";
 
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { transactions } from "@/db/schema";
 import { getAccountsTotal } from "@/lib/dashboard/summary";
-import { and, asc, eq } from "drizzle-orm";
 import { currencyToCountryCode, flagFromCode } from "./countries";
 import { esRegion } from "./es-regions";
-import { type ResolvedCity, getCachedCities } from "./locations";
+import { getCachedCities, type ResolvedCity } from "./locations";
 import { isOnlinePayment } from "./online-merchants";
 import { cityKey, explicitCityCountries, parseLocation } from "./parse-location";
 

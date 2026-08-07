@@ -1,17 +1,5 @@
 "use client";
 
-import { ChatMessageContent, chatBubbleClass } from "@/components/advisor/chat-message";
-import { useToast } from "@/components/toaster";
-import { Button } from "@/components/ui/button";
-import { useConfirm } from "@/components/ui/confirm-dialog";
-import {
-  type ProviderState,
-  deleteConversationAction,
-  grantCloudLlmConsentAction,
-} from "@/lib/advisor/actions";
-import type { ConversationSummary } from "@/lib/advisor/conversations";
-import type { ChatContextSnapshot } from "@/lib/advisor/digest";
-import { cn } from "@/lib/utils";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import {
@@ -26,10 +14,22 @@ import {
   Square,
   Trash2,
 } from "lucide-react";
-import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { ChatMessageContent, chatBubbleClass } from "@/components/advisor/chat-message";
+import { useToast } from "@/components/toaster";
+import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import {
+  deleteConversationAction,
+  grantCloudLlmConsentAction,
+  type ProviderState,
+} from "@/lib/advisor/actions";
+import type { ConversationSummary } from "@/lib/advisor/conversations";
+import type { ChatContextSnapshot } from "@/lib/advisor/digest";
+import { cn } from "@/lib/utils";
 
 /** Concatenate the text parts of a v5 `UIMessage` back into a plain string. */
 function messageText(m: UIMessage): string {
@@ -360,7 +360,7 @@ export function AdvisorChat(props: Props) {
                 <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />
               </div>
               <div className="rounded-2xl rounded-bl-sm bg-[color:var(--surface-app)] px-4 py-2.5">
-                <div className="flex gap-1" aria-label="typing">
+                <div className="flex gap-1" role="status" aria-label="typing">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--text-tertiary)] [animation-delay:0ms]" />
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--text-tertiary)] [animation-delay:150ms]" />
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--text-tertiary)] [animation-delay:300ms]" />

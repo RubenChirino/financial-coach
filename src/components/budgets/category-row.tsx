@@ -1,11 +1,11 @@
 "use client";
 
-import { CategoryIcon } from "@/components/category-icon";
-import { PrivacyAmount } from "@/components/privacy-amount";
-import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
+import { CategoryIcon } from "@/components/category-icon";
+import { PrivacyAmount } from "@/components/privacy-amount";
+import { cn } from "@/lib/utils";
 
 /**
  * Clickable category row for the budgets list. Updates `?id=` in place so the

@@ -1,13 +1,13 @@
 "use client";
 
+import { Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useTransition } from "react";
 import { useToast } from "@/components/toaster";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { type BankConnectionSummary, deleteBankConnectionAction } from "@/lib/gocardless/actions";
-import { Trash2 } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
-import { useTransition } from "react";
 
 export function ConnectionRow({
   connection,

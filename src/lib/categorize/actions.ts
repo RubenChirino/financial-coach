@@ -1,12 +1,12 @@
 "use server";
 
-import { getCurrentSession } from "@/lib/auth/session";
 import { revalidatePath } from "next/cache";
+import { getCurrentSession } from "@/lib/auth/session";
 import {
   type BatchResult,
-  type RecorrectResult,
   categorizePendingBatch,
   countPendingCategorization,
+  type RecorrectResult,
   recorrectCategories,
 } from "./index";
 

@@ -1,8 +1,8 @@
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasBankCredentialsAction, listInstitutionsAction } from "@/lib/gocardless/actions";
-import { getTranslations } from "next-intl/server";
-import { redirect } from "next/navigation";
 import { InstitutionPicker } from "./institution-picker";
 
 export const dynamic = "force-dynamic";

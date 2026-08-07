@@ -1,3 +1,7 @@
+import { ArrowRight, PieChart, Settings2, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { CategoryRow } from "@/components/budgets/category-row";
 import { CategoryIcon } from "@/components/category-icon";
@@ -5,16 +9,12 @@ import { EmptyState } from "@/components/empty-state";
 import { PrivacyAmount } from "@/components/privacy-amount";
 import { Button } from "@/components/ui/button";
 import { getCurrentSession } from "@/lib/auth/session";
-import { listCategoriesWithSpend } from "@/lib/categories/list";
 import type { CategoryWithSpend } from "@/lib/categories/list";
+import { listCategoriesWithSpend } from "@/lib/categories/list";
 import { getAccountsTotal, getMonthSummary } from "@/lib/dashboard/summary";
 import { formatAmount } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
 import { listTransactions } from "@/lib/transactions/list";
-import { ArrowRight, PieChart, Settings2, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
-import { getTranslations } from "next-intl/server";
-import Link from "next/link";
-import { redirect } from "next/navigation";
 import { BudgetInput } from "./budget-input";
 
 export const dynamic = "force-dynamic";

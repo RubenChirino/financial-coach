@@ -1,12 +1,12 @@
 "use client";
 
-import type { Insight } from "@/db/schema";
-import { dismissInsightAction } from "@/lib/insights/actions";
-import { cn } from "@/lib/utils";
 import { AlertTriangle, Calendar, Sparkles, TrendingUp, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import type { Insight } from "@/db/schema";
+import { dismissInsightAction } from "@/lib/insights/actions";
+import { cn } from "@/lib/utils";
 
 type Severity = "info" | "warning" | "positive";
 
@@ -28,13 +28,7 @@ function InsightIcon({ kind, severity }: { kind: Insight["kind"]; severity: Seve
   return <Icon className="h-4 w-4" strokeWidth={2} />;
 }
 
-function InsightRow({
-  insight,
-  dismissLabel,
-}: {
-  insight: Insight;
-  dismissLabel: string;
-}) {
+function InsightRow({ insight, dismissLabel }: { insight: Insight; dismissLabel: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [dismissed, setDismissed] = useState(false);

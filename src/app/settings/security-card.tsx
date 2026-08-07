@@ -1,8 +1,8 @@
 "use client";
 
-import { changePinAction, deleteAllDataAction } from "@/lib/auth/security-actions";
 import { AlertTriangle, Check, KeyRound, Loader2, Trash2 } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
+import { changePinAction, deleteAllDataAction } from "@/lib/auth/security-actions";
 
 interface SecurityLabels {
   changePinTitle: string;

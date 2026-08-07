@@ -1,8 +1,8 @@
 "use client";
 
-import type { ImportBatchRow } from "@/lib/import/batches";
 import { AlertTriangle, FileText, Loader2, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
+import type { ImportBatchRow } from "@/lib/import/batches";
 import { deleteImportBatchAction, resetAllTransactionsAction } from "./batch-actions";
 
 export interface ImportHistoryLabels {

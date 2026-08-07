@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { ToastOnMount } from "@/components/toast-on-mount";
 import { Button } from "@/components/ui/button";
@@ -7,9 +10,6 @@ import {
   finalizeTrueLayerLinkAction,
   syncAllTrueLayerAccountsAction,
 } from "@/lib/truelayer/actions";
-import { getTranslations } from "next-intl/server";
-import Link from "next/link";
-import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 

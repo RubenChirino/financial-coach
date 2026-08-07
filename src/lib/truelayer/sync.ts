@@ -1,9 +1,9 @@
 import "server-only";
 
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, institutions, requisitions, transactions } from "@/db/schema";
 import { decrypt, encrypt } from "@/lib/crypto";
-import { and, eq, inArray } from "drizzle-orm";
 import type { TrueLayerClient, TrueLayerConnectionTokens } from "./client";
 import { decimalToCents, normalizeTrueLayerTransaction } from "./normalize";
 import type { TrueLayerAccount } from "./types";

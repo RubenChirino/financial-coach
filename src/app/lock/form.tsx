@@ -1,11 +1,11 @@
 "use client";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useState, useTransition } from "react";
 import { PinDots } from "@/components/pin/pin-dots";
 import { PinPad } from "@/components/pin/pin-pad";
 import { Button } from "@/components/ui/button";
 import { unlockWithPinAction } from "@/lib/auth/actions";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
 
 const PIN_LENGTH = 4;
 const MAX_TRIES = 5;

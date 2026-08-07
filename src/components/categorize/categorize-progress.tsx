@@ -1,14 +1,14 @@
 "use client";
 
+import { CheckCircle2, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useEffect, useState } from "react";
 import {
   type CategorizeStatus,
   categorizedCount,
   useCategorizeStore,
 } from "@/lib/categorize/store";
-import { CheckCircle2, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 
 function StatusIcon({ status }: { status: CategorizeStatus }) {
   if (status === "running")

@@ -1,10 +1,10 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { setSubscriptionActiveAction } from "@/lib/recurring/actions";
 import { Loader2, Pause, Play } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { Button } from "@/components/ui/button";
+import { setSubscriptionActiveAction } from "@/lib/recurring/actions";
 
 /**
  * Small per-row toggle that flips a subscription between active/inactive.

@@ -1,3 +1,7 @@
+import { TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { PrivacyAmount } from "@/components/privacy-amount";
@@ -8,10 +12,6 @@ import { listAccountsWithInstitutions } from "@/lib/dashboard/summary";
 import { formatAmount } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
 import { getSpendingForecast } from "@/lib/predictions/forecast";
-import { TrendingUp } from "lucide-react";
-import { getTranslations } from "next-intl/server";
-import Link from "next/link";
-import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 

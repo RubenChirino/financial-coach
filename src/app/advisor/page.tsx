@@ -1,11 +1,13 @@
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { type CoachTab, CoachTabs } from "@/components/advisor/coach-tabs";
 import { DigestFeed } from "@/components/advisor/digest-feed";
 import { AppShell } from "@/components/app-shell";
 import { getAdvisorProviderStateAction } from "@/lib/advisor/actions";
 import { getConversationMessages, listConversations } from "@/lib/advisor/conversations";
 import {
-  type ChatContextSnapshot,
   buildDigest,
+  type ChatContextSnapshot,
   getChatContextSnapshot,
 } from "@/lib/advisor/digest";
 import { getCurrentSession } from "@/lib/auth/session";
@@ -14,8 +16,6 @@ import { env } from "@/lib/env";
 import { formatAmount } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
 import { listActiveInsights } from "@/lib/insights/engine";
-import { getTranslations } from "next-intl/server";
-import { redirect } from "next/navigation";
 import { AdvisorChat } from "./advisor-chat";
 
 export const dynamic = "force-dynamic";

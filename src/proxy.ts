@@ -1,5 +1,5 @@
-import { SESSION_COOKIE } from "@/lib/auth/constants";
 import { type NextRequest, NextResponse } from "next/server";
+import { SESSION_COOKIE } from "@/lib/auth/constants";
 
 const PUBLIC_PATHS = ["/onboarding", "/lock"];
 const ASSET_PREFIXES = [

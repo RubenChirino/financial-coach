@@ -1,10 +1,10 @@
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getUser } from "@/lib/auth/user";
 import { listGoalsAction } from "@/lib/goals/actions";
 import { getLocale } from "@/lib/i18n/locale";
-import { getTranslations } from "next-intl/server";
-import { redirect } from "next/navigation";
 import { GoalsView } from "./goals-view";
 
 export const dynamic = "force-dynamic";

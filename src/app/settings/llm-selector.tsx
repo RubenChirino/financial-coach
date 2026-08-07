@@ -1,10 +1,10 @@
 "use client";
 
-import type { AvailableProvider } from "@/lib/llm/provider";
-import { updateLlmAction } from "@/lib/settings/actions";
 import { CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import type { AvailableProvider } from "@/lib/llm/provider";
+import { updateLlmAction } from "@/lib/settings/actions";
 
 interface LlmSelectorProps {
   /** Current saved values from the users table. */

@@ -1,11 +1,11 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { syncAllAccountsAction } from "@/lib/gocardless/actions";
-import { syncAllTrueLayerAccountsAction } from "@/lib/truelayer/actions";
 import { CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import { Button } from "@/components/ui/button";
+import { syncAllAccountsAction } from "@/lib/gocardless/actions";
+import { syncAllTrueLayerAccountsAction } from "@/lib/truelayer/actions";
 
 type SyncResult = { ok: true; summary: string } | { ok: false; error: string } | null;
 

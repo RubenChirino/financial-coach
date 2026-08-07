@@ -1,10 +1,10 @@
 "use server";
 
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { requisitions, transactions } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { categorizeBatchByRules } from "@/lib/categorize";
-import { and, eq } from "drizzle-orm";
 import { DEMO_BANK_KEYS, type DemoBankKey, seedDemoBank, wipeAllDemoData } from "./seed";
 
 export interface DemoActionOk<T = undefined> {
