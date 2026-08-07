@@ -17,8 +17,18 @@ import { NotificationsBell } from "./notifications-bell";
  * In Phase 7b all of these are client-local state. Persistence (currency,
  * privacy) lands in Phase 7i alongside the preferences column. The search
  * input + ⌘K are visual-only until the command-palette ships later.
+ *
+ * `hasData` gates the two money-dependent affordances. On an account with no
+ * bank and no transactions there is nothing to convert and nothing to search,
+ * so both are hidden rather than shown as dead ends. The privacy, notification
+ * and lock controls stay — those are meaningful from the first render.
  */
-export function TopbarActions() {
+interface TopbarActionsProps {
+  /** False when the user has neither an account nor a transaction yet. */
+  hasData: boolean;
+}
+
+export function TopbarActions({ hasData }: TopbarActionsProps) {
   const t = useTranslations("shell");
   const { displayCurrency, fetching, setDisplayCurrency } = useCurrencyStore();
   const [privacy, togglePrivacy] = usePrivacy();
@@ -51,54 +61,60 @@ export function TopbarActions() {
 
   return (
     <div className="flex items-center gap-2">
-      {/* Currency segmented — switches display currency using live ECB rates */}
-      <fieldset
-        aria-label={t("currency")}
-        className="inline-flex rounded-lg bg-[color:var(--surface-app)] p-0.5 gap-0.5 border-0 m-0"
-      >
-        {(["EUR", "USD"] as const).map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => setDisplayCurrency(c)}
-            disabled={fetching}
-            className={cn(
-              "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60",
-              displayCurrency === c
-                ? "bg-[color:var(--surface-card)] text-[color:var(--brand-primary)] shadow-[0_1px_2px_rgba(15,20,33,0.06)]"
-                : "text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]",
-            )}
-          >
-            {fetching && displayCurrency !== c ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : null}
-            {c === "EUR" ? "€ EUR" : "$ USD"}
-          </button>
-        ))}
-      </fieldset>
+      {/* Currency segmented — switches display currency using live ECB rates.
+          Hidden until there are amounts to convert. */}
+      {hasData ? (
+        <fieldset
+          aria-label={t("currency")}
+          className="inline-flex rounded-lg bg-[color:var(--surface-app)] p-0.5 gap-0.5 border-0 m-0"
+        >
+          {(["EUR", "USD"] as const).map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setDisplayCurrency(c)}
+              disabled={fetching}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60",
+                displayCurrency === c
+                  ? "bg-[color:var(--surface-card)] text-[color:var(--brand-primary)] shadow-[0_1px_2px_rgba(15,20,33,0.06)]"
+                  : "text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]",
+              )}
+            >
+              {fetching && displayCurrency !== c ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : null}
+              {c === "EUR" ? "€ EUR" : "$ USD"}
+            </button>
+          ))}
+        </fieldset>
+      ) : null}
 
-      {/* Global transaction search — navigates to /transactions?q=… */}
-      <form
-        onSubmit={handleSearchSubmit}
-        className="hidden lg:flex items-center gap-2 rounded-lg border border-transparent bg-[color:var(--surface-app)] px-3 py-1.5 focus-within:border-[color:var(--brand-primary)] min-w-[260px] transition-colors"
-      >
-        <Search
-          className="h-[15px] w-[15px] shrink-0 text-[color:var(--text-tertiary)]"
-          strokeWidth={2}
-        />
-        <input
-          ref={inputRef}
-          type="search"
-          value={searchValue}
-          onChange={(e) => setSearchValue(e.target.value)}
-          placeholder={t("searchPlaceholder")}
-          className="flex-1 border-none bg-transparent text-[13px] outline-none placeholder:text-[color:var(--text-tertiary)]"
-          aria-label={t("searchLabel")}
-        />
-        <kbd className="shrink-0 rounded bg-[color:var(--surface-sidebar)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--text-tertiary)]">
-          ⌘K
-        </kbd>
-      </form>
+      {/* Global transaction search — navigates to /transactions?q=…
+          Hidden until there are transactions to find. */}
+      {hasData ? (
+        <form
+          onSubmit={handleSearchSubmit}
+          className="hidden lg:flex items-center gap-2 rounded-lg border border-transparent bg-[color:var(--surface-app)] px-3 py-1.5 focus-within:border-[color:var(--brand-primary)] min-w-[260px] transition-colors"
+        >
+          <Search
+            className="h-[15px] w-[15px] shrink-0 text-[color:var(--text-tertiary)]"
+            strokeWidth={2}
+          />
+          <input
+            ref={inputRef}
+            type="search"
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
+            placeholder={t("searchPlaceholder")}
+            className="flex-1 border-none bg-transparent text-[13px] outline-none placeholder:text-[color:var(--text-tertiary)]"
+            aria-label={t("searchLabel")}
+          />
+          <kbd className="shrink-0 rounded bg-[color:var(--surface-sidebar)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--text-tertiary)]">
+            ⌘K
+          </kbd>
+        </form>
+      ) : null}
 
       {/* Privacy (blur balances) toggle — global store, persisted to localStorage */}
       <Button
