@@ -1,7 +1,7 @@
-import { PrivacyAmount } from "@/components/privacy-amount";
-import { cn } from "@/lib/utils";
 import { ChevronRight, Plus, Wallet } from "lucide-react";
 import Link from "next/link";
+import { PrivacyAmount } from "@/components/privacy-amount";
+import { cn } from "@/lib/utils";
 
 export interface BankTileProps {
   institutionName: string;

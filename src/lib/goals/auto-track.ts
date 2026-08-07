@@ -1,8 +1,8 @@
 import "server-only";
 
+import { and, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { budgets, goals, transactions } from "@/db/schema";
-import { and, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 
 /**
  * Given a goal that is linked to a category with a monthly budget, compute

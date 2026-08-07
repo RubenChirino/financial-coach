@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { HomeLocationForm } from "@/components/travels/home-location-form";
 import { Button } from "@/components/ui/button";
@@ -9,9 +12,6 @@ import { listBankConnectionsAction } from "@/lib/gocardless/actions";
 import { getLocale } from "@/lib/i18n/locale";
 import { getAvailableProviders } from "@/lib/llm/provider";
 import { countryOptions } from "@/lib/travels/countries";
-import { getTranslations } from "next-intl/server";
-import Link from "next/link";
-import { redirect } from "next/navigation";
 import { BackupCard } from "./backup-card";
 import { CurrencySelector } from "./currency-selector";
 import { DigestToggle } from "./digest-toggle";

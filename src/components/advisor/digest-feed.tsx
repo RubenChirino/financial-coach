@@ -1,7 +1,3 @@
-import { MarkResolvedButton } from "@/components/advisor/mark-resolved-button";
-import { Button } from "@/components/ui/button";
-import type { DigestPayload, DigestStat } from "@/lib/advisor/digest";
-import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
   ArrowRight,
@@ -15,6 +11,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { ComponentType } from "react";
+import { MarkResolvedButton } from "@/components/advisor/mark-resolved-button";
+import { Button } from "@/components/ui/button";
+import type { DigestPayload, DigestStat } from "@/lib/advisor/digest";
+import { cn } from "@/lib/utils";
 
 interface DigestStrings {
   eyebrow: string;

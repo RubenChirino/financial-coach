@@ -1,9 +1,9 @@
 "use client";
 
-import type { CategoryOption } from "@/lib/transactions/actions";
 import { AlertTriangle, CheckCircle2, Loader2, PlusCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import type { CategoryOption } from "@/lib/transactions/actions";
 import { addManualTransactionAction } from "./manual-transaction-action";
 
 export interface ManualTransactionLabels {

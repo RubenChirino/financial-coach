@@ -1,10 +1,10 @@
 "use client";
 
-import { useDetectStore } from "@/lib/travels/detect-store";
 import { CheckCircle2, Loader2, Plane, TriangleAlert, X } from "lucide-react";
-import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
+import { useDetectStore } from "@/lib/travels/detect-store";
 
 /**
  * Floating, page-persistent progress card for the background "detect trips" run.

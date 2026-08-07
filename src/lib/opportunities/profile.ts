@@ -1,8 +1,8 @@
 import "server-only";
 
+import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { investorProfiles } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import type {
   AgeRange,
   Dependents,
@@ -13,6 +13,15 @@ import type {
   RiskTolerance,
 } from "./profile-types";
 
+export type {
+  AgeRange,
+  Dependents,
+  EmergencyFund,
+  Horizon,
+  InvestorProfile,
+  PrimaryGoal,
+  RiskTolerance,
+} from "./profile-types";
 // Re-export the shared types/constants so existing imports of these from
 // `./profile` keep working.
 export {
@@ -22,15 +31,6 @@ export {
   HORIZONS,
   PRIMARY_GOALS,
   RISK_TOLERANCES,
-} from "./profile-types";
-export type {
-  AgeRange,
-  Dependents,
-  EmergencyFund,
-  Horizon,
-  InvestorProfile,
-  PrimaryGoal,
-  RiskTolerance,
 } from "./profile-types";
 
 export async function getInvestorProfile(userId: number): Promise<InvestorProfile | null> {

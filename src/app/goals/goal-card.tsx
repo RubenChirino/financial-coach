@@ -1,15 +1,15 @@
 "use client";
 
+import { Pencil, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useTransition } from "react";
 import { PrivacyAmount } from "@/components/privacy-amount";
 import { useToast } from "@/components/toaster";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import type { Goal } from "@/db/schema";
 import { deleteGoalAction } from "@/lib/goals/actions";
 import { cn } from "@/lib/utils";
-import { Pencil, Trash2 } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
-import { useTransition } from "react";
 
 interface GoalCardProps {
   goal: Goal;

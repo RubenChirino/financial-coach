@@ -1,13 +1,13 @@
 "use client";
+import { Eye, EyeOff, Loader2, Lock, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { lockAction } from "@/lib/auth/actions";
 import { useCurrencyStore } from "@/lib/currency/store";
 import { usePrivacy } from "@/lib/privacy/use-privacy";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, Loader2, Lock, Search } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
 import { NotificationsBell } from "./notifications-bell";
 
 /**

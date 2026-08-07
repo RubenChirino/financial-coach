@@ -1,6 +1,8 @@
 import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
+import { and, eq, lt } from "drizzle-orm";
+import { cookies } from "next/headers";
 import { db } from "@/db/client";
 import { sessions, users } from "@/db/schema";
 import {
@@ -12,8 +14,6 @@ import {
   generateSalt,
 } from "@/lib/crypto";
 import { env } from "@/lib/env";
-import { and, eq, lt } from "drizzle-orm";
-import { cookies } from "next/headers";
 import { INACTIVITY_MS, SESSION_COOKIE } from "./constants";
 
 export { INACTIVITY_MS, SESSION_COOKIE };

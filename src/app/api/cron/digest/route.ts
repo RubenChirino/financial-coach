@@ -1,7 +1,7 @@
+import { NextResponse } from "next/server";
 import { isCronAuthorized } from "@/lib/cron/jobs";
 import { deliverDigests } from "@/lib/digest/deliver";
 import { env } from "@/lib/env";
-import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;

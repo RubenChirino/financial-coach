@@ -1,8 +1,8 @@
 "use client";
 
-import { PrivacyAmount } from "@/components/privacy-amount";
 import { ChevronDown, MapPin } from "lucide-react";
 import { useState } from "react";
+import { PrivacyAmount } from "@/components/privacy-amount";
 
 export interface PaymentRowLabels {
   description: string;

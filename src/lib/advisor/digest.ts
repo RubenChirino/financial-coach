@@ -37,6 +37,7 @@ function applyCount(template: string, count: number): string {
   // Fall back: plain {count} variable (no plural clause).
   return resolved.replace("{count}", String(count));
 }
+
 import {
   getActiveSubscriptionsTotals,
   listRecurringSubscriptions,

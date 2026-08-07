@@ -1,9 +1,9 @@
 import "server-only";
 
+import { generateText, type LanguageModel } from "ai";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { travelCityLabels } from "@/db/schema";
-import { type LanguageModel, generateText } from "ai";
-import { and, eq, inArray } from "drizzle-orm";
 
 export type CitySource = "ai" | "user";
 

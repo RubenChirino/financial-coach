@@ -1,8 +1,8 @@
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { AlertTriangle, ArrowRight, Calendar, Sparkles, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import type { ComponentType } from "react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export type InsightKind = "warning" | "positive" | "suggestion" | "neutral";
 

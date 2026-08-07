@@ -1,9 +1,9 @@
 import "server-only";
 
+import { generateText, type LanguageModel } from "ai";
+import { inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { cityCountries } from "@/db/schema";
-import { type LanguageModel, generateText } from "ai";
-import { inArray } from "drizzle-orm";
 import { cityKey } from "./parse-location";
 
 export interface ResolvedCity {

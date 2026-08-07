@@ -1,15 +1,15 @@
 import "server-only";
 
-import { db } from "@/db/client";
-import { users } from "@/db/schema";
-import { generateSalt } from "@/lib/crypto";
-import { env } from "@/lib/env";
 import { eq } from "drizzle-orm";
 import NextAuth, { type DefaultSession } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
 import MicrosoftEntraId from "next-auth/providers/microsoft-entra-id";
+import { db } from "@/db/client";
+import { users } from "@/db/schema";
+import { generateSalt } from "@/lib/crypto";
+import { env } from "@/lib/env";
 
 /**
  * Auth.js v5 configuration for OAuth mode.

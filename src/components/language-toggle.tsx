@@ -1,10 +1,10 @@
 "use client";
-import { Button } from "@/components/ui/button";
-import { changeLanguageAction } from "@/lib/auth/actions";
-import type { Locale } from "@/lib/i18n/config";
 import { Languages } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { Button } from "@/components/ui/button";
+import { changeLanguageAction } from "@/lib/auth/actions";
+import type { Locale } from "@/lib/i18n/config";
 
 export function LanguageToggle({ current }: { current: Locale }) {
   const router = useRouter();

@@ -1,12 +1,12 @@
 "use client";
 
-import type { Goal } from "@/db/schema";
-import { type CreateGoalInput, createGoalAction, updateGoalAction } from "@/lib/goals/actions";
-import { cn } from "@/lib/utils";
 import { Loader2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
+import type { Goal } from "@/db/schema";
+import { type CreateGoalInput, createGoalAction, updateGoalAction } from "@/lib/goals/actions";
+import { cn } from "@/lib/utils";
 
 const EMOJI_PRESETS = ["🎯", "🏠", "✈️", "🚗", "💍", "📚", "🎓", "🏖️", "💰", "🎸", "🐶", "🌱"];
 
@@ -98,7 +98,9 @@ export function GoalForm({ goal, labels, currency, onClose }: GoalFormProps) {
   const modal = (
     // Backdrop — rendered via portal at body so fixed positioning is always
     // viewport-relative, regardless of ancestor CSS transforms or grid layout.
+    // biome-ignore lint/a11y/noStaticElementInteractions: decorative scrim; the <dialog> inside carries the semantics and Escape handling, and an interactive role here would wrongly enter the tab order.
     <div
+      role="presentation"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();

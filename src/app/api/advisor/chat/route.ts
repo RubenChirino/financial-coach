@@ -1,3 +1,6 @@
+import { streamText } from "ai";
+import { eq } from "drizzle-orm";
+import type { NextRequest } from "next/server";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { buildAdvisorContext } from "@/lib/advisor/context";
@@ -13,9 +16,6 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { getLanguageModel, providerInfo } from "@/lib/llm/provider";
 import { guardCsrf } from "@/lib/security/csrf";
 import { consumeQuota } from "@/lib/security/rate-limit";
-import { streamText } from "ai";
-import { eq } from "drizzle-orm";
-import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

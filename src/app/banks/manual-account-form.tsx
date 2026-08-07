@@ -1,17 +1,17 @@
 "use client";
 
+import { Loader2, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import {
+  createManualAccountAction,
   type ManualAccountInput,
   type ManualAccountKind,
   type ManualAccountRow,
-  createManualAccountAction,
   updateManualAccountAction,
 } from "@/lib/accounts/manual";
-import { Loader2, X } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
-import { createPortal } from "react-dom";
 
 const KINDS: ManualAccountKind[] = ["cash", "investment", "property", "vehicle", "loan", "other"];
 
@@ -77,7 +77,9 @@ export function ManualAccountForm({ currency, account, onClose }: Props) {
   const initialBalance = account != null ? (Math.abs(account.balanceCents) / 100).toFixed(2) : "";
 
   const modal = (
+    // biome-ignore lint/a11y/noStaticElementInteractions: decorative scrim; the <dialog> inside carries the semantics and Escape handling, and an interactive role here would wrongly enter the tab order.
     <div
+      role="presentation"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();

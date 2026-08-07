@@ -1,14 +1,14 @@
 "use client";
 
+import { ArrowLeft, ArrowRight, Check, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { PinDots } from "@/components/pin/pin-dots";
 import { PinPad } from "@/components/pin/pin-pad";
 import { Button } from "@/components/ui/button";
 import { setupPinAction } from "@/lib/auth/actions";
 import type { Locale } from "@/lib/i18n/config";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, ArrowRight, Check, Sparkles } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
 
 interface Dict {
   app: { name: string; tagline: string };
@@ -29,13 +29,7 @@ interface Dict {
 type Step = "lang" | "pinSet" | "pinConfirm" | "done";
 const PIN_LENGTH = 4;
 
-export function OnboardingFlow({
-  dict,
-  initialLocale,
-}: {
-  dict: Dict;
-  initialLocale: Locale;
-}) {
+export function OnboardingFlow({ dict, initialLocale }: { dict: Dict; initialLocale: Locale }) {
   const [step, setStep] = useState<Step>("lang");
   const [language, setLanguage] = useState<Locale>(initialLocale);
   const [pin1, setPin1] = useState("");

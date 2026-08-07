@@ -1,3 +1,7 @@
+import { LineChart, Plus } from "lucide-react";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { AddBankTile, BankTile } from "@/components/dashboard/bank-tile";
 import { CategoriesCard, type CategorySpendRow } from "@/components/dashboard/categories-card";
@@ -19,8 +23,8 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { userExists } from "@/lib/auth/user";
 import {
   getAccountsTotal,
-  getMonthSummary,
   getMonthlyFlowHistory,
+  getMonthSummary,
   getNeedsReviewCount,
   getTopCategoriesThisMonth,
   listAccountsWithInstitutions,
@@ -31,10 +35,6 @@ import { getLocale } from "@/lib/i18n/locale";
 import { listActiveInsights, runInsightEngine } from "@/lib/insights/engine";
 import { getActiveSubscriptionsTotals } from "@/lib/recurring/list";
 import { listTransactions } from "@/lib/transactions/list";
-import { LineChart, Plus } from "lucide-react";
-import { getTranslations } from "next-intl/server";
-import Link from "next/link";
-import { redirect } from "next/navigation";
 
 /**
  * Format a cents value with an "auto round" option — for the KPI strip where

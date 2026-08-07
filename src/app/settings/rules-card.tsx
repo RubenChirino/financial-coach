@@ -1,14 +1,14 @@
 "use client";
 
-import { CategoryIcon } from "@/components/category-icon";
-import {
-  type UserRule,
-  deleteUserRuleAction,
-  listUserRulesAction,
-} from "@/lib/categorize/rules-actions";
 import { ArrowRight, Loader2, Trash2 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState, useTransition } from "react";
+import { CategoryIcon } from "@/components/category-icon";
+import {
+  deleteUserRuleAction,
+  listUserRulesAction,
+  type UserRule,
+} from "@/lib/categorize/rules-actions";
 
 /**
  * Lists the user's learned category rules ("always categorise X as Y") with a

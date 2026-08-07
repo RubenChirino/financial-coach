@@ -1,9 +1,9 @@
 "use client";
 
-import { dismissInsightAction } from "@/lib/insights/actions";
 import { Check, CheckCircle2, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import { dismissInsightAction } from "@/lib/insights/actions";
 
 /**
  * "Mark resolved" button for the digest hero brief.

@@ -1,8 +1,8 @@
 "use client";
-import { Button } from "@/components/ui/button";
-import { lockAction } from "@/lib/auth/actions";
 import { Lock } from "lucide-react";
 import { useTransition } from "react";
+import { Button } from "@/components/ui/button";
+import { lockAction } from "@/lib/auth/actions";
 
 export function LockButton() {
   const [isPending, startTransition] = useTransition();

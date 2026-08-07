@@ -1,13 +1,3 @@
-import { LanguageToggle } from "@/components/language-toggle";
-import { AccountAvatar } from "@/components/shell/account-avatar";
-import { NavLink } from "@/components/shell/nav-link";
-import { SidebarShell } from "@/components/shell/sidebar-shell";
-import { TopbarActions } from "@/components/shell/topbar-actions";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { db } from "@/db/client";
-import { users } from "@/db/schema";
-import { getCurrentSession } from "@/lib/auth/session";
-import { getLocale } from "@/lib/i18n/locale";
 import { eq } from "drizzle-orm";
 import {
   ArrowLeftRight,
@@ -26,6 +16,16 @@ import {
 } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
+import { LanguageToggle } from "@/components/language-toggle";
+import { AccountAvatar } from "@/components/shell/account-avatar";
+import { NavLink } from "@/components/shell/nav-link";
+import { SidebarShell } from "@/components/shell/sidebar-shell";
+import { TopbarActions } from "@/components/shell/topbar-actions";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { db } from "@/db/client";
+import { users } from "@/db/schema";
+import { getCurrentSession } from "@/lib/auth/session";
+import { getLocale } from "@/lib/i18n/locale";
 
 interface NavEntry {
   href: string;

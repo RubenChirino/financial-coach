@@ -1,11 +1,11 @@
 import "server-only";
 
+import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { categories, transactions } from "@/db/schema";
-import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { cleanMerchant, keywordCategory } from "./heuristics";
 import { categorizeWithLlm } from "./llm";
-import { type RuleRow, assignCategory, categoryIdBySlug, loadRules, matchRule } from "./rules";
+import { assignCategory, categoryIdBySlug, loadRules, matchRule, type RuleRow } from "./rules";
 
 const MAX_LLM_PER_RUN = 50;
 const RULE_CONFIDENCE = 1.0;

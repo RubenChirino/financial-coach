@@ -1,11 +1,11 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { setHomeLocationAction } from "@/lib/travels/actions";
 import { Check, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { setHomeLocationAction } from "@/lib/travels/actions";
 
 export interface HomeLocationLabels {
   cityLabel: string;

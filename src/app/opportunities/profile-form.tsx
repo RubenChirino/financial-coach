@@ -1,5 +1,7 @@
 "use client";
 
+import { CheckCircle2, Loader2 } from "lucide-react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import type {
   AgeRange,
@@ -18,8 +20,6 @@ import {
   PRIMARY_GOALS,
   RISK_TOLERANCES,
 } from "@/lib/opportunities/profile-types";
-import { CheckCircle2, Loader2 } from "lucide-react";
-import { useState, useTransition } from "react";
 import { saveInvestorProfileAction } from "./actions";
 
 export interface ProfileFormLabels {

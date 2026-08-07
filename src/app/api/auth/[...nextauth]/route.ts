@@ -1,5 +1,5 @@
-import { env } from "@/lib/env";
 import type { NextRequest } from "next/server";
+import { env } from "@/lib/env";
 
 /**
  * Auth.js v5 route handler — only mounted when AUTH_MODE=oauth.

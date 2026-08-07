@@ -1,5 +1,7 @@
 "use client";
 
+import { AlertTriangle, Info } from "lucide-react";
+import * as React from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -9,8 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AlertTriangle, Info } from "lucide-react";
-import * as React from "react";
 
 /**
  * Programmatic confirmation dialog with the same look as the rest of the app.

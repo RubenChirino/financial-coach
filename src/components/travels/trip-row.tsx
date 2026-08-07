@@ -1,10 +1,10 @@
 "use client";
 
-import { PrivacyAmount } from "@/components/privacy-amount";
-import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
+import { PrivacyAmount } from "@/components/privacy-amount";
+import { cn } from "@/lib/utils";
 
 /**
  * Clickable trip row for the travels list. Updates `?id=` in place so the

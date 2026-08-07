@@ -1,18 +1,12 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { runRecurringDetectionAction } from "@/lib/recurring/actions";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { Button } from "@/components/ui/button";
+import { runRecurringDetectionAction } from "@/lib/recurring/actions";
 
-export function RunDetectionButton({
-  label,
-  busyLabel,
-}: {
-  label: string;
-  busyLabel: string;
-}) {
+export function RunDetectionButton({ label, busyLabel }: { label: string; busyLabel: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 

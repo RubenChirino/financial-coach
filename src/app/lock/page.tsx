@@ -1,11 +1,11 @@
+import { Sparkles } from "lucide-react";
+import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { LockForm } from "@/app/lock/form";
 import { OAuthSignin } from "@/app/lock/oauth-signin";
 import { getCurrentSession } from "@/lib/auth/session";
 import { userExists } from "@/lib/auth/user";
 import { env } from "@/lib/env";
-import { Sparkles } from "lucide-react";
-import { getTranslations } from "next-intl/server";
-import { redirect } from "next/navigation";
 
 export default async function LockPage({
   searchParams,

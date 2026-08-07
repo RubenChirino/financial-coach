@@ -1,9 +1,9 @@
 "use client";
 
-import { updateDigestOptInAction } from "@/lib/settings/actions";
-import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import { useState, useTransition } from "react";
+import { updateDigestOptInAction } from "@/lib/settings/actions";
+import { cn } from "@/lib/utils";
 
 /** Opt in/out of the periodic email digest of insights. */
 export function DigestToggle({ initial, email }: { initial: boolean; email: string }) {

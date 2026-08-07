@@ -1,15 +1,3 @@
-import { AppShell } from "@/components/app-shell";
-import { TourButton } from "@/components/tour-button";
-import { getCurrentSession } from "@/lib/auth/session";
-import { getAccountsTotal } from "@/lib/dashboard/summary";
-import { formatAmount } from "@/lib/format";
-import { getLocale } from "@/lib/i18n/locale";
-import {
-  type Opportunity,
-  type OpportunityKind,
-  buildOpportunities,
-} from "@/lib/opportunities/opportunities";
-import { getInvestorProfile } from "@/lib/opportunities/profile";
 import {
   AlertCircle,
   Check,
@@ -20,9 +8,21 @@ import {
   Target,
   TrendingUp,
 } from "lucide-react";
-import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
+import { AppShell } from "@/components/app-shell";
+import { TourButton } from "@/components/tour-button";
+import { getCurrentSession } from "@/lib/auth/session";
+import { getAccountsTotal } from "@/lib/dashboard/summary";
+import { formatAmount } from "@/lib/format";
+import { getLocale } from "@/lib/i18n/locale";
+import {
+  buildOpportunities,
+  type Opportunity,
+  type OpportunityKind,
+} from "@/lib/opportunities/opportunities";
+import { getInvestorProfile } from "@/lib/opportunities/profile";
 import { ProfileForm, type ProfileFormLabels } from "./profile-form";
 
 export const dynamic = "force-dynamic";
@@ -197,8 +197,8 @@ export default async function OpportunitiesPage() {
             </div>
           ) : (
             <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {opportunities.map((o, i) => (
-                <OpportunityCard key={`${o.kind}-${i}`} opp={o} viewLabel={t("viewLabel")} />
+              {opportunities.map((o) => (
+                <OpportunityCard key={`${o.kind}-${o.title}`} opp={o} viewLabel={t("viewLabel")} />
               ))}
             </ul>
           )}

@@ -1,10 +1,10 @@
 import "server-only";
 
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { providerCredentials } from "@/db/schema";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
-import { and, eq } from "drizzle-orm";
 import type { GoCardlessCredentials } from "./client";
 
 const PROVIDER = "gocardless";
