@@ -24,6 +24,7 @@ import { TopbarActions } from "@/components/shell/topbar-actions";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
+import { hasFinancialData } from "@/lib/accounts/has-data";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getLocale } from "@/lib/i18n/locale";
 
@@ -96,6 +97,10 @@ export async function AppShell({ children, title, subtitle, coachUnread = 0 }: A
     : (account?.name ?? account?.email ?? tShell("youLabel"));
   const accountSub = isGuest ? tShell("guestSub") : (account?.email ?? tShell("youSub"));
   const accountImage = isGuest ? null : (account?.image ?? null);
+
+  // Gates the topbar's currency toggle and search: neither can do anything
+  // until there is an account or a transaction behind them.
+  const hasData = session ? await hasFinancialData(session.userId) : false;
 
   const mainNav = MAIN.map(({ href, tKey, Icon, matchPrefix }) => (
     <NavLink
@@ -183,7 +188,7 @@ export async function AppShell({ children, title, subtitle, coachUnread = 0 }: A
               </div>
             ) : null}
           </div>
-          <TopbarActions />
+          <TopbarActions hasData={hasData} />
         </header>
 
         {/* Page body */}
