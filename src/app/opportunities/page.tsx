@@ -12,7 +12,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
+import { NoDataState } from "@/components/no-data-state";
 import { TourButton } from "@/components/tour-button";
+import { hasFinancialData } from "@/lib/accounts/has-data";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getAccountsTotal } from "@/lib/dashboard/summary";
 import { formatAmount } from "@/lib/format";
@@ -39,11 +41,12 @@ export default async function OpportunitiesPage() {
   const session = await getCurrentSession();
   if (!session) redirect("/lock");
 
-  const [t, locale, accountsTotal, profile] = await Promise.all([
+  const [t, locale, accountsTotal, profile, hasData] = await Promise.all([
     getTranslations("opportunities"),
     getLocale(),
     getAccountsTotal(session.userId),
     getInvestorProfile(session.userId),
+    hasFinancialData(session.userId),
   ]);
   const intlLocale = locale === "en" ? "en-US" : "es-ES";
   const fmt = (cents: number) => formatAmount(cents, accountsTotal.currency, intlLocale);
@@ -188,7 +191,9 @@ export default async function OpportunitiesPage() {
             <Lightbulb className="h-4 w-4 text-[color:var(--brand-primary)]" />
             <h2 className="text-base font-semibold tracking-tight">{t("opportunitiesTitle")}</h2>
           </div>
-          {opportunities.length === 0 ? (
+          {!hasData ? (
+            <NoDataState Icon={Lightbulb} title={t("noDataTitle")} description={t("noDataBody")} />
+          ) : opportunities.length === 0 ? (
             <div className="rounded-lg border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] p-6 text-center">
               <Check className="mx-auto h-6 w-6 text-emerald-500" />
               <p className="mt-2 text-[13px] text-[color:var(--text-secondary)]">

@@ -4,11 +4,13 @@ import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { ConvertedAmount } from "@/components/converted-amount";
 import { EmptyState } from "@/components/empty-state";
+import { NoDataState } from "@/components/no-data-state";
 import { CityEditor } from "@/components/travels/city-editor";
 import { HomeLocationForm } from "@/components/travels/home-location-form";
 import { PaymentRow } from "@/components/travels/payment-row";
 import { SyncButton } from "@/components/travels/sync-button";
 import { TripRow } from "@/components/travels/trip-row";
+import { hasFinancialData } from "@/lib/accounts/has-data";
 import { getAdvisorProviderStateAction } from "@/lib/advisor/actions";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getUser } from "@/lib/auth/user";
@@ -78,6 +80,26 @@ export default async function TravelsPage({
     save: tCommon("save"),
     saved: t("saved"),
   };
+
+  // ── Nothing to work with yet. Trip detection needs transactions, and the
+  // home location only exists to tell home from abroad — asking for it before
+  // there is anything to classify is a dead end that reads like the feature is
+  // broken. Explain what to do first instead.
+  if (!(await hasFinancialData(session.userId))) {
+    return (
+      <AppShell>
+        <div className="mx-auto max-w-6xl space-y-5">
+          <header>
+            <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+            <p className="mt-0.5 text-[12.5px] text-[color:var(--text-tertiary)]">
+              {t("subtitle")}
+            </p>
+          </header>
+          <NoDataState Icon={Plane} title={t("noDataTitle")} description={t("noDataBody")} />
+        </div>
+      </AppShell>
+    );
+  }
 
   // ── First run: no home location set → auto-detect a guess and ask to confirm.
   if (!user?.homeCountry) {

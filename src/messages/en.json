@@ -42,17 +42,19 @@
     "lock": "Lock app"
   },
   "common": {
-    "continue": "Continue",
     "back": "Back",
     "cancel": "Cancel",
-    "save": "Save",
+    "comingSoon": "Coming soon",
+    "connectBank": "Connect bank",
+    "continue": "Continue",
     "delete": "Delete",
     "edit": "Edit",
-    "loading": "Loading…",
     "error": "Error",
-    "success": "Done",
+    "importTransactions": "Import transactions",
+    "loading": "Loading…",
     "notAvailable": "Not available",
-    "comingSoon": "Coming soon"
+    "save": "Save",
+    "success": "Done"
   },
   "onboarding": {
     "welcome": {
@@ -332,6 +334,8 @@
     "subtitle": "We scan your transactions for recurring charges so you know what they cost monthly.",
     "emptyTitle": "No subscriptions detected yet",
     "emptyBody": "Run detection to scan the last 6 months of transactions for recurring charges.",
+    "noDataTitle": "Nothing to scan for subscriptions yet",
+    "noDataBody": "Subscriptions finds recurring charges by scanning your transactions. Connect a bank or import a statement first — detection needs something to look through.",
     "runDetection": "Detect subscriptions",
     "running": "Detecting…",
     "monthlyTotal": "Estimated monthly cost",
@@ -376,6 +380,8 @@
     "guestNudge": "Sign in to save changes — guest mode is read-only.",
     "emptyTitle": "No trips detected yet",
     "emptyBody": "We didn't find payments made outside {country}. Tap “Detect trips” to scan your transactions — payments abroad will be grouped into trips here.",
+    "noDataTitle": "Nothing to group into trips yet",
+    "noDataBody": "Travels sorts payments you made away from home into trips, by country. Connect a bank or import a statement first — once there are transactions we'll ask where you live so we can tell home from abroad.",
     "allTrips": "All trips",
     "tripCount": "{count, plural, one {# trip} other {# trips}}",
     "payments": "{count, plural, one {# payment} other {# payments}}",
@@ -866,6 +872,8 @@
     "explainer": "Each opportunity below is computed from your real numbers. We surface savings wins, goal projections, and emergency-fund targets — never specific investment products.",
     "opportunitiesTitle": "Your top opportunities",
     "noOpportunities": "Nothing flagged right now. Keep going!",
+    "noDataTitle": "No numbers to work from yet",
+    "noDataBody": "Opportunities are computed from your real transactions — savings wins, goal projections and emergency-fund targets. Connect a bank or import a statement first and they'll appear here.",
     "viewLabel": "Open",
     "subOverlapTitle": "{n} subscriptions in {category}",
     "subOverlapBody": "Cutting the cheapest one back saves about {amount}/mo.",
