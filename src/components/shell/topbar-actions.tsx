@@ -20,8 +20,10 @@ import { NotificationsBell } from "./notifications-bell";
  *
  * `hasData` gates the two money-dependent affordances. On an account with no
  * bank and no transactions there is nothing to convert and nothing to search,
- * so both are hidden rather than shown as dead ends. The privacy, notification
- * and lock controls stay — those are meaningful from the first render.
+ * so they are hidden rather than shown as dead ends. That covers the currency
+ * toggle, the search, and the privacy (blur balances) toggle — with no
+ * balances rendered there is nothing to blur. Notifications and lock stay:
+ * both are meaningful from the first render.
  */
 interface TopbarActionsProps {
   /** False when the user has neither an account nor a transaction yet. */
@@ -116,22 +118,27 @@ export function TopbarActions({ hasData }: TopbarActionsProps) {
         </form>
       ) : null}
 
-      {/* Privacy (blur balances) toggle — global store, persisted to localStorage */}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        onClick={togglePrivacy}
-        aria-pressed={privacy}
-        aria-label={privacy ? t("showBalances") : t("hideBalances")}
-        title={privacy ? t("showBalances") : t("hideBalances")}
-      >
-        {privacy ? (
-          <EyeOff className="h-[18px] w-[18px]" strokeWidth={2} />
-        ) : (
-          <Eye className="h-[18px] w-[18px]" strokeWidth={2} />
-        )}
-      </Button>
+      {/* Privacy (blur balances) toggle — global store, persisted to localStorage.
+          Hidden alongside the others: with no balances on screen there is
+          nothing to blur. The stored preference is untouched, so it applies
+          again as soon as data exists. */}
+      {hasData ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={togglePrivacy}
+          aria-pressed={privacy}
+          aria-label={privacy ? t("showBalances") : t("hideBalances")}
+          title={privacy ? t("showBalances") : t("hideBalances")}
+        >
+          {privacy ? (
+            <EyeOff className="h-[18px] w-[18px]" strokeWidth={2} />
+          ) : (
+            <Eye className="h-[18px] w-[18px]" strokeWidth={2} />
+          )}
+        </Button>
+      ) : null}
 
       {/* Notifications — opens dropdown with active insights, hourly poll */}
       <NotificationsBell />
