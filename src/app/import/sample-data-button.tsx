@@ -15,11 +15,14 @@ export function SampleDataButton({
   busyLabel,
   successLabel,
   errorLabel,
+  guestNudge,
 }: {
   label: string;
   busyLabel: string;
   successLabel: string;
   errorLabel: string;
+  /** Shown if this ever gets re-gated for guests — retrying would not help. */
+  guestNudge: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -32,7 +35,7 @@ export function SampleDataButton({
     startTransition(async () => {
       const res = await importSampleDataAction();
       if (!res.ok) {
-        setError(errorLabel);
+        setError(res.error === "guestReadOnly" ? guestNudge : errorLabel);
         return;
       }
       setDone({ inserted: res.data.inserted, duplicates: res.data.duplicates });

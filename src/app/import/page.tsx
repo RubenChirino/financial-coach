@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { TourButton } from "@/components/tour-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { hasTransactions } from "@/lib/accounts/has-data";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getLocale } from "@/lib/i18n/locale";
 import { listImportBatches } from "@/lib/import/batches";
@@ -27,11 +28,12 @@ export default async function ImportPage() {
   const session = await getCurrentSession();
   if (!session) redirect("/lock");
 
-  const [t, locale, batches, categories] = await Promise.all([
+  const [t, locale, batches, categories, txExist] = await Promise.all([
     getTranslations("import"),
     getLocale(),
     listImportBatches(session.userId),
     listCategoryOptionsAction(),
+    hasTransactions(session.userId),
   ]);
   const intlLocale = locale === "en" ? "en-US" : "es-ES";
 
@@ -127,6 +129,7 @@ export default async function ImportPage() {
                 errorsTitle: t("errorsTitle"),
                 errorLine: t("errorLine"),
                 genericError: t("genericError"),
+                guestNudge: t("guestNudge"),
                 viewTransactions: t("viewTransactions"),
                 emptyError: t("emptyError"),
                 fileTooLargeError: t("fileTooLargeError"),
@@ -191,6 +194,7 @@ export default async function ImportPage() {
                 errorInvalidAmount: t("manualErrorInvalidAmount"),
                 errorMissingDescription: t("manualErrorMissingDescription"),
                 errorGeneric: t("manualErrorGeneric"),
+                guestNudge: t("guestNudge"),
               }}
             />
           </CardContent>
@@ -206,6 +210,7 @@ export default async function ImportPage() {
               label={t("sampleCta")}
               busyLabel={t("submitting")}
               successLabel={t("sampleDone")}
+              guestNudge={t("guestNudge")}
               errorLabel={t("genericError")}
             />
           </CardContent>
@@ -223,6 +228,7 @@ export default async function ImportPage() {
             <ImportHistory
               batches={batches}
               intlLocale={intlLocale}
+              hasTransactions={txExist}
               labels={{
                 title: t("historyTitle"),
                 empty: t("historyEmpty"),

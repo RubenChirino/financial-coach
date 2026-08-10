@@ -20,6 +20,8 @@ export interface ImportFormLabels {
   errorsTitle: string;
   errorLine: string;
   genericError: string;
+  /** Shown when a read-only guest tries to write — retrying never helps. */
+  guestNudge: string;
   viewTransactions: string;
   emptyError: string;
   fileTooLargeError: string;
@@ -160,6 +162,7 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
   }
 
   function humanizeError(raw: string): string {
+    if (raw === "guestReadOnly") return labels.guestNudge;
     if (raw === "emptyFile") return labels.emptyError;
     if (raw === "fileTooLarge") return labels.fileTooLargeError;
     if (raw === "aiUnavailable") return labels.aiUnavailableError;

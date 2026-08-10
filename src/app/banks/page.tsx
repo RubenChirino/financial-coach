@@ -6,7 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import { ConvertedAmount } from "@/components/converted-amount";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
-import { getCurrentSession } from "@/lib/auth/session";
+import { getCurrentSession, isGuestSession } from "@/lib/auth/session";
 import { getUser } from "@/lib/auth/user";
 import { getAccountsTotal, listInstitutionGroups } from "@/lib/dashboard/summary";
 import { getLocale } from "@/lib/i18n/locale";
@@ -19,9 +19,13 @@ export const dynamic = "force-dynamic";
 export default async function BanksPage() {
   const session = await getCurrentSession();
   if (!session) redirect("/lock");
+  // Guests cannot link a bank — every provider action refuses them — so the
+  // connect affordances are hidden rather than shown as locked doors.
+  const isGuest = await isGuestSession();
 
-  const [t, locale, groups, accountsTotal, user] = await Promise.all([
+  const [t, tCommon, locale, groups, accountsTotal, user] = await Promise.all([
     getTranslations("bank"),
+    getTranslations("common"),
     getLocale(),
     listInstitutionGroups(session.userId),
     getAccountsTotal(session.userId),
@@ -45,12 +49,14 @@ export default async function BanksPage() {
           <div className="flex items-center gap-2">
             <SyncButton label={t("syncAll")} />
             <ManualAccountButton currency={currency} />
-            <Button asChild>
-              <Link href="/settings/bank">
-                <Plus className="h-3.5 w-3.5" />
-                {t("addBank")}
-              </Link>
-            </Button>
+            {isGuest ? null : (
+              <Button asChild>
+                <Link href="/settings/bank">
+                  <Plus className="h-3.5 w-3.5" />
+                  {t("addBank")}
+                </Link>
+              </Button>
+            )}
           </div>
         </header>
 
@@ -77,11 +83,13 @@ export default async function BanksPage() {
         {groups.length === 0 ? (
           <EmptyState
             Icon={Landmark}
-            title={t("noConnections")}
-            description={t("noConnectionsHintReady")}
+            title={isGuest ? tCommon("guestNoBankTitle") : t("noConnections")}
+            description={isGuest ? tCommon("guestNoBankBody") : t("noConnectionsHintReady")}
             action={
               <Button asChild>
-                <Link href="/settings/bank">{t("addBank")}</Link>
+                <Link href={isGuest ? "/import" : "/settings/bank"}>
+                  {isGuest ? tCommon("importTransactionsGuest") : t("addBank")}
+                </Link>
               </Button>
             }
           />

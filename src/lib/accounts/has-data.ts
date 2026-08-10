@@ -26,6 +26,21 @@ export async function hasFinancialData(userId: number): Promise<boolean> {
     .limit(1);
   if (account.length > 0) return true;
 
+  return hasTransactions(userId);
+}
+
+/**
+ * Strictly "is there at least one transaction". Narrower than
+ * {@link hasFinancialData}, which also counts a linked account with no
+ * transactions yet.
+ *
+ * Use this to gate anything that acts on transactions themselves — the
+ * "delete all transactions" reset in particular, which on an empty account is
+ * a red danger zone offering to delete nothing. Note the gate cannot be
+ * "are there import batches": data synced from a bank, or imported before
+ * batches were recorded, has no batch row but is still very much deletable.
+ */
+export async function hasTransactions(userId: number): Promise<boolean> {
   const tx = await db
     .select({ id: transactions.id })
     .from(transactions)

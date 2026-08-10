@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
+import { isGuestSession } from "@/lib/auth/session";
 
 /**
  * The "you have no data yet" state for feature pages that are useless without
@@ -13,10 +14,14 @@ import { Button } from "@/components/ui/button";
  * action, which reads as a broken feature: a "Detect subscriptions" button
  * that can only ever find nothing, or a home-location form asked before there
  * is anything to classify. This says what is actually missing and points at
- * the two ways to fix it.
+ * the ways to fix it.
  *
- * `title`/`description` stay per-page so the copy can name the feature; the
- * two calls to action are shared, since the answer is always the same.
+ * Guests get different calls to action. Connecting a bank needs a real
+ * account, so offering it to a guest is a locked door — every bank action is
+ * refused server-side. They get the import route (which for them means the
+ * sample data) plus a note that signing in unlocks bank connections. The
+ * per-page `title`/`description` are replaced too: "connect a bank or import"
+ * is simply wrong advice for someone who cannot do the first half.
  */
 export async function NoDataState({
   Icon,
@@ -27,7 +32,26 @@ export async function NoDataState({
   title: string;
   description: string;
 }) {
-  const t = await getTranslations("common");
+  const [t, isGuest] = await Promise.all([getTranslations("common"), isGuestSession()]);
+
+  if (isGuest) {
+    return (
+      <EmptyState
+        Icon={Icon}
+        title={t("guestNoBankTitle")}
+        description={t("guestNoBankBody")}
+        action={
+          <Button asChild>
+            <Link href="/import">
+              <Upload className="h-4 w-4" />
+              {t("importTransactionsGuest")}
+            </Link>
+          </Button>
+        }
+      />
+    );
+  }
+
   return (
     <EmptyState
       Icon={Icon}

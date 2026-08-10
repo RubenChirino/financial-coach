@@ -17,6 +17,7 @@ import { TotalBalanceCard } from "@/components/dashboard/total-balance-card";
 import { type DashboardVariant, VariantSwitcher } from "@/components/dashboard/variant-switcher";
 import { EmptyState } from "@/components/empty-state";
 import { GuestWelcomeDialog } from "@/components/guest/guest-welcome-dialog";
+import { NoDataState } from "@/components/no-data-state";
 import { Button } from "@/components/ui/button";
 import { getNetWorthSeries } from "@/lib/accounts/history";
 import { getCurrentSession } from "@/lib/auth/session";
@@ -141,15 +142,10 @@ export default async function DashboardPage({
       <AppShell title={t("title")} subtitle={t("subtitle")}>
         {guestDialog}
         <div className="mx-auto max-w-6xl">
-          <EmptyState
+          <NoDataState
             Icon={LineChart}
             title={t("noDataTitle")}
             description={t("noDataSubtitle")}
-            action={
-              <Button asChild>
-                <Link href="/settings/bank">{t("connectBank")}</Link>
-              </Button>
-            }
           />
         </div>
       </AppShell>
