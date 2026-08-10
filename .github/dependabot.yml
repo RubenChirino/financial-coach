@@ -8,6 +8,23 @@ updates:
       time: "06:00"
       timezone: Europe/Madrid
     open-pull-requests-limit: 10
+    ignore:
+      # TypeScript 7 is the native-port rewrite and does not expose the
+      # compiler API Next.js links against:
+      #
+      #   TypeScript 7.x does not provide the compiler API required by
+      #   Next.js. Enable experimental.useTypeScriptCli in your Next.js
+      #   config to use the TypeScript CLI, or install TypeScript 6 instead.
+      #
+      # `next build` prints "✓ Compiled successfully" and *then* fails on that
+      # step, so the break is easy to miss — it cost us one bad merge already
+      # (see d097ba0). Dependabot re-opens the bump on every 7.x release, and
+      # each one is a red build nobody can merge.
+      #
+      # Remove this once Next ships a release that supports the new compiler
+      # API, or if we decide to turn on `experimental.useTypeScriptCli`.
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
     groups:
       minor-and-patch:
         update-types: [minor, patch]
