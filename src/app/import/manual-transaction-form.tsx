@@ -27,6 +27,8 @@ export interface ManualTransactionLabels {
   errorInvalidAmount: string;
   errorMissingDescription: string;
   errorGeneric: string;
+  /** Shown when a read-only guest tries to write — retrying never helps. */
+  guestNudge: string;
 }
 
 interface Props {
@@ -57,6 +59,7 @@ export function ManualTransactionForm({ labels, categories, locale }: Props) {
     if (raw === "invalidDate") return labels.errorInvalidDate;
     if (raw === "invalidAmount") return labels.errorInvalidAmount;
     if (raw === "missingDescription") return labels.errorMissingDescription;
+    if (raw === "guestReadOnly") return labels.guestNudge;
     return labels.errorGeneric;
   }
 

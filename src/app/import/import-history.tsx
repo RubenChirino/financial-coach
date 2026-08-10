@@ -24,10 +24,13 @@ export function ImportHistory({
   batches,
   labels,
   intlLocale,
+  hasTransactions,
 }: {
   batches: ImportBatchRow[];
   labels: ImportHistoryLabels;
   intlLocale: string;
+  /** False when the account holds no transactions — nothing to reset. */
+  hasTransactions: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -41,9 +44,11 @@ export function ImportHistory({
         </ul>
       )}
 
-      {/* Reset all — always visible so users can wipe data imported before
-          batch tracking was introduced (those rows have no importBatchId). */}
-      <ResetAllButton labels={labels} />
+      {/* Reset all. Gated on transactions existing, not on `batches` — rows
+          synced from a bank, or imported before batch tracking existed, have
+          no importBatchId but are still deletable. With nothing to delete this
+          is just a red danger zone offering to destroy an empty account. */}
+      {hasTransactions ? <ResetAllButton labels={labels} /> : null}
     </div>
   );
 }

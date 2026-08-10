@@ -114,6 +114,14 @@ interface RunImportOptions {
   filename?: string;
   /** Bypass dedup checks. Each row gets a unique id so the UNIQUE constraint passes. */
   forceReimport?: boolean;
+  /**
+   * Let a read-only guest through. The ONLY caller that may set this is
+   * `importSampleDataAction`, which imports a fixed, repo-bundled CSV of
+   * fictional transactions into the guest's own throwaway row. Never set it
+   * on a path that carries user-supplied text — that would hand guests a
+   * general write primitive.
+   */
+  allowGuest?: boolean;
 }
 
 type ParseOutcome =
@@ -170,7 +178,7 @@ async function resolveParse(
 async function runImport(text: string, opts: RunImportOptions = {}): Promise<ImportActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
-  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
+  if (session.isGuest && !opts.allowGuest) return { ok: false, error: "guestReadOnly" };
 
   if (text.length === 0) return { ok: false, error: "emptyFile" };
   if (text.length > MAX_CSV_BYTES) return { ok: false, error: "fileTooLarge" };
@@ -384,7 +392,16 @@ function csvEscape(s: string): string {
 export async function importSampleDataAction(): Promise<ImportActionResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
-  if (session.isGuest) return { ok: false, error: "guestReadOnly" };
+
+  // Guests are allowed here, and only here. Guest mode exists so someone can
+  // evaluate the app, and every page is empty until transactions exist — the
+  // empty states even tell them to import, which they otherwise cannot do.
+  //
+  // The exception is deliberately narrow: this action takes no arguments and
+  // reads a fixed CSV of fictional transactions from the repo, so nothing
+  // attacker-supplied reaches the importer. Rows land on the guest's own
+  // `userId`, guest accounts are purged after 24h, and guest creation is
+  // rate-limited per IP. Every other write path stays closed to guests.
 
   const path = join(process.cwd(), "docs", "sample-transactions.csv");
   let text: string;
@@ -395,5 +412,5 @@ export async function importSampleDataAction(): Promise<ImportActionResult> {
     return { ok: false, error: "sampleDataMissing" };
   }
 
-  return runImport(text, { mode: "strict" });
+  return runImport(text, { mode: "strict", allowGuest: true });
 }

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
+import { NoDataState } from "@/components/no-data-state";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { TourButton } from "@/components/tour-button";
 import { ExportButton } from "@/components/transactions/export-dialog";
@@ -134,21 +135,7 @@ export default async function TransactionsPage({
           </header>
 
           {rows.length === 0 ? (
-            <EmptyState
-              Icon={ListMinus}
-              title={t("empty")}
-              description={t("emptyHint")}
-              action={
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  <Button asChild>
-                    <Link href="/settings/bank">{t("connectBank")}</Link>
-                  </Button>
-                  <Button asChild variant="outline">
-                    <Link href="/import">{tNav("import")}</Link>
-                  </Button>
-                </div>
-              }
-            />
+            <NoDataState Icon={ListMinus} title={t("empty")} description={t("emptyHint")} />
           ) : (
             <>
               <div id="heatmap">
