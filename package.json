@@ -69,7 +69,7 @@
     "framer-motion": "^11.18.2",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
-    "lucide-react": "^0.468.0",
+    "lucide-react": "^1.29.0",
     "next": "16.2.12",
     "next-auth": "5.0.0-beta.32",
     "next-intl": "^4.13.0",
