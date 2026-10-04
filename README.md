@@ -22,10 +22,6 @@ Designed for Spanish banks first, English fully supported. Works as an installab
 - Not investment advice. The coach won't tell you what to buy or sell.
 - Not an ad-supported SaaS. No telemetry, no analytics, no third-party trackers.
 
-## Screenshots
-
-Screenshots are in progress. Every feature listed below is shipped and live.
-
 ## Features
 
 - **PIN-gated, encrypted vault (local mode).** AES-256-GCM + scrypt. Your PIN + `APP_SECRET` together derive the at-rest key. Sessions persist across dev restarts (libSQL-backed, SHA-256-hashed cookie tokens, PIN-derived keys wrapped at rest).
@@ -142,20 +138,6 @@ Full walkthrough in [`docs/llm-providers.md`](docs/llm-providers.md).
 3. Inside the app, go to Settings → Bank → Add bank, pick your institution, and authorize.
 
 Or use the TrueLayer connector if your bank has better Live coverage there — keys are stored encrypted inside the app, no env vars required. Full walkthrough with screenshots: [`docs/bank-setup.md`](docs/bank-setup.md).
-
-## Roadmap
-
-- [x] **Phase 1** — Foundation: scaffold, schema, crypto, PIN, i18n, base UI
-- [x] **Phase 2** — Bank integration (GoCardless, account linking, transactions)
-- [x] **Phase 3** — Categorization (rules + LLM) + dashboard
-- [x] **Phase 4** — AI advisor chat (Ollama + Anthropic + OpenAI + Gemini) with privacy redaction
-- [x] **Phase 5** — Recurring subscription detection + dashboard widget + advisor context enrichment
-- [x] **Phase 6** — Final polish: bento dashboard, CSV export, CI, Node 24 LTS bump
-- [x] **Phase 7** — Coin redesign: Goals, Insights engine, Privacy blur, Currency selector, In-app LLM selector, Banks page, CSV export endpoint
-- [x] **Phase 8** — Hosted deployment: Auth.js OAuth (Google / Microsoft / GitHub), libSQL/Turso driver, Vercel-compat Node engine relax, hosted-mode UI, Gemini auto-fallback, XLSX import, per-account predictions
-- [x] **Phase 9** — Intelligence & polish: Travels (trip detection + city labelling), Opportunities + investor profile, dedicated Predictions page, spending heatmap, multi-currency conversion, manual transaction entry, import history, encrypted backup/restore, TrueLayer connector, Demo provider, PWA install + pull-to-refresh
-- [x] **Phase 10** — Multi-user hardening: per-user data isolation (fail-closed `user_id` scoping across every table), read-only Guest mode, CSRF guards on `/api/*`, strict per-request CSP nonce, per-user LLM rate limiting
-- [x] **Phase 11** — Data quality & reach: internal transfer detection, complete net worth (manual assets/liabilities + balance-history chart), categorizer that learns from your corrections, subscription renewals + price-increase alerts, scheduled background refresh + opt-in email digest
 
 ## Architecture
 
