@@ -9,13 +9,31 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/ {
   currency: "EUR",
 } /*EDITMODE-END*/;
 
+// Origin of the editor that embeds this prototype in an iframe. Edit-mode
+// messages are only exchanged with that window, never broadcast or accepted
+// from arbitrary frames. Null when the page is opened standalone.
+const HOST_ORIGIN = (() => {
+  if (window.parent === window) return null;
+  try {
+    const ancestor = window.location.ancestorOrigins?.[0];
+    if (ancestor) return ancestor;
+    if (document.referrer) return new URL(document.referrer).origin;
+  } catch (_e) {}
+  return null;
+})();
+
+const postToHost = (msg) => {
+  if (!HOST_ORIGIN) return;
+  try {
+    window.parent.postMessage(msg, HOST_ORIGIN);
+  } catch (_e) {}
+};
+
 function TweaksPanel({ tweaks, setTweaks, open }) {
   const set = (k, v) => {
     const next = { ...tweaks, [k]: v };
     setTweaks(next);
-    try {
-      window.parent.postMessage({ type: "__edit_mode_set_keys", edits: { [k]: v } }, "*");
-    } catch (_e) {}
+    postToHost({ type: "__edit_mode_set_keys", edits: { [k]: v } });
   };
   return (
     <div className={`tweaks-panel${open ? " open" : ""}`}>
@@ -123,14 +141,13 @@ function App() {
   // Edit mode protocol
   useEffect(() => {
     const onMsg = (e) => {
+      if (!HOST_ORIGIN || e.origin !== HOST_ORIGIN || e.source !== window.parent) return;
       const d = e.data || {};
       if (d.type === "__activate_edit_mode") setTweaksOpen(true);
       else if (d.type === "__deactivate_edit_mode") setTweaksOpen(false);
     };
     window.addEventListener("message", onMsg);
-    try {
-      window.parent.postMessage({ type: "__edit_mode_available" }, "*");
-    } catch (_e) {}
+    postToHost({ type: "__edit_mode_available" });
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
