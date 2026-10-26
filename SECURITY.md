@@ -8,15 +8,16 @@ This project is pre-1.0. Only the latest `main` branch receives security fixes.
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-Email: **52714843+RubenChirino@users.noreply.github.com** with the subject line `[financial-coach] security`.
+Report it privately through GitHub: open the repository's **Security** tab and click
+**Report a vulnerability**, or go straight to
+[the private reporting form](https://github.com/RubenChirino/financial-coach/security/advisories/new).
+Only the maintainers can see the report.
 
 Include:
 
 - A description of the issue and its impact.
 - Steps to reproduce (proof-of-concept welcome).
 - Any suggested remediation.
-
-If you would like your report encrypted, ask for a PGP key in your first email.
 
 ### What to expect
 

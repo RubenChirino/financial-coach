@@ -4,7 +4,7 @@
   "description": "Local-first, open-source personal AI financial coach. PSD2 bank aggregation, LLM-powered categorization, private-by-default.",
   "private": true,
   "license": "AGPL-3.0-or-later",
-  "author": "Ruben Chirino <52714843+RubenChirino@users.noreply.github.com>",
+  "author": "Ruben Chirino (https://github.com/RubenChirino)",
   "homepage": "https://github.com/rubenchirino/financial-coach",
   "repository": {
     "type": "git",
