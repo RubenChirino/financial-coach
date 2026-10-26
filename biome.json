@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.2/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -20,7 +20,8 @@
       "!**/src/db/migrations",
       "!**/design",
       "!**/next-env.d.ts",
-      "!**/*.min.js"
+      "!**/*.min.js",
+      "!**/pnpm-lock.yaml"
     ]
   },
   "formatter": {
@@ -75,5 +76,8 @@
   "css": {
     "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 },
     "parser": { "tailwindDirectives": true }
+  },
+  "markdown": {
+    "formatter": { "enabled": false }
   }
 }
