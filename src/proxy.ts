@@ -18,6 +18,10 @@ const ASSET_PREFIXES = [
   "/icons",
   "/manifest.json",
   "/sw.js",
+  // Static, data-free page the service worker precaches and shows when a
+  // navigation fails offline. Must load without a session: the worker may
+  // install before the user unlocks.
+  "/offline.html",
 ];
 
 // Auth.js cookie names (env-dependent — `__Secure-` prefix only over HTTPS).

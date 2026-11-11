@@ -1,11 +1,27 @@
-// Minimal offline-shell service worker. Fleshed out in Phase 5.
-// Intentionally caches only the app shell (static assets) — never API responses
-// or financial data — to keep the privacy guarantees intact.
-const CACHE = "fc-shell-v1";
-const SHELL = ["/", "/lock", "/onboarding", "/manifest.json"];
+// Offline-fallback service worker.
+//
+// Privacy invariant: Cache Storage never holds a response from an
+// authenticated route or from /api/*. Cache Storage outlives lock and
+// sign-out, so caching an app page would leave financial data readable
+// offline after the user locked the app.
+//
+// - Precache only static files that carry no user data.
+// - Navigations are network-only; when the network fails the user gets the
+//   static offline page, never a cached app page.
+// - Nothing is cached at runtime.
+//
+// Bumping CACHE makes `activate` delete every older cache, including the
+// v1 cache that held the dashboard HTML.
+const CACHE = "fc-static-v2";
+const OFFLINE_URL = "/offline.html";
+const PRECACHE = [OFFLINE_URL, "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((cache) => Promise.all(PRECACHE.map((url) => cache.add(url).catch(() => {})))),
+  );
   self.skipWaiting();
 });
 
@@ -20,10 +36,10 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
-  if (request.method !== "GET") return;
-  const url = new URL(request.url);
-  if (url.pathname.startsWith("/api/")) return;
+  if (request.method !== "GET" || request.mode !== "navigate") return;
   event.respondWith(
-    fetch(request).catch(() => caches.match(request).then((r) => r ?? caches.match("/"))),
+    fetch(request).catch(() =>
+      caches.match(OFFLINE_URL).then((r) => r ?? new Response("Offline", { status: 503 })),
+    ),
   );
 });
