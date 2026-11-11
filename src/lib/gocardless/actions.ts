@@ -5,19 +5,16 @@ import { and, desc, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { db } from "@/db/client";
 import { accounts, institutions, requisitions, users } from "@/db/schema";
-import { snapshotBalances } from "@/lib/accounts/history";
 import { getCurrentSession } from "@/lib/auth/session";
-import { categorizeBatchByRules } from "@/lib/categorize";
 import { decrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
-import { detectTransfers } from "@/lib/transfers/detect";
 import { GoCardlessClient, GoCardlessError } from "./client";
 import {
   deleteGoCardlessCredentials,
   loadGoCardlessCredentials,
   saveGoCardlessCredentials,
 } from "./credentials";
-import { createRequisition, linkRequisitionAccounts, syncAccountTransactions } from "./sync";
+import { createRequisition, linkRequisitionAccounts, syncGoCardlessAccounts } from "./sync";
 import type { Institution } from "./types";
 
 export interface ActionOk<T = undefined> {
@@ -185,63 +182,13 @@ export async function syncAllAccountsAction(): Promise<
   try {
     const session = await requireSession();
     const client = await requireClient(session.userId, session.encryptionKey);
-
-    // Only real GoCardless-backed requisitions get polled against the remote
-    // API. Demo-provider rows are self-contained seeds — no network to call.
-    const rows = await db
-      .select({
-        accountRowId: accounts.id,
-        gcAccountIdCipher: accounts.gocardlessAccountId,
-      })
-      .from(accounts)
-      .innerJoin(requisitions, eq(accounts.requisitionId, requisitions.id))
-      .where(
-        and(
-          eq(requisitions.userId, session.userId),
-          eq(requisitions.status, "linked"),
-          eq(requisitions.provider, "gocardless"),
-        ),
-      );
-
-    let inserted = 0;
-    let skipped = 0;
-    const allInsertedIds: number[] = [];
-    for (const r of rows) {
-      const gcAccId = decrypt(r.gcAccountIdCipher, session.encryptionKey);
-      try {
-        const res = await syncAccountTransactions(client, {
-          userId: session.userId,
-          accountRowId: r.accountRowId,
-          gocardlessAccountId: gcAccId,
-        });
-        inserted += res.inserted;
-        skipped += res.skipped;
-        allInsertedIds.push(...res.insertedIds);
-      } catch (err) {
-        console.warn("sync account failed", r.accountRowId, err);
-      }
-    }
-
-    const ruleMatched = await categorizeBatchByRules(session.userId, allInsertedIds);
-
-    // Tag internal transfers so balances move between accounts without being
-    // double-counted as income + expense. Best-effort — never fail a sync.
-    try {
-      await detectTransfers({ userId: session.userId });
-    } catch (err) {
-      console.warn("post-sync transfer detection failed (non-fatal)", err);
-    }
-    // Record a balance snapshot for the net-worth-over-time chart.
-    try {
-      await snapshotBalances(session.userId);
-    } catch (err) {
-      console.warn("post-sync balance snapshot failed (non-fatal)", err);
-    }
-
-    return {
-      ok: true,
-      data: { inserted, skipped, accounts: rows.length, ruleMatched },
-    };
+    // Only real GoCardless-backed requisitions are polled; demo rows are
+    // self-contained seeds with no network to call.
+    const { inserted, skipped, accounts, ruleMatched } = await syncGoCardlessAccounts(client, {
+      userId: session.userId,
+      encryptionKey: session.encryptionKey,
+    });
+    return { ok: true, data: { inserted, skipped, accounts, ruleMatched } };
   } catch (err) {
     return { ok: false, error: humanizeError(err) };
   }

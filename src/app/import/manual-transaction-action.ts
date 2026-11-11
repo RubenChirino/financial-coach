@@ -1,12 +1,10 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db } from "@/db/client";
-import { accounts, transactions } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { ensureImportedAccount } from "@/lib/import/ingest";
+import { ingestTransactions } from "@/lib/ingest/pipeline";
 
 export interface AddManualTransactionResult {
   ok: boolean;
@@ -15,7 +13,9 @@ export interface AddManualTransactionResult {
 
 /**
  * Insert a single manually-entered transaction into the "Imported Transactions"
- * account and recompute the account balance.
+ * account through the ingestion pipeline, and recompute the account balance.
+ * A category the user picked is kept as a manual pick (confidence 100, which
+ * the correction pass never overwrites); without one, rules and keywords run.
  *
  * `amountCents` must be signed: negative = expense, positive = income.
  */
@@ -48,29 +48,30 @@ export async function addManualTransactionAction(input: {
 
   const bookingDate = new Date(`${input.date}T12:00:00Z`);
 
-  await db.insert(transactions).values({
+  await ingestTransactions({
     userId: session.userId,
-    accountId: accountRowId,
-    // Unique ID — "manual:" prefix + UUID makes it recognisable in debug queries.
-    gocardlessTransactionId: `manual:${randomUUID()}`,
-    bookingDate,
-    amountCents: input.amountCents,
-    currency: input.currency.toUpperCase(),
-    merchantName: input.merchant.trim() || null,
-    rawDescription: input.description.trim(),
-    categoryId: input.categoryId ?? null,
-    needsReview: false,
+    source: "manual",
+    accounts: [
+      {
+        accountId: accountRowId,
+        balance: { mode: "sum" },
+        rows: [
+          {
+            // "manual:" prefix + UUID makes it recognisable in debug queries.
+            externalId: `manual:${randomUUID()}`,
+            bookingDate,
+            amountCents: input.amountCents,
+            currency: input.currency.toUpperCase(),
+            merchantName: input.merchant.trim() || null,
+            rawDescription: input.description.trim(),
+            categoryId: input.categoryId ?? null,
+            confidence: input.categoryId != null ? 100 : null,
+            needsReview: false,
+          },
+        ],
+      },
+    ],
   });
-
-  // Recompute cached account balance.
-  const sumRow = await db
-    .select({ total: sql<number>`coalesce(sum(amount_cents), 0)` })
-    .from(transactions)
-    .where(and(eq(transactions.userId, session.userId), eq(transactions.accountId, accountRowId)));
-  await db
-    .update(accounts)
-    .set({ balanceCents: Number(sumRow[0]?.total ?? 0), lastSyncedAt: new Date() })
-    .where(and(eq(accounts.userId, session.userId), eq(accounts.id, accountRowId)));
 
   revalidatePath("/");
   revalidatePath("/transactions");

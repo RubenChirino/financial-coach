@@ -1,15 +1,13 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { accounts, importBatches, institutions, requisitions, transactions } from "@/db/schema";
-import { categorizeBatchByRules } from "@/lib/categorize";
+import { accounts, importBatches, requisitions } from "@/db/schema";
 import { encrypt } from "@/lib/crypto";
 import { formatIban } from "@/lib/format/iban";
-import { insertTransactionsIdempotent, withOccurrenceOrdinals } from "@/lib/ingest/identity";
-import { detectRecurringSubscriptions } from "@/lib/recurring/detect";
-import { detectTransfers } from "@/lib/transfers/detect";
+import { upsertInstitution } from "@/lib/ingest/institutions";
+import { type IngestRow, ingestTransactions } from "@/lib/ingest/pipeline";
 import type { ParsedCsvRow } from "./csv";
 
 /**
@@ -53,27 +51,12 @@ export async function ensureImportedAccount(opts: {
   currency?: string | null;
 }): Promise<EnsureImportedAccountResult> {
   const { userId } = opts;
-  const existingInst = await db
-    .select({ id: institutions.id })
-    .from(institutions)
-    .where(eq(institutions.gocardlessId, IMPORTED_INSTITUTION_GCID))
-    .limit(1);
-
-  const institutionRowId =
-    existingInst[0]?.id ??
-    (
-      await db
-        .insert(institutions)
-        .values({
-          gocardlessId: IMPORTED_INSTITUTION_GCID,
-          name: "Imported",
-          logoUrl: null,
-          country: "ES",
-        })
-        .returning({ id: institutions.id })
-    )[0]?.id;
-
-  if (!institutionRowId) throw new Error("failed to ensure imported institution");
+  const institutionRowId = await upsertInstitution({
+    gocardlessId: IMPORTED_INSTITUTION_GCID,
+    name: "Imported",
+    logoUrl: null,
+    country: "ES",
+  });
 
   // Requisitions are per-user: scope by userId so two users importing don't
   // share the single "imported-local" requisition row.
@@ -190,7 +173,9 @@ export interface ImportParsedRowsResult {
   intraBatchDuplicates: number;
   /** Rows already present in this account. */
   existingDuplicates: number;
+  /** Inserted rows categorized by one of the user's rules / by a keyword. */
   ruleMatched: number;
+  keywordMatched: number;
   batchId: number;
   /** First parsed row (if any) — useful for debugging mis-mapped columns. */
   sampleRow?: {
@@ -203,15 +188,15 @@ export interface ImportParsedRowsResult {
 }
 
 /**
- * Insert parsed rows into the transactions table, deduping by a stable content
- * hash. After insert we run the deterministic rule-based categorizer against
- * the fresh rows only — staying LLM-free here so the /import action is
- * offline-safe and cheap. Uncategorized rows fall into the normal
- * "needs review" flow and can be categorized later via Settings → Categorize.
+ * Import parsed rows through the ingestion pipeline (`lib/ingest/pipeline`):
+ * content-hash identities with occurrence ordinals, rules and keywords applied
+ * before insert, chunked idempotent inserts, then one atomic finalize that
+ * sets the balance and completes the import batch. Uncategorized rows fall
+ * into the normal "needs review" flow.
  *
- * Finally we recompute the synthetic account's balance as the running total of
- * all its transactions so the dashboard's "total balance" card reflects the
- * import without needing a bank API call.
+ * The batch row is created first as "running", so a crash mid-import leaves a
+ * visible, undoable partial import; re-importing the same file adds only the
+ * missing rows.
  */
 export async function importParsedRows(
   rows: ParsedCsvRow[],
@@ -237,124 +222,65 @@ export async function importParsedRows(
     accountBalanceCents?: number | null;
   },
 ): Promise<ImportParsedRowsResult> {
-  // Always create a batch record so import history is complete, even if all rows
-  // turn out to be duplicates. We update counts at the end.
+  // Always create a batch record so import history is complete, even if all
+  // rows turn out to be duplicates. Finalize fills the counts.
   const batchRow = await db
     .insert(importBatches)
-    .values({ userId: opts.userId, filename: opts.filename ?? null, rowsParsed: rows.length })
+    .values({
+      userId: opts.userId,
+      filename: opts.filename ?? null,
+      rowsParsed: rows.length,
+      status: "running",
+    })
     .returning({ id: importBatches.id });
   const batchId = batchRow[0]?.id;
   if (!batchId) throw new Error("failed to create import batch");
 
-  if (rows.length === 0)
+  // Every row's identity is its content hash; the pipeline gives identical
+  // rows in one file occurrence ordinals. Force-reimport makes every row new
+  // by appending the batch id and row index instead.
+  const ingestRows: IngestRow[] = rows.map((r, idx) => {
+    const baseId = dedupeIdFor({
+      date: r.date,
+      amountCents: r.amountCents,
+      currency: r.currency,
+      merchant: r.merchant,
+      description: r.description,
+    });
     return {
-      inserted: 0,
-      duplicates: 0,
-      intraBatchDuplicates: 0,
-      existingDuplicates: 0,
-      ruleMatched: 0,
-      batchId,
-    };
-
-  // Every row's identity is its content hash. Identical rows in one file are
-  // distinct transactions and get occurrence ordinals; force-reimport makes
-  // every row new by appending the batch id and row index instead.
-  const identified = withOccurrenceOrdinals(
-    rows.map((r, idx) => {
-      const baseId = dedupeIdFor({
-        date: r.date,
-        amountCents: r.amountCents,
-        currency: r.currency,
-        merchant: r.merchant,
-        description: r.description,
-      });
-      return opts.forceReimport
-        ? { externalId: `${baseId}:b${batchId}:${idx}`, externalIdDerived: false, row: r }
-        : { externalId: baseId, externalIdDerived: true, row: r };
-    }),
-  );
-
-  // The (account_id, external_id) unique index decides what already exists —
-  // scoped to this account, so another user's identical rows never count.
-  const inserted = await insertTransactionsIdempotent(
-    identified.map((c) => ({
-      userId: opts.userId,
-      accountId: opts.accountRowId,
-      importBatchId: batchId,
-      gocardlessTransactionId: c.externalId,
-      bookingDate: c.row.date,
+      externalId: opts.forceReimport ? `${baseId}:b${batchId}:${idx}` : baseId,
+      externalIdDerived: !opts.forceReimport,
+      bookingDate: r.date,
       valueDate: null,
-      amountCents: c.row.amountCents,
-      currency: c.row.currency,
-      merchantName: c.row.merchant,
-      rawDescription: c.row.description,
-      needsReview: true,
-    })),
-  );
-  const insertedIds = inserted.map((r) => r.id);
-  const intraBatchDuplicates = 0;
-  const existingDuplicates = identified.length - inserted.length;
-
-  const ruleMatched = await categorizeBatchByRules(opts.userId, insertedIds);
-
-  // Re-run the recurring detector after each import. Without this the
-  // subscriptions table stays empty until the user manually triggers
-  // detection from /subscriptions, which means the predictions page reports
-  // "€0 recurring" right after the user just imported a year of payroll +
-  // Netflix charges. Best-effort: a failure here shouldn't fail the import.
-  if (insertedIds.length > 0) {
-    try {
-      await detectRecurringSubscriptions({ userId: opts.userId });
-    } catch (err) {
-      console.warn("post-import recurring detection failed (non-fatal)", err);
-    }
-    // Tag internal transfers so the new rows don't inflate income/expense.
-    try {
-      await detectTransfers({ userId: opts.userId });
-    } catch (err) {
-      console.warn("post-import transfer detection failed (non-fatal)", err);
-    }
-  }
+      amountCents: r.amountCents,
+      currency: r.currency,
+      merchantName: r.merchant,
+      rawDescription: r.description,
+    };
+  });
 
   // Prefer the export's own balance header (a real "current balance" snapshot
-  // from the bank). Fall back to summing transactions only when the file
-  // didn't carry one — that path produces a sensible number only when the
-  // import is the user's full ledger, but it's the best we can do.
-  let newBalance: number;
-  if (opts.accountBalanceCents != null) {
-    newBalance = opts.accountBalanceCents;
-  } else {
-    const totalRow = await db
-      .select({
-        sum: sql<number>`coalesce(sum(${transactions.amountCents}), 0)`,
-      })
-      .from(transactions)
-      .where(
-        and(eq(transactions.userId, opts.userId), eq(transactions.accountId, opts.accountRowId)),
-      );
-    newBalance = Number(totalRow[0]?.sum ?? 0);
-  }
+  // from the bank). Otherwise sum the account's rows — sensible only when the
+  // import is the user's full ledger, but the best available.
+  const result = await ingestTransactions({
+    userId: opts.userId,
+    source: "csv",
+    importBatchId: batchId,
+    accounts: [
+      {
+        accountId: opts.accountRowId,
+        rows: ingestRows,
+        balance:
+          opts.accountBalanceCents != null
+            ? { mode: "set", cents: opts.accountBalanceCents }
+            : { mode: "sum" },
+        currency: opts.currency ?? null,
+      },
+    ],
+  });
 
-  const updateSet: { balanceCents: number; lastSyncedAt: Date; currency?: string } = {
-    balanceCents: newBalance,
-    lastSyncedAt: new Date(),
-  };
-  if (opts.currency) updateSet.currency = opts.currency;
-
-  await db
-    .update(accounts)
-    .set(updateSet)
-    .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
-
-  const totalDuplicates = intraBatchDuplicates + existingDuplicates;
-  // Persist final counts so the history UI can show accurate numbers.
-  await db
-    .update(importBatches)
-    .set({ rowsInserted: inserted.length, rowsDuplicate: totalDuplicates })
-    .where(and(eq(importBatches.userId, opts.userId), eq(importBatches.id, batchId)));
-
-  // Pick a sample from the parsed rows (not just `fresh`) so the user can
-  // verify column mapping even when every row was deduped.
+  // Pick a sample from the parsed rows (not just inserted ones) so the user
+  // can verify column mapping even when every row was deduped.
   const first = rows[0];
   const sampleRow = first
     ? {
@@ -367,11 +293,12 @@ export async function importParsedRows(
     : undefined;
 
   return {
-    inserted: inserted.length,
-    duplicates: totalDuplicates,
-    intraBatchDuplicates,
-    existingDuplicates,
-    ruleMatched,
+    inserted: result.inserted,
+    duplicates: result.duplicates,
+    intraBatchDuplicates: 0,
+    existingDuplicates: result.duplicates,
+    ruleMatched: result.ruleMatched,
+    keywordMatched: result.keywordMatched,
     batchId,
     sampleRow,
   };

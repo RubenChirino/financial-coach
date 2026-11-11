@@ -3,10 +3,9 @@ import "server-only";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
-import { snapshotBalances } from "@/lib/accounts/history";
 import { env } from "@/lib/env";
+import { refreshDerivedData } from "@/lib/ingest/pipeline";
 import { runInsightEngine } from "@/lib/insights/engine";
-import { detectTransfers } from "@/lib/transfers/detect";
 
 /**
  * Authorize a scheduled request. Vercel Cron sends the project's `CRON_SECRET`
@@ -41,8 +40,9 @@ export interface RecomputeSummary {
  * user sees is current even while the app is closed. Operates only on data the
  * app already has (no bank-API calls, so no per-user encryption key needed):
  *   - refresh the rule-based insights,
- *   - re-detect internal transfers,
- *   - snapshot balances for the net-worth-over-time chart.
+ *   - the ingestion pipeline's derived-data step (`refreshDerivedData`):
+ *     internal transfers and today's balance snapshot. It is the same function
+ *     every ingest runs, so a step that failed after an ingest is repaired here.
  *
  * Each user is isolated in its own try/catch so one failure never aborts the
  * batch. Guests are skipped (ephemeral, read-only).
@@ -71,8 +71,10 @@ export async function recomputeAllUsers(): Promise<RecomputeSummary> {
     try {
       await runInsightEngine(u.id, u.language);
       summary.insights += 1;
-      summary.transfers += await detectTransfers({ userId: u.id });
-      summary.snapshots += await snapshotBalances(u.id);
+      const derived = await refreshDerivedData(u.id, { newRows: false, source: "cron" });
+      summary.transfers += derived.transfers;
+      summary.snapshots += derived.snapshots;
+      if (derived.failed.length > 0) summary.errors += 1;
     } catch (err) {
       summary.errors += 1;
       console.warn("cron recompute failed for user", u.id, err);

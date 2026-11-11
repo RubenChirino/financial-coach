@@ -297,6 +297,15 @@ export const importBatches = sqliteTable("import_batches", {
   rowsInserted: integer("rows_inserted").notNull().default(0),
   rowsDuplicate: integer("rows_duplicate").notNull().default(0),
   createdAt: timestamp("created_at"),
+  /**
+   * "running" from creation until the ingest finalizes, then "complete". A
+   * batch still "running" well after it started was interrupted: its rows are
+   * whole and categorized, it can be undone, and re-importing the same file
+   * adds only the missing rows. Rows from before this column read "complete".
+   */
+  status: text("status", { enum: ["running", "complete"] })
+    .notNull()
+    .default("complete"),
 });
 
 export const transactions = sqliteTable(

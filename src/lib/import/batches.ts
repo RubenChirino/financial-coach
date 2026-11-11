@@ -4,13 +4,35 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, importBatches, transactions } from "@/db/schema";
 
+/**
+ * "running": the import is in progress. "interrupted": it has been running for
+ * longer than any import takes, so the process died part-way; the rows it
+ * inserted are whole and categorized, and the user can undo the batch or
+ * re-import the same file to add exactly the missing rows.
+ */
+export type ImportBatchState = "complete" | "running" | "interrupted";
+
+/** A running batch older than this is shown as interrupted. */
+export const INTERRUPTED_AFTER_MS = 15 * 60 * 1000;
+
 export interface ImportBatchRow {
   id: number;
   filename: string | null;
   rowsParsed: number;
+  /** For a batch that is not complete: the rows actually in the database. */
   rowsInserted: number;
   rowsDuplicate: number;
   createdAt: Date;
+  state: ImportBatchState;
+}
+
+export function importBatchState(
+  status: "running" | "complete",
+  createdAt: Date,
+  now: Date = new Date(),
+): ImportBatchState {
+  if (status === "complete") return "complete";
+  return now.getTime() - createdAt.getTime() > INTERRUPTED_AFTER_MS ? "interrupted" : "running";
 }
 
 export async function listImportBatches(userId: number): Promise<ImportBatchRow[]> {
@@ -19,14 +41,24 @@ export async function listImportBatches(userId: number): Promise<ImportBatchRow[
       id: importBatches.id,
       filename: importBatches.filename,
       rowsParsed: importBatches.rowsParsed,
-      rowsInserted: importBatches.rowsInserted,
+      // Finalize writes the count when the batch completes; until then (or if
+      // it never does) count the rows that made it in. Written with qualified
+      // names: Drizzle leaves columns unqualified in a single-table select,
+      // which would bind the subquery's `id` to `transactions.id`.
+      rowsInserted: sql<number>`case when "import_batches"."status" = 'complete' then "import_batches"."rows_inserted" else (select count(*) from "transactions" where "transactions"."import_batch_id" = "import_batches"."id") end`,
       rowsDuplicate: importBatches.rowsDuplicate,
       createdAt: importBatches.createdAt,
+      status: importBatches.status,
     })
     .from(importBatches)
     .where(eq(importBatches.userId, userId))
     .orderBy(desc(importBatches.createdAt));
-  return rows;
+  const now = new Date();
+  return rows.map(({ status, ...r }) => ({
+    ...r,
+    rowsInserted: Number(r.rowsInserted),
+    state: importBatchState(status, r.createdAt, now),
+  }));
 }
 
 export async function deleteImportBatch(

@@ -11,6 +11,8 @@ export interface ImportHistoryLabels {
   pastedLabel: string;
   rowsInserted: string; // "{n} imported"
   rowsDuplicate: string; // "{n} duplicates"
+  running: string;
+  interrupted: string;
   deleteButton: string;
   deleteConfirm: string; // "Delete {n} transactions from {name}?"
   deleting: string;
@@ -101,6 +103,7 @@ function BatchRow({
           {batch.rowsDuplicate > 0 && (
             <span>{labels.rowsDuplicate.replace("{n}", String(batch.rowsDuplicate))}</span>
           )}
+          <BatchStateNote state={batch.state} labels={labels} />
         </div>
         {error && <p className="mt-1 text-[11px] text-red-500">{error}</p>}
       </div>
@@ -120,6 +123,26 @@ function BatchRow({
       </button>
     </li>
   );
+}
+
+/** Nothing for a complete batch; a running or interrupted one says so. */
+function BatchStateNote({
+  state,
+  labels,
+}: {
+  state: ImportBatchRow["state"];
+  labels: ImportHistoryLabels;
+}) {
+  if (state === "running") return <span>{labels.running}</span>;
+  if (state === "interrupted") {
+    return (
+      <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+        <AlertTriangle className="h-3 w-3" />
+        {labels.interrupted}
+      </span>
+    );
+  }
+  return null;
 }
 
 function ResetAllButton({ labels }: { labels: ImportHistoryLabels }) {

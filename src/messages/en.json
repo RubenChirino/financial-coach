@@ -439,6 +439,8 @@
     "historyDeleteError": "Could not delete. Please try again.",
     "historyDeleting": "Deleting…",
     "historyDuplicate": "{n} duplicates skipped",
+    "historyRunning": "Importing…",
+    "historyInterrupted": "Interrupted — delete it, or import the same file again to add the missing rows",
     "historyEmpty": "No imports yet.",
     "historyInserted": "{n} imported",
     "historyPasted": "Pasted data",

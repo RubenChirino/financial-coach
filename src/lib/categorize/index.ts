@@ -16,6 +16,35 @@ import { assignCategory, categoryIdBySlug, loadRules, matchRule, type RuleRow } 
 const RULE_CONFIDENCE = 1.0;
 const KEYWORD_CONFIDENCE = 95;
 
+export interface DeterministicMatch {
+  categoryId: number;
+  confidence: number;
+  via: "rule" | "keyword";
+}
+
+/**
+ * The free, offline categorization steps: the user's rules (and the built-in
+ * ones), then the well-known-merchant keywords. Pure — callers load `rules`
+ * and `idBySlug` once per run. Used at ingest so rows arrive categorized.
+ */
+export function matchDeterministic(
+  tx: { merchantName: string | null; rawDescription: string; amountCents: number },
+  rules: readonly RuleRow[],
+  idBySlug: ReadonlyMap<string, number>,
+): DeterministicMatch | null {
+  const rule = matchRule(tx, [...rules]);
+  if (rule) return { categoryId: rule.categoryId, confidence: RULE_CONFIDENCE, via: "rule" };
+  const slug = keywordCategory(cleanMerchant(tx.merchantName, tx.rawDescription), tx.amountCents);
+  const categoryId = slug ? idBySlug.get(slug) : undefined;
+  return categoryId ? { categoryId, confidence: KEYWORD_CONFIDENCE, via: "keyword" } : null;
+}
+
+/** Every category id keyed by slug, in one query. */
+export async function loadCategoryIdsBySlug(): Promise<Map<string, number>> {
+  const rows = await db.select({ id: categories.id, slug: categories.slug }).from(categories);
+  return new Map(rows.map((r) => [r.slug, r.id]));
+}
+
 /** Lazily resolves the user's model once per batch; a refusal is a value, not a throw. */
 type LlmSource = () => Promise<LlmHandle | LlmRefusalCode>;
 
@@ -269,42 +298,4 @@ export async function categorizePendingBatch(opts: {
   return result;
 }
 
-/**
- * Categorize a specific batch of transaction IDs (called right after sync).
- * Only uses rules — never hits the LLM — so sync stays fast and offline-safe.
- */
-export async function categorizeBatchByRules(userId: number, ids: number[]): Promise<number> {
-  if (ids.length === 0) return 0;
-  const rules = await loadRules(userId);
-  let matched = 0;
-  for (const id of ids) {
-    const row = await db
-      .select({
-        id: transactions.id,
-        merchantName: transactions.merchantName,
-        rawDescription: transactions.rawDescription,
-      })
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.id, id),
-          eq(transactions.userId, userId),
-          isNull(transactions.categoryId),
-        ),
-      )
-      .limit(1);
-    const tx = row[0];
-    if (!tx) continue;
-    const rule = matchRule(tx, rules);
-    if (rule) {
-      await assignCategory(tx.id, rule.categoryId, {
-        needsReview: false,
-        confidence: RULE_CONFIDENCE,
-      });
-      matched++;
-    }
-  }
-  return matched;
-}
-
-export type { RuleRow };
+export { loadRules, type RuleRow };

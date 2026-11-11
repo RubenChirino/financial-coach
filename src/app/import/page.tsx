@@ -235,6 +235,8 @@ export default async function ImportPage() {
                 pastedLabel: t("historyPasted"),
                 rowsInserted: t("historyInserted"),
                 rowsDuplicate: t("historyDuplicate"),
+                running: t("historyRunning"),
+                interrupted: t("historyInterrupted"),
                 deleteButton: t("historyDelete"),
                 deleteConfirm: t("historyDeleteConfirm"),
                 deleting: t("historyDeleting"),

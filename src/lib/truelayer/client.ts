@@ -17,6 +17,9 @@ export const TL_LIVE_API_URL = "https://api.truelayer.com";
  * Scopes we request on the consent link. `offline_access` is required to get
  * a refresh_token so we can keep syncing after the 1-hour access_token TTL.
  */
+/** A hung bank API call fails after this long instead of holding the sync forever. */
+const REQUEST_TIMEOUT_MS = 30_000;
+
 export const TL_SCOPES = ["info", "accounts", "balance", "transactions", "offline_access"];
 
 export class TrueLayerError extends Error {
@@ -170,6 +173,7 @@ export class TrueLayerClient {
     });
     const res = await this.fetchImpl(`${this.authUrl}/connect/token`, {
       method: "POST",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
         accept: "application/json",
@@ -216,6 +220,7 @@ export class TrueLayerClient {
 
   private async dataGet<T>(path: string, accessToken: string): Promise<T> {
     const res = await this.fetchImpl(`${this.apiUrl}${path}`, {
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" },
     });
     if (!res.ok) {

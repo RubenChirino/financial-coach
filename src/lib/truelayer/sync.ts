@@ -2,9 +2,15 @@ import "server-only";
 
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { accounts, institutions, requisitions } from "@/db/schema";
+import { accounts, requisitions } from "@/db/schema";
 import { decrypt, encrypt } from "@/lib/crypto";
-import { insertTransactionsIdempotent, withOccurrenceOrdinals } from "@/lib/ingest/identity";
+import { upsertInstitution } from "@/lib/ingest/institutions";
+import {
+  type AccountIngest,
+  type IngestRow,
+  ingestTransactions,
+  syncWindowStart,
+} from "@/lib/ingest/pipeline";
 import type { TrueLayerClient, TrueLayerConnectionTokens } from "./client";
 import { decimalToCents, normalizeTrueLayerTransaction } from "./normalize";
 import type { TrueLayerAccount } from "./types";
@@ -33,33 +39,12 @@ export async function upsertTrueLayerInstitution(opts: {
   logoUrl: string | null;
   country: string;
 }): Promise<number> {
-  const externalId = `tl_${opts.providerId}`;
-  const existing = await db
-    .select({ id: institutions.id })
-    .from(institutions)
-    .where(eq(institutions.gocardlessId, externalId))
-    .limit(1);
-
-  if (existing[0]) {
-    await db
-      .update(institutions)
-      .set({ name: opts.displayName, logoUrl: opts.logoUrl, country: opts.country })
-      .where(eq(institutions.id, existing[0].id));
-    return existing[0].id;
-  }
-
-  const inserted = await db
-    .insert(institutions)
-    .values({
-      gocardlessId: externalId,
-      name: opts.displayName,
-      logoUrl: opts.logoUrl,
-      country: opts.country,
-    })
-    .returning({ id: institutions.id });
-  const id = inserted[0]?.id;
-  if (!id) throw new Error("failed to insert institution");
-  return id;
+  return upsertInstitution({
+    gocardlessId: `tl_${opts.providerId}`,
+    name: opts.displayName,
+    logoUrl: opts.logoUrl,
+    country: opts.country,
+  });
 }
 
 /**
@@ -219,63 +204,92 @@ export async function getValidAccessToken(
   return next.accessToken;
 }
 
+/** Fetch and normalize one account's transactions since `since`. */
+export async function fetchTrueLayerAccount(
+  client: TrueLayerClient,
+  opts: { tlAccountId: string; accessToken: string; since: Date },
+): Promise<IngestRow[]> {
+  const from = opts.since.toISOString().slice(0, 10);
+  const txs = await client.getTransactions(opts.accessToken, opts.tlAccountId, { from });
+  return txs
+    .map((t) => normalizeTrueLayerTransaction(t, opts.tlAccountId))
+    .filter((t): t is NonNullable<typeof t> => t !== null);
+}
+
 export interface TrueLayerSyncResult {
   inserted: number;
   skipped: number;
-  insertedIds: number[];
+  accounts: number;
+  /** Accounts whose fetch failed; their cursor did not move. */
+  failed: number;
+  ruleMatched: number;
 }
 
-/** Pull recent transactions for one TrueLayer account and upsert them. */
-export async function syncTrueLayerAccountTransactions(
+/**
+ * Sync every linked TrueLayer account of the user: one access token per
+ * connection, each account fetched from its own cursor, then one pipeline
+ * run for all of them. A failed account keeps its `last_synced_at`.
+ */
+export async function syncTrueLayerAccounts(
   client: TrueLayerClient,
-  opts: {
-    userId: number;
-    accountRowId: number;
-    tlAccountId: string;
-    accessToken: string;
-    sinceDays?: number;
-  },
+  opts: { userId: number; encryptionKey: Buffer },
 ): Promise<TrueLayerSyncResult> {
-  const sinceDays = opts.sinceDays ?? 90;
-  const from = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const txs = await client.getTransactions(opts.accessToken, opts.tlAccountId, { from });
+  const rows = await db
+    .select({
+      accountRowId: accounts.id,
+      cipher: accounts.gocardlessAccountId,
+      lastSyncedAt: accounts.lastSyncedAt,
+      requisitionId: requisitions.id,
+    })
+    .from(accounts)
+    .innerJoin(requisitions, eq(accounts.requisitionId, requisitions.id))
+    .where(
+      and(
+        eq(requisitions.userId, opts.userId),
+        eq(requisitions.status, "linked"),
+        eq(requisitions.provider, "truelayer"),
+      ),
+    );
 
-  const normalized = txs
-    .map((t) => normalizeTrueLayerTransaction(t, opts.tlAccountId))
-    .filter((t): t is NonNullable<typeof t> => t !== null);
-
-  if (normalized.length === 0) {
-    await db
-      .update(accounts)
-      .set({ lastSyncedAt: new Date() })
-      .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
-    return { inserted: 0, skipped: 0, insertedIds: [] };
+  const tokenByRequisition = new Map<number, string>();
+  const parts: AccountIngest[] = [];
+  let failed = 0;
+  for (const r of rows) {
+    try {
+      let accessToken = tokenByRequisition.get(r.requisitionId);
+      if (!accessToken) {
+        accessToken = await getValidAccessToken(client, {
+          userId: opts.userId,
+          requisitionRowId: r.requisitionId,
+          encryptionKey: opts.encryptionKey,
+        });
+        tokenByRequisition.set(r.requisitionId, accessToken);
+      }
+      parts.push({
+        accountId: r.accountRowId,
+        rows: await fetchTrueLayerAccount(client, {
+          tlAccountId: decrypt(r.cipher, opts.encryptionKey),
+          accessToken,
+          since: syncWindowStart(r.lastSyncedAt),
+        }),
+      });
+    } catch (err) {
+      failed++;
+      console.warn("truelayer fetch failed", r.accountRowId, err);
+    }
   }
 
-  const inserted = await insertTransactionsIdempotent(
-    withOccurrenceOrdinals(normalized).map((t) => ({
-      userId: opts.userId,
-      accountId: opts.accountRowId,
-      gocardlessTransactionId: t.externalId,
-      bookingDate: t.bookingDate,
-      valueDate: t.valueDate,
-      amountCents: t.amountCents,
-      currency: t.currency,
-      merchantName: t.merchantName,
-      rawDescription: t.rawDescription,
-      needsReview: true,
-    })),
-  );
-
-  await db
-    .update(accounts)
-    .set({ lastSyncedAt: new Date() })
-    .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
-
+  const res = await ingestTransactions({
+    userId: opts.userId,
+    source: "truelayer",
+    accounts: parts,
+  });
   return {
-    inserted: inserted.length,
-    skipped: normalized.length - inserted.length,
-    insertedIds: inserted.map((r) => r.id),
+    inserted: res.inserted,
+    skipped: res.duplicates,
+    accounts: rows.length,
+    failed,
+    ruleMatched: res.ruleMatched + res.keywordMatched,
   };
 }
 

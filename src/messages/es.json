@@ -439,6 +439,8 @@
     "historyDeleteError": "No se pudo eliminar. Inténtalo de nuevo.",
     "historyDeleting": "Eliminando…",
     "historyDuplicate": "{n} duplicadas omitidas",
+    "historyRunning": "Importando…",
+    "historyInterrupted": "Interrumpida — elimínala o vuelve a importar el mismo archivo para añadir las filas que faltan",
     "historyEmpty": "Aún no hay importaciones.",
     "historyInserted": "{n} importadas",
     "historyPasted": "Datos pegados",

@@ -2,9 +2,15 @@ import "server-only";
 
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { accounts, institutions, requisitions } from "@/db/schema";
-import { encrypt } from "@/lib/crypto";
-import { insertTransactionsIdempotent, withOccurrenceOrdinals } from "@/lib/ingest/identity";
+import { accounts, requisitions } from "@/db/schema";
+import { decrypt, encrypt } from "@/lib/crypto";
+import { upsertInstitution as upsertInstitutionRow } from "@/lib/ingest/institutions";
+import {
+  type AccountIngest,
+  type IngestRow,
+  ingestTransactions,
+  syncWindowStart,
+} from "@/lib/ingest/pipeline";
 import type { GoCardlessClient } from "./client";
 import { normalizeTransaction, pickPrimaryBalance, toCents } from "./normalize";
 import type { Institution, Requisition } from "./types";
@@ -29,32 +35,12 @@ function statusFromApi(
 }
 
 export async function upsertInstitution(inst: Institution): Promise<number> {
-  const existing = await db
-    .select({ id: institutions.id })
-    .from(institutions)
-    .where(eq(institutions.gocardlessId, inst.id))
-    .limit(1);
-
-  if (existing[0]) {
-    await db
-      .update(institutions)
-      .set({ name: inst.name, logoUrl: inst.logo, country: inst.countries[0] ?? "ES" })
-      .where(eq(institutions.id, existing[0].id));
-    return existing[0].id;
-  }
-
-  const inserted = await db
-    .insert(institutions)
-    .values({
-      gocardlessId: inst.id,
-      name: inst.name,
-      logoUrl: inst.logo,
-      country: inst.countries[0] ?? "ES",
-    })
-    .returning({ id: institutions.id });
-  const id = inserted[0]?.id;
-  if (!id) throw new Error("failed to insert institution");
-  return id;
+  return upsertInstitutionRow({
+    gocardlessId: inst.id,
+    name: inst.name,
+    logoUrl: inst.logo,
+    country: inst.countries[0] ?? "ES",
+  });
 }
 
 export async function createRequisition(
@@ -155,68 +141,79 @@ export async function linkRequisitionAccounts(
   return { accountRowIds: rowIds };
 }
 
-export interface SyncAccountResult {
+/** Fetch and normalize one account's booked transactions since `since`. */
+export async function fetchGoCardlessAccount(
+  client: GoCardlessClient,
+  opts: { gocardlessAccountId: string; since: Date },
+): Promise<IngestRow[]> {
+  const dateFrom = opts.since.toISOString().slice(0, 10);
+  const txs = await client.getAccountTransactions(opts.gocardlessAccountId, { dateFrom });
+  return txs.transactions.booked
+    .map((t) => normalizeTransaction(t, opts.gocardlessAccountId))
+    .filter((t): t is NonNullable<typeof t> => t !== null);
+}
+
+export interface SyncResult {
   inserted: number;
   skipped: number;
-  insertedIds: number[];
+  accounts: number;
+  /** Accounts whose fetch failed; their cursor did not move. */
+  failed: number;
+  ruleMatched: number;
 }
 
 /**
- * Pull recent transactions for an account and insert the new ones. Dedupe is
- * the `(account_id, external_id)` unique index via `ON CONFLICT DO NOTHING`
- * (see `lib/ingest/identity.ts`), not a pre-read. Returns counts for UX
- * feedback.
+ * Sync every linked GoCardless account of the user: fetch each account from
+ * its own cursor (see `syncWindowStart`), then ingest them all through the
+ * pipeline in one run. An account whose fetch fails is left out, so its
+ * `last_synced_at` stays put and the next sync covers the gap.
  */
-export async function syncAccountTransactions(
+export async function syncGoCardlessAccounts(
   client: GoCardlessClient,
-  opts: {
-    userId: number;
-    accountRowId: number;
-    gocardlessAccountId: string;
-    sinceDays?: number;
-  },
-): Promise<SyncAccountResult> {
-  const sinceDays = opts.sinceDays ?? 90;
-  const dateFrom = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
-  const txs = await client.getAccountTransactions(opts.gocardlessAccountId, { dateFrom });
+  opts: { userId: number; encryptionKey: Buffer },
+): Promise<SyncResult> {
+  const rows = await db
+    .select({
+      accountRowId: accounts.id,
+      cipher: accounts.gocardlessAccountId,
+      lastSyncedAt: accounts.lastSyncedAt,
+    })
+    .from(accounts)
+    .innerJoin(requisitions, eq(accounts.requisitionId, requisitions.id))
+    .where(
+      and(
+        eq(requisitions.userId, opts.userId),
+        eq(requisitions.status, "linked"),
+        eq(requisitions.provider, "gocardless"),
+      ),
+    );
 
-  const normalized = txs.transactions.booked
-    .map((t) => normalizeTransaction(t, opts.gocardlessAccountId))
-    .filter((t): t is NonNullable<typeof t> => t !== null);
-
-  if (normalized.length === 0) {
-    await db
-      .update(accounts)
-      .set({ lastSyncedAt: new Date() })
-      .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
-    return { inserted: 0, skipped: 0, insertedIds: [] };
+  const parts: AccountIngest[] = [];
+  let failed = 0;
+  for (const r of rows) {
+    try {
+      const gocardlessAccountId = decrypt(r.cipher, opts.encryptionKey);
+      const since = syncWindowStart(r.lastSyncedAt);
+      parts.push({
+        accountId: r.accountRowId,
+        rows: await fetchGoCardlessAccount(client, { gocardlessAccountId, since }),
+      });
+    } catch (err) {
+      failed++;
+      console.warn("gocardless fetch failed", r.accountRowId, err);
+    }
   }
 
-  const inserted = await insertTransactionsIdempotent(
-    withOccurrenceOrdinals(normalized).map((t) => ({
-      userId: opts.userId,
-      accountId: opts.accountRowId,
-      gocardlessTransactionId: t.externalId,
-      bookingDate: t.bookingDate,
-      valueDate: t.valueDate,
-      amountCents: t.amountCents,
-      currency: t.currency,
-      merchantName: t.merchantName,
-      rawDescription: t.rawDescription,
-      needsReview: true,
-    })),
-  );
-
-  await db
-    .update(accounts)
-    .set({ lastSyncedAt: new Date() })
-    .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
-
+  const res = await ingestTransactions({
+    userId: opts.userId,
+    source: "gocardless",
+    accounts: parts,
+  });
   return {
-    inserted: inserted.length,
-    skipped: normalized.length - inserted.length,
-    insertedIds: inserted.map((r) => r.id),
+    inserted: res.inserted,
+    skipped: res.duplicates,
+    accounts: rows.length,
+    failed,
+    ruleMatched: res.ruleMatched + res.keywordMatched,
   };
 }
