@@ -1,12 +1,13 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, importBatches, institutions, requisitions, transactions } from "@/db/schema";
 import { categorizeBatchByRules } from "@/lib/categorize";
 import { encrypt } from "@/lib/crypto";
 import { formatIban } from "@/lib/format/iban";
+import { insertTransactionsIdempotent, withOccurrenceOrdinals } from "@/lib/ingest/identity";
 import { detectRecurringSubscriptions } from "@/lib/recurring/detect";
 import { detectTransfers } from "@/lib/transfers/detect";
 import type { ParsedCsvRow } from "./csv";
@@ -181,9 +182,13 @@ export function dedupeIdFor(row: {
 export interface ImportParsedRowsResult {
   inserted: number;
   duplicates: number;
-  /** Rows that collapsed against another row IN THE SAME FILE. */
+  /**
+   * Rows collapsed against another row in the same file. Always 0 now:
+   * identical rows in one file are distinct transactions and get occurrence
+   * ordinals (see `withOccurrenceOrdinals`). Kept for the import UI.
+   */
   intraBatchDuplicates: number;
-  /** Rows whose hash already existed in the DB. */
+  /** Rows already present in this account. */
   existingDuplicates: number;
   ruleMatched: number;
   batchId: number;
@@ -216,10 +221,9 @@ export async function importParsedRows(
     currency?: string;
     filename?: string;
     /**
-     * When true, skip both intra-batch and existing-row dedup checks. Each row
-     * gets a unique nonce appended to its hash so the global UNIQUE constraint
-     * on `gocardlessTransactionId` is satisfied. Use when the user is sure the
-     * file contains genuinely-new transactions that the dedup logic is
+     * When true, skip dedupe entirely: each row gets the batch id and its row
+     * index appended to its hash, so every row is new. Use when the user is
+     * sure the file contains genuinely-new transactions that dedupe is
      * mistakenly flagging as duplicates.
      */
     forceReimport?: boolean;
@@ -252,85 +256,44 @@ export async function importParsedRows(
       batchId,
     };
 
-  // In force-reimport mode, each row gets a unique externalId by appending the
-  // batch id and the row index so the UNIQUE constraint is satisfied AND no
-  // dedup ever fires.
-  const allCandidates = rows.map((r, idx) => {
-    const baseId = dedupeIdFor({
-      date: r.date,
-      amountCents: r.amountCents,
-      currency: r.currency,
-      merchant: r.merchant,
-      description: r.description,
-    });
-    const externalId = opts.forceReimport ? `${baseId}:b${batchId}:${idx}` : baseId;
-    return { externalId, row: r };
-  });
+  // Every row's identity is its content hash. Identical rows in one file are
+  // distinct transactions and get occurrence ordinals; force-reimport makes
+  // every row new by appending the batch id and row index instead.
+  const identified = withOccurrenceOrdinals(
+    rows.map((r, idx) => {
+      const baseId = dedupeIdFor({
+        date: r.date,
+        amountCents: r.amountCents,
+        currency: r.currency,
+        merchant: r.merchant,
+        description: r.description,
+      });
+      return opts.forceReimport
+        ? { externalId: `${baseId}:b${batchId}:${idx}`, externalIdDerived: false, row: r }
+        : { externalId: baseId, externalIdDerived: true, row: r };
+    }),
+  );
 
-  let candidates = allCandidates;
-  let intraBatchDuplicates = 0;
-  let existingDuplicates = 0;
-
-  if (!opts.forceReimport) {
-    // Dedupe within the batch itself: bank exports sometimes contain identical
-    // rows (e.g. two 2.00 fees on the same day) which would otherwise collide
-    // on the global UNIQUE(gocardless_transaction_id) constraint during insert.
-    const seenInBatch = new Set<string>();
-    const deduped: typeof allCandidates = [];
-    for (const c of allCandidates) {
-      if (seenInBatch.has(c.externalId)) {
-        intraBatchDuplicates++;
-        continue;
-      }
-      seenInBatch.add(c.externalId);
-      deduped.push(c);
-    }
-    candidates = deduped;
-
-    // Check globally — the UNIQUE constraint on gocardless_transaction_id
-    // spans the whole table.
-    const existing = await db
-      .select({ id: transactions.gocardlessTransactionId })
-      .from(transactions)
-      .where(
-        inArray(
-          transactions.gocardlessTransactionId,
-          candidates.map((c) => c.externalId),
-        ),
-      );
-    const existingIds = new Set(existing.map((r) => r.id));
-    candidates = candidates.filter((c) => {
-      if (existingIds.has(c.externalId)) {
-        existingDuplicates++;
-        return false;
-      }
-      return true;
-    });
-  }
-  const fresh = candidates;
-
-  const insertedIds: number[] = [];
-  if (fresh.length > 0) {
-    const inserted = await db
-      .insert(transactions)
-      .values(
-        fresh.map((c) => ({
-          userId: opts.userId,
-          accountId: opts.accountRowId,
-          importBatchId: batchId,
-          gocardlessTransactionId: c.externalId,
-          bookingDate: c.row.date,
-          valueDate: null,
-          amountCents: c.row.amountCents,
-          currency: c.row.currency,
-          merchantName: c.row.merchant,
-          rawDescription: c.row.description,
-          needsReview: true,
-        })),
-      )
-      .returning({ id: transactions.id });
-    for (const r of inserted) insertedIds.push(r.id);
-  }
+  // The (account_id, external_id) unique index decides what already exists —
+  // scoped to this account, so another user's identical rows never count.
+  const inserted = await insertTransactionsIdempotent(
+    identified.map((c) => ({
+      userId: opts.userId,
+      accountId: opts.accountRowId,
+      importBatchId: batchId,
+      gocardlessTransactionId: c.externalId,
+      bookingDate: c.row.date,
+      valueDate: null,
+      amountCents: c.row.amountCents,
+      currency: c.row.currency,
+      merchantName: c.row.merchant,
+      rawDescription: c.row.description,
+      needsReview: true,
+    })),
+  );
+  const insertedIds = inserted.map((r) => r.id);
+  const intraBatchDuplicates = 0;
+  const existingDuplicates = identified.length - inserted.length;
 
   const ruleMatched = await categorizeBatchByRules(opts.userId, insertedIds);
 
@@ -387,8 +350,8 @@ export async function importParsedRows(
   // Persist final counts so the history UI can show accurate numbers.
   await db
     .update(importBatches)
-    .set({ rowsInserted: fresh.length, rowsDuplicate: totalDuplicates })
-    .where(eq(importBatches.id, batchId));
+    .set({ rowsInserted: inserted.length, rowsDuplicate: totalDuplicates })
+    .where(and(eq(importBatches.userId, opts.userId), eq(importBatches.id, batchId)));
 
   // Pick a sample from the parsed rows (not just `fresh`) so the user can
   // verify column mapping even when every row was deduped.
@@ -404,7 +367,7 @@ export async function importParsedRows(
     : undefined;
 
   return {
-    inserted: fresh.length,
+    inserted: inserted.length,
     duplicates: totalDuplicates,
     intraBatchDuplicates,
     existingDuplicates,

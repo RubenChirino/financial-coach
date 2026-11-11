@@ -1,9 +1,10 @@
 import "server-only";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { accounts, institutions, requisitions, transactions } from "@/db/schema";
+import { accounts, institutions, requisitions } from "@/db/schema";
 import { encrypt } from "@/lib/crypto";
+import { insertTransactionsIdempotent, withOccurrenceOrdinals } from "@/lib/ingest/identity";
 import type { GoCardlessClient } from "./client";
 import { normalizeTransaction, pickPrimaryBalance, toCents } from "./normalize";
 import type { Institution, Requisition } from "./types";
@@ -161,10 +162,10 @@ export interface SyncAccountResult {
 }
 
 /**
- * Pull recent transactions for an account and upsert them into the DB.
- * Dedup is driven by the unique index on `transactions.gocardless_transaction_id`;
- * we rely on `ON CONFLICT DO NOTHING` rather than pre-reading the set of
- * existing IDs. Returns counts for UX feedback.
+ * Pull recent transactions for an account and insert the new ones. Dedupe is
+ * the `(account_id, external_id)` unique index via `ON CONFLICT DO NOTHING`
+ * (see `lib/ingest/identity.ts`), not a pre-read. Returns counts for UX
+ * feedback.
  */
 export async function syncAccountTransactions(
   client: GoCardlessClient,
@@ -193,43 +194,20 @@ export async function syncAccountTransactions(
     return { inserted: 0, skipped: 0, insertedIds: [] };
   }
 
-  const existing = await db
-    .select({ id: transactions.gocardlessTransactionId })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.userId, opts.userId),
-        eq(transactions.accountId, opts.accountRowId),
-        inArray(
-          transactions.gocardlessTransactionId,
-          normalized.map((t) => t.externalId),
-        ),
-      ),
-    );
-  const existingIds = new Set(existing.map((r) => r.id));
-  const fresh = normalized.filter((t) => !existingIds.has(t.externalId));
-
-  const insertedIds: number[] = [];
-  if (fresh.length > 0) {
-    const rows = await db
-      .insert(transactions)
-      .values(
-        fresh.map((t) => ({
-          userId: opts.userId,
-          accountId: opts.accountRowId,
-          gocardlessTransactionId: t.externalId,
-          bookingDate: t.bookingDate,
-          valueDate: t.valueDate,
-          amountCents: t.amountCents,
-          currency: t.currency,
-          merchantName: t.merchantName,
-          rawDescription: t.rawDescription,
-          needsReview: true,
-        })),
-      )
-      .returning({ id: transactions.id });
-    for (const r of rows) insertedIds.push(r.id);
-  }
+  const inserted = await insertTransactionsIdempotent(
+    withOccurrenceOrdinals(normalized).map((t) => ({
+      userId: opts.userId,
+      accountId: opts.accountRowId,
+      gocardlessTransactionId: t.externalId,
+      bookingDate: t.bookingDate,
+      valueDate: t.valueDate,
+      amountCents: t.amountCents,
+      currency: t.currency,
+      merchantName: t.merchantName,
+      rawDescription: t.rawDescription,
+      needsReview: true,
+    })),
+  );
 
   await db
     .update(accounts)
@@ -237,8 +215,8 @@ export async function syncAccountTransactions(
     .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
 
   return {
-    inserted: fresh.length,
-    skipped: normalized.length - fresh.length,
-    insertedIds,
+    inserted: inserted.length,
+    skipped: normalized.length - inserted.length,
+    insertedIds: inserted.map((r) => r.id),
   };
 }

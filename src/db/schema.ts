@@ -312,7 +312,13 @@ export const transactions = sqliteTable(
     accountId: integer("account_id")
       .notNull()
       .references(() => accounts.id, { onDelete: "cascade" }),
-    gocardlessTransactionId: text("gocardless_transaction_id").notNull().unique(),
+    /**
+     * The transaction's identity within its account: the provider's id for
+     * bank rows, a content hash (+ occurrence ordinal) for imports. Unique per
+     * ACCOUNT, not globally — see `transactions_account_external_uniq`. A
+     * global constraint made one user's import collide with another's.
+     */
+    gocardlessTransactionId: text("gocardless_transaction_id").notNull(),
     /** Which import batch this came from. Null for bank-synced transactions. */
     importBatchId: integer("import_batch_id").references(() => importBatches.id, {
       onDelete: "set null",
@@ -349,6 +355,7 @@ export const transactions = sqliteTable(
     updatedAt: timestamp("updated_at"),
   },
   (t) => [
+    uniqueIndex("transactions_account_external_uniq").on(t.accountId, t.gocardlessTransactionId),
     index("transactions_account_date_idx").on(t.accountId, t.bookingDate),
     index("transactions_category_idx").on(t.categoryId),
     index("transactions_needs_review_idx").on(t.needsReview),

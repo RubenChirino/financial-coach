@@ -2,8 +2,9 @@ import "server-only";
 
 import { and, eq, like } from "drizzle-orm";
 import { db } from "@/db/client";
-import { accounts, categories, institutions, requisitions, transactions } from "@/db/schema";
+import { accounts, categories, institutions, requisitions } from "@/db/schema";
 import { encrypt } from "@/lib/crypto";
+import { insertTransactionsIdempotent } from "@/lib/ingest/identity";
 
 /**
  * Deterministic fake-bank seeder used by the Demo provider.
@@ -301,7 +302,7 @@ export async function seedDemoBank(
   });
 
   if (rows.length > 0) {
-    await db.insert(transactions).values(rows).onConflictDoNothing();
+    await insertTransactionsIdempotent(rows);
   }
 
   return { requisitionRowId, accountRowId, inserted: rows.length };

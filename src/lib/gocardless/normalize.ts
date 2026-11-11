@@ -20,6 +20,8 @@ export function toCents(amount: string): number {
 
 export interface NormalizedTransaction {
   externalId: string;
+  /** True when the bank sent no transaction id and `externalId` is a content hash. */
+  externalIdDerived: boolean;
   bookingDate: Date;
   valueDate: Date | null;
   amountCents: number;
@@ -65,13 +67,14 @@ export function normalizeTransaction(
     tx.proprietaryBankTransactionCode ||
     "(no description)";
 
+  const providerId = tx.transactionId ?? tx.internalTransactionId;
   const externalId =
-    tx.transactionId ??
-    tx.internalTransactionId ??
+    providerId ??
     `${accountHint}:${tx.bookingDate}:${tx.transactionAmount.amount}:${rawDescription.slice(0, 32)}`;
 
   return {
     externalId,
+    externalIdDerived: providerId == null,
     bookingDate: new Date(`${tx.bookingDate}T00:00:00Z`),
     valueDate: tx.valueDate ? new Date(`${tx.valueDate}T00:00:00Z`) : null,
     amountCents,
