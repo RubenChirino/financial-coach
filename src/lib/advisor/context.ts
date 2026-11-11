@@ -19,7 +19,7 @@ import {
   summarizeForecast,
 } from "@/lib/predictions/forecast";
 import { listRecurringSubscriptions, monthlyEquivalentCents } from "@/lib/recurring/list";
-import { redactPII } from "@/lib/redact";
+import { type Redacted, redact } from "@/lib/redact";
 
 export interface AdvisorContext {
   generatedAt: string;
@@ -53,7 +53,7 @@ export interface AdvisorGoal {
 }
 
 export interface AdvisorSubscription {
-  merchant: string;
+  merchant: Redacted;
   amountPerCharge: number;
   amountMonthly: number;
   frequencyDays: number;
@@ -70,7 +70,7 @@ export interface AdvisorMonth {
 }
 
 export interface AdvisorMerchant {
-  name: string; // already redacted
+  name: Redacted;
   totalSpent: number;
   txCount: number;
   categorySlug: string | null;
@@ -119,8 +119,8 @@ async function latestDataMonthOffset(userId: number): Promise<number> {
  *
  * Privacy contract:
  *   - No transaction-level rows leave this function.
- *   - Merchant names go through `redactPII` even though they're already free
- *     of digits in 99% of cases — defence in depth.
+ *   - Merchant names are typed `Redacted`: they go through `redact` even
+ *     though they're already free of digits in 99% of cases.
  *   - Amounts are rounded to whole units (euros, not cents) so that fingerprint
  *     attacks via exact balances are harder.
  *
@@ -227,7 +227,7 @@ async function selectGoals(userId: number): Promise<AdvisorGoal[]> {
 async function selectSubscriptions(userId: number): Promise<AdvisorSubscription[]> {
   const rows = await listRecurringSubscriptions(userId);
   return rows.map((s) => ({
-    merchant: redactPII(s.merchantName),
+    merchant: redact(s.merchantName),
     amountPerCharge: CENTS_TO_UNITS(s.averageAmountCents),
     amountMonthly: CENTS_TO_UNITS(monthlyEquivalentCents(s.averageAmountCents, s.frequencyDays)),
     frequencyDays: s.frequencyDays,
@@ -273,7 +273,7 @@ async function selectTopMerchants(
 
   return rows
     .map((r) => ({
-      name: redactPII((r.merchant ?? "").trim()),
+      name: redact((r.merchant ?? "").trim()),
       totalSpent: CENTS_TO_UNITS(Number(r.total) || 0),
       txCount: Number(r.txCount) || 0,
       categorySlug: r.categorySlug ?? null,

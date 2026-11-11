@@ -1,9 +1,9 @@
 import "server-only";
 
-import type { LanguageModel } from "ai";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { transactions } from "@/db/schema";
+import type { LlmHandle } from "@/lib/llm/gateway";
 import { esRegion } from "./es-regions";
 import { cacheCities, getCachedCities, type ResolvedCity, resolveCitiesWithAi } from "./locations";
 import { isOnlinePayment } from "./online-merchants";
@@ -85,14 +85,16 @@ export interface CityBatchResult {
 /**
  * Resolve one forward batch of places (key > afterKey) to countries and cache
  * them. Cursor-based on the sorted place keys so the background loop always
- * advances and terminates. `model` null → no AI available; the batch still
- * advances the cursor (resolving nothing) so the run completes.
+ * advances and terminates. `llm` is called only when the batch has places the
+ * cache can't answer, so cached batches spend no quota; when it yields null
+ * (no consent, quota used up) the batch still advances the cursor, resolving
+ * nothing, so the run completes.
  */
 export async function resolveCityBatch(opts: {
   userId: number;
   afterKey?: string;
   limit?: number;
-  model: LanguageModel | null;
+  llm: () => Promise<LlmHandle | null>;
   homeCountry: string;
 }): Promise<CityBatchResult> {
   const afterKey = opts.afterKey ?? "";
@@ -110,10 +112,11 @@ export async function resolveCityBatch(opts: {
 
   let resolved = 0;
   let aiUsed = false;
-  if (todo.length > 0 && opts.model) {
+  const llm = todo.length > 0 ? await opts.llm() : null;
+  if (llm) {
     aiUsed = true;
     const map = await resolveCitiesWithAi(
-      opts.model,
+      llm,
       todo.map((c) => c.label),
       opts.homeCountry,
     );

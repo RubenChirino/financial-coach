@@ -1,9 +1,8 @@
 import "server-only";
 
-import { generateObject } from "ai";
 import { z } from "zod";
-import { getLanguageModel } from "@/lib/llm/provider";
-import { redactPII } from "@/lib/redact";
+import type { LlmHandle } from "@/lib/llm/gateway";
+import { type Redacted, redact } from "@/lib/redact";
 import { cleanMerchant } from "./heuristics";
 
 export interface LlmCategorizeInput {
@@ -45,22 +44,46 @@ Important rules:
 - Cafés, coffee shops and bars → "coffee". Restaurants and food delivery → "dining".
 - If genuinely unsure, return "other" with confidence <= 0.4.`;
 
+/** ISO-4217 code, or "XXX" (ISO's "no currency") for anything else. */
+function currencyCode(raw: string): string {
+  return /^[A-Z]{3}$/.test(raw) ? raw : "XXX";
+}
+
+/**
+ * Build the categorization prompt. Bank-derived text arrives only as
+ * `Redacted`; everything else is app data (seeded category names, a number,
+ * a validated currency code).
+ */
+export function buildCategorizePrompt(input: {
+  merchant: Redacted;
+  description: Redacted;
+  amountCents: number;
+  currency: string;
+  categories: readonly CategoryHint[];
+}): string {
+  const signedAmount = (input.amountCents / 100).toFixed(2);
+  return [
+    `Categories (slug — name):\n${input.categories.map((c) => `- ${c.slug} — ${c.name}`).join("\n")}`,
+    `Merchant: ${input.merchant || "(none)"}`,
+    `Full description (boilerplate, lower priority): ${input.description}`,
+    `Amount: ${signedAmount} ${currencyCode(input.currency)} (negative = expense, positive = income)`,
+    "Reply with the single best slug from the list above.",
+  ].join("\n");
+}
+
 /**
  * Ask the LLM to categorize a single transaction.
  *
- * **Redaction is unconditional** — the merchant name and raw description are
- * run through `redactPII` before being sent to any model, local or cloud. The
- * amount is passed as a signed decimal (no account identifiers).
- *
- * The model picks from the allowed `categorySlugs` (usually the seeded 25);
- * anything else is coerced to "other" by the caller.
+ * The merchant name and raw description are redacted before they reach the
+ * prompt, for every provider. The amount is passed as a signed decimal (no
+ * account identifiers). The model picks from the allowed `categories`;
+ * anything else is coerced to "other".
  */
 export async function categorizeWithLlm(
+  llm: LlmHandle,
   input: LlmCategorizeInput,
   categories: readonly string[] | readonly CategoryHint[],
 ): Promise<LlmCategorizeResult> {
-  const { model, info } = getLanguageModel();
-
   // Normalize the category list to {slug, name} so the prompt can describe each.
   const cats: CategoryHint[] = categories.map((c) =>
     typeof c === "string" ? { slug: c, name: c } : c,
@@ -70,20 +93,15 @@ export async function categorizeWithLlm(
   // Clean the merchant down to the real name before redaction — strips the
   // "Comision/Tarjeta" boilerplate that otherwise skews the model toward fees.
   const cleaned = cleanMerchant(input.merchantName, input.rawDescription);
-  const safeMerchant = redactPII(cleaned || input.merchantName || "");
-  const safeDescription = redactPII(input.rawDescription).slice(0, 200);
-  const signedAmount = (input.amountCents / 100).toFixed(2);
+  const prompt = buildCategorizePrompt({
+    merchant: redact(cleaned || input.merchantName),
+    description: redact(input.rawDescription, 200),
+    amountCents: input.amountCents,
+    currency: input.currency,
+    categories: cats,
+  });
 
-  const prompt = [
-    `Categories (slug — name):\n${cats.map((c) => `- ${c.slug} — ${c.name}`).join("\n")}`,
-    `Merchant: ${safeMerchant || "(none)"}`,
-    `Full description (boilerplate, lower priority): ${safeDescription}`,
-    `Amount: ${signedAmount} ${input.currency} (negative = expense, positive = income)`,
-    "Reply with the single best slug from the list above.",
-  ].join("\n");
-
-  const { object } = await generateObject({
-    model,
+  const object = await llm.generateObject({
     schema: OutputSchema,
     instructions: SYSTEM,
     prompt,
@@ -98,7 +116,7 @@ export async function categorizeWithLlm(
   return {
     categorySlug: slug,
     confidence,
-    provider: info.provider,
-    model: info.model,
+    provider: llm.info.provider,
+    model: llm.info.model,
   };
 }

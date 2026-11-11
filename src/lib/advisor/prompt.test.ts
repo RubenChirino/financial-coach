@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { redact } from "@/lib/redact";
 import type { AdvisorContext } from "./context";
 import { buildSystemPrompt } from "./prompt";
 
@@ -17,7 +18,9 @@ const ctx: AdvisorContext = {
       categories: [{ slug: "groceries", nameEn: "Groceries", spent: 200, txCount: 5 }],
     },
   ],
-  topMerchants: [{ name: "Mercadona", totalSpent: 200, txCount: 5, categorySlug: "groceries" }],
+  topMerchants: [
+    { name: redact("Mercadona"), totalSpent: 200, txCount: 5, categorySlug: "groceries" },
+  ],
   budgets: [
     {
       slug: "groceries",
@@ -29,7 +32,7 @@ const ctx: AdvisorContext = {
   ],
   subscriptions: [
     {
-      merchant: "Netflix",
+      merchant: redact("Netflix"),
       amountPerCharge: 12,
       amountMonthly: 12,
       frequencyDays: 30,

@@ -1,9 +1,8 @@
 import "server-only";
 
-import { generateObject } from "ai";
 import { z } from "zod";
-import { getLanguageModel } from "@/lib/llm/provider";
-import { redactPII } from "@/lib/redact";
+import type { LlmHandle } from "@/lib/llm/gateway";
+import { type Redacted, redact } from "@/lib/redact";
 import type { CsvRowError, ParseCsvResult, ParsedCsvRow } from "./csv";
 
 /**
@@ -21,7 +20,7 @@ import type { CsvRowError, ParseCsvResult, ParsedCsvRow } from "./csv";
  *
  * Security posture
  * ----------------
- * **PII**: every sample line is run through `redactPII` before reaching the
+ * **PII**: every sample line is run through `redact` before reaching the
  * model. IBANs, card numbers, phone numbers, postal codes, DNI/NIE, emails,
  * and long digit sequences are masked. The structural cues (delimiter, column
  * positions, date pattern) survive redaction unchanged so detection quality
@@ -37,9 +36,8 @@ import type { CsvRowError, ParseCsvResult, ParsedCsvRow } from "./csv";
  * parameterized), never executed code. The deterministic application step
  * (`applyMapping`) is the trust boundary; the LLM is treated as untrusted.
  *
- * **Cloud consent**: when the user's configured LLM provider is non-local,
- * the calling action layer enforces the same consent gate the chat endpoint
- * uses (`users.cloudLlmConsentAt`). See `actions.ts → checkCloudConsent`.
+ * **Cloud consent**: the caller passes a handle from `resolveModelForUser`,
+ * which refuses a cloud provider until the user has consented.
  */
 
 // ---------- Spec ----------
@@ -168,8 +166,8 @@ export function splitRow(line: string, delim: string): string[] {
 
 interface SamplePayload {
   delimiterGuess: "," | ";" | "\t" | "|";
-  /** Up to 30 lines, each redacted, including any junk header rows. */
-  lines: string[];
+  /** Up to 25 lines, each redacted, including any junk header rows. */
+  lines: Redacted[];
   totalLines: number;
 }
 
@@ -185,7 +183,7 @@ export function buildSample(text: string, maxLines = 25): SamplePayload {
   // Redact each line as raw text — this catches IBANs, card numbers, phones
   // before they hit the LLM. The structural cues (delimiter, column positions,
   // date formats) survive redaction unchanged.
-  const lines = nonEmpty.map((l) => redactPII(l));
+  const lines = nonEmpty.map((l) => redact(l));
   return {
     delimiterGuess,
     lines,
@@ -230,31 +228,29 @@ Rules:
   above the header — skip them.
 - "notes" is a one-sentence human summary of what you detected, in English.`;
 
-export async function inferMapping(
-  text: string,
-  prefs?: { provider?: string | null; model?: string | null },
-): Promise<{ spec: CsvMappingSpec; provider: string; model: string }> {
-  const { model, info } = getLanguageModel(prefs ?? undefined);
-  const sample = buildSample(text);
-
-  const prompt = [
+/** Build the mapping prompt. The sample lines arrive only as `Redacted`. */
+export function buildMappingPrompt(sample: SamplePayload): string {
+  return [
     `Detected delimiter (best guess): ${describeDelim(sample.delimiterGuess)}`,
     `Total non-blank lines in file: ${sample.totalLines}`,
     "",
     "First lines (PII redacted):",
     ...sample.lines.map((l, i) => `[${i}] ${l}`),
   ].join("\n");
+}
 
-  const { object } = await generateObject({
-    model,
+export async function inferMapping(
+  llm: LlmHandle,
+  text: string,
+): Promise<{ spec: CsvMappingSpec; provider: string; model: string }> {
+  const spec = await llm.generateObject({
     schema: CsvMappingSchema,
     instructions: SYSTEM_PROMPT,
-    prompt,
+    prompt: buildMappingPrompt(buildSample(text)),
     temperature: 0,
     maxRetries: 1,
   });
-
-  return { spec: object, provider: info.provider, model: info.model };
+  return { spec, provider: llm.info.provider, model: llm.info.model };
 }
 
 function describeDelim(d: "," | ";" | "\t" | "|"): string {
@@ -624,11 +620,8 @@ function correctSeparators(text: string, spec: CsvMappingSpec): CsvMappingSpec {
  * The action layer typically calls strict `parseCsv` first and only falls
  * back here if the strict parser couldn't read the header.
  */
-export async function parseCsvWithAi(
-  text: string,
-  prefs?: { provider?: string | null; model?: string | null },
-): Promise<ParseCsvWithAiResult> {
-  const { spec: rawSpec, provider, model } = await inferMapping(text, prefs);
+export async function parseCsvWithAi(llm: LlmHandle, text: string): Promise<ParseCsvWithAiResult> {
+  const { spec: rawSpec, provider, model } = await inferMapping(llm, text);
   const spec = correctSeparators(text, rawSpec);
   const result = applyMapping(text, spec);
   return { ...result, spec, provider, model };

@@ -3,21 +3,32 @@ import "server-only";
 import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { categories, transactions } from "@/db/schema";
+import {
+  type LlmHandle,
+  type LlmRefusalCode,
+  llmRefusalCode,
+  resolveModelForUser,
+} from "@/lib/llm/gateway";
 import { cleanMerchant, keywordCategory } from "./heuristics";
 import { categorizeWithLlm } from "./llm";
 import { assignCategory, categoryIdBySlug, loadRules, matchRule, type RuleRow } from "./rules";
 
-const MAX_LLM_PER_RUN = 50;
 const RULE_CONFIDENCE = 1.0;
 const KEYWORD_CONFIDENCE = 95;
 
-export interface CategorizeResult {
-  processed: number;
-  ruleMatched: number;
-  keywordMatched: number;
-  llmMatched: number;
-  llmSkipped: number;
-  errors: number;
+/** Lazily resolves the user's model once per batch; a refusal is a value, not a throw. */
+type LlmSource = () => Promise<LlmHandle | LlmRefusalCode>;
+
+function lazyLlm(userId: number): LlmSource {
+  let pending: Promise<LlmHandle | LlmRefusalCode> | null = null;
+  return () => {
+    pending ??= resolveModelForUser(userId, "categorize").catch((err: unknown) => {
+      const code = llmRefusalCode(err);
+      if (code) return code;
+      throw err;
+    });
+    return pending;
+  };
 }
 
 interface PendingTx {
@@ -48,15 +59,18 @@ async function loadCategoryHints(): Promise<{ slug: string; name: string }[]> {
   return rows;
 }
 
+type Outcome = "rule" | "keyword" | "llm" | "error" | { skipped: LlmRefusalCode };
+
 /**
  * Try to categorize one transaction: deterministic rule → well-known-merchant
- * keyword → LLM. Returns which path matched, or "error"/"none". Never throws —
- * an LLM failure leaves the row pending for a later run.
+ * keyword → LLM. Returns which path matched. Never throws: an LLM failure or a
+ * gateway refusal (no cloud consent, quota) leaves the row pending for a later
+ * run.
  */
 async function categorizeOne(
   tx: PendingTx,
-  ctx: { rules: RuleRow[]; cats: { slug: string; name: string }[] },
-): Promise<"rule" | "keyword" | "llm" | "error"> {
+  ctx: { rules: RuleRow[]; cats: { slug: string; name: string }[]; llm: LlmSource },
+): Promise<Outcome> {
   const rule = matchRule(tx, ctx.rules);
   if (rule) {
     await assignCategory(tx.id, rule.categoryId, {
@@ -77,7 +91,9 @@ async function categorizeOne(
   }
 
   try {
-    const out = await categorizeWithLlm(tx, ctx.cats);
+    const llm = await ctx.llm();
+    if (typeof llm === "string") return { skipped: llm };
+    const out = await categorizeWithLlm(llm, tx, ctx.cats);
     const catId = await categoryIdBySlug(out.categorySlug);
     if (!catId) return "error";
     await assignCategory(tx.id, catId, {
@@ -88,6 +104,8 @@ async function categorizeOne(
     });
     return "llm";
   } catch (err) {
+    const code = llmRefusalCode(err);
+    if (code) return { skipped: code };
     console.warn("LLM categorize failed for tx", tx.id, err);
     return "error";
   }
@@ -182,6 +200,13 @@ export interface BatchResult {
   keywordMatched: number;
   llmMatched: number;
   errors: number;
+  /** Rows left pending because the LLM was refused (see `llmSkipped`). */
+  skipped: number;
+  /**
+   * Why the LLM step was refused, so the UI can ask for consent. Rules and
+   * keywords still ran for every row.
+   */
+  llmSkipped: LlmRefusalCode | null;
   /** Highest transaction id seen this batch — pass back as `afterId` to continue. */
   lastId: number;
   /** True when a full batch was returned (more may remain). */
@@ -219,90 +244,28 @@ export async function categorizePendingBatch(opts: {
     keywordMatched: 0,
     llmMatched: 0,
     errors: 0,
+    skipped: 0,
+    llmSkipped: null,
     lastId: afterId,
     hasMore: false,
   };
 
+  const llm = lazyLlm(opts.userId);
   for (const tx of pending) {
     result.lastId = tx.id;
     result.processed++;
-    const outcome = await categorizeOne(tx, { rules, cats });
+    const outcome = await categorizeOne(tx, { rules, cats, llm });
     if (outcome === "rule") result.ruleMatched++;
     else if (outcome === "keyword") result.keywordMatched++;
     else if (outcome === "llm") result.llmMatched++;
-    else result.errors++;
+    else if (outcome === "error") result.errors++;
+    else {
+      result.skipped++;
+      result.llmSkipped = outcome.skipped;
+    }
   }
 
   result.hasMore = pending.length === limit;
-  return result;
-}
-
-/**
- * Categorize transactions that haven't been assigned yet (or are still flagged
- * `needsReview`). Strategy per row: deterministic rule → well-known merchant
- * keyword → LLM (PII redacted). LLM calls are capped per run by `maxLlm`;
- * multi-run flows call again. Prefer `categorizePendingBatch` for the
- * background "categorize everything" flow.
- */
-export async function categorizeUncategorized(opts: {
-  userId: number;
-  maxLlm?: number;
-}): Promise<CategorizeResult> {
-  const rules = await loadRules(opts.userId);
-  const cats = await loadCategoryHints();
-
-  const pending = await db
-    .select(PENDING_COLUMNS)
-    .from(transactions)
-    .where(pendingWhere(opts.userId));
-
-  const result: CategorizeResult = {
-    processed: 0,
-    ruleMatched: 0,
-    keywordMatched: 0,
-    llmMatched: 0,
-    llmSkipped: 0,
-    errors: 0,
-  };
-  const maxLlm = opts?.maxLlm ?? MAX_LLM_PER_RUN;
-  let llmCalls = 0;
-
-  for (const tx of pending) {
-    result.processed++;
-    // Rule + keyword passes are free; only the LLM fallback is capped.
-    const rule = matchRule(tx, rules);
-    if (rule) {
-      await assignCategory(tx.id, rule.categoryId, {
-        needsReview: false,
-        confidence: RULE_CONFIDENCE,
-      });
-      result.ruleMatched++;
-      continue;
-    }
-    const kwSlug = keywordCategory(
-      cleanMerchant(tx.merchantName, tx.rawDescription),
-      tx.amountCents,
-    );
-    if (kwSlug) {
-      const catId = await categoryIdBySlug(kwSlug);
-      if (catId) {
-        await assignCategory(tx.id, catId, { needsReview: false, confidence: KEYWORD_CONFIDENCE });
-        result.keywordMatched++;
-        continue;
-      }
-    }
-    if (llmCalls >= maxLlm) {
-      result.llmSkipped++;
-      continue;
-    }
-    llmCalls++;
-    const outcome = await categorizeOne(tx, { rules, cats });
-    if (outcome === "llm") result.llmMatched++;
-    else if (outcome === "keyword") result.keywordMatched++;
-    else if (outcome === "rule") result.ruleMatched++;
-    else result.errors++;
-  }
-
   return result;
 }
 

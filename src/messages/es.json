@@ -202,6 +202,8 @@
     "catDoneDetail": "{count, plural, =0 {Nada nuevo que categorizar} one {# movimiento categorizado} other {# movimientos categorizados}}",
     "catDoneCorrected": "{count, plural, one {# corregido} other {# corregidos}}",
     "catDoneErrors": "{count, plural, one {# para la próxima vez} other {# para la próxima vez}}",
+    "catSkippedConsent": "{count, plural, one {# sin categorizar} other {# sin categorizar}}: aprueba la IA en la nube en Ajustes → Coach IA para ordenar el resto.",
+    "catSkippedRateLimited": "{count, plural, one {# para la próxima vez} other {# para la próxima vez}}: se alcanzó el límite de IA, inténtalo en un minuto.",
     "catErrorTitle": "Categorización detenida",
     "catClose": "Descartar",
     "guestNudge": "Inicia sesión para guardar cambios — el modo invitado es solo lectura.",

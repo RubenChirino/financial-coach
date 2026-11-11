@@ -2,13 +2,9 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db } from "@/db/client";
-import { users } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
-import { providerInfo } from "@/lib/llm/provider";
-import { consumeQuota } from "@/lib/security/rate-limit";
+import { llmRefusalCode, resolveModelForUser } from "@/lib/llm/gateway";
 import { type CsvMappingSpec, parseCsvWithAi } from "./ai-mapper";
 import { type ParseCsvResult, parseCsv } from "./csv";
 import { ensureImportedAccount, importParsedRows } from "./ingest";
@@ -65,48 +61,6 @@ function parseAndSummarize(text: string): ParseCsvResult {
   return parseCsv(text);
 }
 
-async function loadLlmPrefs(userId: number): Promise<{
-  provider: string | null;
-  model: string | null;
-  cloudConsent: Date | null;
-}> {
-  const row = await db
-    .select({
-      provider: users.llmProvider,
-      model: users.llmModel,
-      cloudConsent: users.cloudLlmConsentAt,
-    })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return {
-    provider: row[0]?.provider ?? null,
-    model: row[0]?.model ?? null,
-    cloudConsent: row[0]?.cloudConsent ?? null,
-  };
-}
-
-/**
- * Decide whether the AI CSV path is allowed to call the user's configured
- * LLM right now. Mirrors the consent gate `/api/advisor/chat` enforces:
- * any non-Ollama provider requires the user to have ticked the consent box
- * in Settings, because we'd otherwise ship redacted-but-still-private bank
- * data to a third-party API without informed opt-in.
- *
- * Returns null when the call is permitted, or an error string to surface to
- * the UI so it can prompt for consent.
- */
-function checkCloudConsent(prefs: {
-  provider: string | null;
-  model: string | null;
-  cloudConsent: Date | null;
-}): string | null {
-  const info = providerInfo({ provider: prefs.provider, model: prefs.model });
-  if (info.isLocal) return null;
-  if (prefs.cloudConsent != null) return null;
-  return "cloudConsentRequired";
-}
-
 interface RunImportOptions {
   /** "auto" (default) tries strict first then AI; "ai" forces AI; "strict" forces strict. */
   mode?: "auto" | "ai" | "strict";
@@ -144,16 +98,9 @@ async function resolveParse(
   }
 
   try {
-    const prefs = await loadLlmPrefs(userId);
-    const consentError = checkCloudConsent(prefs);
-    if (consentError) return { kind: "error", error: consentError };
-    // Rate-limit AI calls per user. Each AI import call is a paid roundtrip
-    // (Gemini) and the LLM context can be a few KB of redacted bank data,
-    // so abuse here is more expensive than chat. 10 attempts / 5 min is
-    // generous (a real user re-imports occasionally; a bot would saturate).
-    const quota = consumeQuota(`csv-ai:${userId}`, 10, 5 * 60_000);
-    if (!quota.allowed) return { kind: "error", error: "rateLimited" };
-    const aiResult = await parseCsvWithAi(text, prefs);
+    // Consent and the per-user quota are enforced by the gateway.
+    const llm = await resolveModelForUser(userId, "csv-mapping");
+    const aiResult = await parseCsvWithAi(llm, text);
     const ai: AiDetectionInfo = {
       used: true,
       provider: aiResult.provider,
@@ -169,6 +116,8 @@ async function resolveParse(
       ai,
     };
   } catch (err) {
+    const refusal = llmRefusalCode(err);
+    if (refusal) return { kind: "error", error: refusal };
     console.error("AI CSV import failed", err);
     const message = err instanceof Error ? err.message : "unknown";
     return { kind: "error", error: "aiUnavailable", ai: { used: true, error: message } };

@@ -15,8 +15,19 @@ const DNI_NIE_RE = /\b[XYZ]?\d{7,8}[A-HJ-NP-TV-Z]\b/gi;
 const POSTAL_RE = /\b\d{5}(?:-\d{4})?\b/g;
 const LONG_DIGITS_RE = /\b\d{10,}\b/g;
 
-export function redactPII(input: string): string {
-  if (!input) return input;
+declare const redactedBrand: unique symbol;
+
+/**
+ * Text that has been through `redact()`.
+ *
+ * Prompt builders take this type, never `string`, for anything that came from
+ * a bank, a file or a transaction row, so unredacted text cannot reach a
+ * prompt without a type error. `redact()` is the only constructor: a cast to
+ * `Redacted` anywhere else fails `src/lib/llm/boundary.test.ts`.
+ */
+export type Redacted = string & { readonly [redactedBrand]: true };
+
+function strip(input: string): string {
   return input
     .replace(IBAN_RE, "[IBAN]")
     .replace(CARD_RE, (m) => (m.replace(/\D/g, "").length >= 13 ? "[CARD]" : m))
@@ -27,11 +38,26 @@ export function redactPII(input: string): string {
     .replace(LONG_DIGITS_RE, "[NUM]");
 }
 
+/**
+ * Redact `input`, optionally truncating it to `maxLength` characters.
+ *
+ * Truncation happens after redaction (cutting first could split an IBAN so
+ * the pattern no longer matches) and the result is redacted again, because a
+ * cut can turn a non-match into a match ("12345678ZA" is not a DNI, its
+ * prefix "12345678Z" is).
+ */
+export function redact(input: string | null | undefined, maxLength?: number): Redacted {
+  if (!input) return "" as Redacted;
+  let out = strip(input);
+  if (maxLength != null && out.length > maxLength) out = strip(out.slice(0, maxLength));
+  return out as Redacted;
+}
+
 export interface RedactedTransaction {
   date: string;
   amount: number;
   currency: string;
-  merchant: string;
+  merchant: Redacted;
   category: string | null;
 }
 
@@ -43,15 +69,14 @@ export function redactTransaction(tx: {
   rawDescription: string;
   category: string | null;
 }): RedactedTransaction {
-  const merchant =
-    tx.merchantName?.trim() || redactPII(tx.rawDescription).slice(0, 80) || "Unknown";
+  const merchant = tx.merchantName?.trim() || redact(tx.rawDescription, 80) || "Unknown";
   const date =
     typeof tx.bookingDate === "string" ? tx.bookingDate : tx.bookingDate.toISOString().slice(0, 10);
   return {
     date,
     amount: tx.amountCents / 100,
     currency: tx.currency,
-    merchant: redactPII(merchant),
+    merchant: redact(merchant),
     category: tx.category,
   };
 }

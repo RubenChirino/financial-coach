@@ -202,6 +202,8 @@
     "catDoneDetail": "{count, plural, =0 {Nothing new to categorize} one {# transaction categorized} other {# transactions categorized}}",
     "catDoneCorrected": "{count, plural, one {# fixed} other {# fixed}}",
     "catDoneErrors": "{count, plural, one {# left for next run} other {# left for next run}}",
+    "catSkippedConsent": "{count, plural, one {# left uncategorized} other {# left uncategorized}}: approve cloud AI in Settings → AI Coach to sort the rest.",
+    "catSkippedRateLimited": "{count, plural, one {# left for the next run} other {# left for the next run}}: the AI limit was reached, try again in a minute.",
     "catErrorTitle": "Categorization stopped",
     "catClose": "Dismiss",
     "guestNudge": "Sign in to save changes — guest mode is read-only.",

@@ -1,0 +1,394 @@
+import { convertArrayToReadableStream, MockLanguageModelV4 } from "ai/test";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestDb } from "@/test/db-fixture";
+
+/**
+ * End-to-end checks for the gateway's three guarantees, with every provider
+ * SDK replaced by a mock model that records the exact prompt it receives:
+ *
+ *  - Redaction: for every feature that calls a model (categorize, CSV mapping,
+ *    travel city, travel places, chat), bank text seeded with an IBAN, card,
+ *    email, phone and DNI/NIE never reaches the model.
+ *  - Provider choice: the user's stored provider and model are the ones called.
+ *  - Consent: a cloud provider without consent is refused before any call;
+ *    categorization still applies rules and keywords and reports why it
+ *    skipped the LLM.
+ */
+
+const fixture = await createTestDb();
+vi.mock("@/db/client", () => ({ db: fixture.db, client: fixture.client }));
+
+const testEnv = vi.hoisted(() => ({
+  AUTH_MODE: "local" as "local" | "oauth",
+  LLM_PROVIDER: "ollama",
+  OLLAMA_BASE_URL: "http://127.0.0.1:11434",
+  OLLAMA_MODEL: "llama-test",
+  ANTHROPIC_API_KEY: "test-key",
+  ANTHROPIC_MODEL: "claude-test",
+  OPENAI_API_KEY: "test-key",
+  OPENAI_MODEL: "gpt-test",
+  GOOGLE_GENERATIVE_AI_API_KEY: "test-key",
+  GOOGLE_MODEL: "gemini-test",
+}));
+vi.mock("@/lib/env", () => ({ env: () => testEnv }));
+
+interface Captured {
+  provider: string;
+  modelId: string;
+  text: string;
+}
+const captured: Captured[] = [];
+/** What the mock model answers, given the prompt text it received. */
+let reply: (prompt: string) => string = () => "";
+
+const USAGE = {
+  inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+  outputTokens: { total: 1, text: 1, reasoning: 0 },
+};
+
+type ModelPrompt = Parameters<MockLanguageModelV4["doGenerate"]>[0]["prompt"];
+
+function promptText(prompt: ModelPrompt): string {
+  return prompt
+    .flatMap((m) =>
+      typeof m.content === "string"
+        ? [m.content]
+        : m.content.flatMap((p) => (p.type === "text" ? [p.text] : [])),
+    )
+    .join("\n");
+}
+
+function mockModel(provider: string, modelId: string) {
+  return new MockLanguageModelV4({
+    provider,
+    modelId,
+    doGenerate: async ({ prompt }) => {
+      const text = promptText(prompt);
+      captured.push({ provider, modelId, text });
+      return {
+        content: [{ type: "text", text: reply(text) }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: USAGE,
+        warnings: [],
+      };
+    },
+    doStream: async ({ prompt }) => {
+      captured.push({ provider, modelId, text: promptText(prompt) });
+      return {
+        stream: convertArrayToReadableStream([
+          { type: "stream-start", warnings: [] },
+          { type: "text-start", id: "t" },
+          { type: "text-delta", id: "t", delta: "ok" },
+          { type: "text-end", id: "t" },
+          { type: "finish", finishReason: { unified: "stop", raw: undefined }, usage: USAGE },
+        ]),
+      };
+    },
+  });
+}
+
+vi.mock("@ai-sdk/anthropic", () => ({
+  createAnthropic: () => (id: string) => mockModel("anthropic", id),
+}));
+vi.mock("@ai-sdk/openai", () => ({ createOpenAI: () => (id: string) => mockModel("openai", id) }));
+vi.mock("@ai-sdk/google", () => ({
+  createGoogleGenerativeAI: () => (id: string) => mockModel("google", id),
+}));
+vi.mock("ollama-ai-provider-v2", () => ({
+  createOllama: () => (id: string) => mockModel("ollama", id),
+}));
+
+const schema = await import("@/db/schema");
+const { CloudConsentRequired, LlmRateLimited, resolveModelForUser } = await import("./gateway");
+const { categorizePendingBatch } = await import("@/lib/categorize");
+const { parseCsvWithAi } = await import("@/lib/import/ai-mapper");
+const { generateCity } = await import("@/lib/travels/city");
+const { resolveCitiesWithAi } = await import("@/lib/travels/locations");
+const { cityKey } = await import("@/lib/travels/parse-location");
+const { buildAdvisorContext } = await import("@/lib/advisor/context");
+const { buildSystemPrompt } = await import("@/lib/advisor/prompt");
+
+/** One string per identifier type; each feature is fed every one of them. */
+const PII = [
+  "ES76 0049 1500 0512 3456 7892",
+  "ES9121000418450200051332",
+  "es76 0049 1500 0512 3456 7892",
+  "4111 1111 1111 1111",
+  "5500-0000-0000-0004",
+  "maria.garcia@example.com",
+  "+34 612 345 678",
+  "612345678",
+  "12345678Z",
+  "X1234567L",
+];
+/** Marker that must survive redaction — proves the data reached the prompt. */
+const MARKER = "ZQX";
+
+const squash = (s: string) => s.replace(/[\s-]/g, "").toLowerCase();
+
+function expectNoPii(text: string) {
+  expect(text).toContain(MARKER);
+  for (const pii of PII) {
+    expect(text).not.toContain(pii);
+    expect(squash(text)).not.toContain(squash(pii));
+  }
+}
+
+const USERS = {
+  cloudConsented: 1,
+  cloudNoConsent: 2,
+  local: 3,
+  openai: 4,
+  quota: 5,
+  budget: 6,
+};
+
+let accountByUser: Record<number, number> = {};
+let txSeq = 0;
+
+async function addTx(userId: number, merchantName: string, rawDescription = merchantName) {
+  txSeq++;
+  await fixture.db.insert(schema.transactions).values({
+    userId,
+    accountId: accountByUser[userId]!,
+    gocardlessTransactionId: `tx-${txSeq}`,
+    bookingDate: new Date(),
+    amountCents: -1_000 - txSeq,
+    merchantName,
+    rawDescription,
+  });
+}
+
+beforeAll(async () => {
+  const d = fixture.db;
+  const consent = new Date();
+  await d.insert(schema.users).values([
+    {
+      id: USERS.cloudConsented,
+      encryptionSalt: "1",
+      llmProvider: "anthropic",
+      cloudLlmConsentAt: consent,
+    },
+    { id: USERS.cloudNoConsent, encryptionSalt: "2", llmProvider: "anthropic" },
+    { id: USERS.local, encryptionSalt: "3", llmProvider: "ollama" },
+    {
+      id: USERS.openai,
+      encryptionSalt: "4",
+      llmProvider: "openai",
+      llmModel: "gpt-4o-mini",
+      cloudLlmConsentAt: consent,
+    },
+    { id: USERS.quota, encryptionSalt: "5", llmProvider: "ollama" },
+    { id: USERS.budget, encryptionSalt: "6", llmProvider: "ollama" },
+  ]);
+  await d.insert(schema.categories).values([
+    { slug: "groceries", nameEs: "Súper", nameEn: "Groceries", icon: "x", color: "#000" },
+    { slug: "other", nameEs: "Otros", nameEn: "Other", icon: "x", color: "#111" },
+  ]);
+  const [inst] = await d
+    .insert(schema.institutions)
+    .values({ gocardlessId: "DEMO", name: "Demo", country: "ES" })
+    .returning();
+  accountByUser = {};
+  for (const userId of Object.values(USERS)) {
+    const [req] = await d
+      .insert(schema.requisitions)
+      .values({
+        userId,
+        institutionId: inst!.id,
+        provider: "demo",
+        gocardlessRequisitionId: `enc-${userId}`,
+        status: "linked",
+        reference: `r-${userId}`,
+      })
+      .returning();
+    const [acc] = await d
+      .insert(schema.accounts)
+      .values({ userId, requisitionId: req!.id, gocardlessAccountId: "enc", name: "A" })
+      .returning();
+    accountByUser[userId] = acc!.id;
+  }
+});
+
+beforeEach(() => {
+  captured.length = 0;
+  reply = () => "";
+  testEnv.AUTH_MODE = "local";
+});
+
+describe("gateway redaction — every feature that calls a model", () => {
+  it("categorize", async () => {
+    for (const pii of PII)
+      await addTx(USERS.cloudConsented, `${MARKER} STORE ${pii}`, `PAGO ${pii}`);
+    reply = () => JSON.stringify({ categorySlug: "groceries", confidence: 0.9 });
+
+    const res = await categorizePendingBatch({ userId: USERS.cloudConsented, limit: 100 });
+
+    expect(res.llmMatched).toBe(PII.length);
+    expect(captured).toHaveLength(PII.length);
+    for (const c of captured) expectNoPii(c.text);
+  });
+
+  it("CSV mapping", async () => {
+    const csv = [
+      "Fecha;Concepto;Importe",
+      ...PII.map((pii, i) => `0${(i % 9) + 1}/03/2026;${MARKER} ${pii};-${i + 1},50`),
+    ].join("\n");
+    reply = () =>
+      JSON.stringify({
+        delimiter: ";",
+        headerLineIndex: 0,
+        dateColumn: 0,
+        dateFormat: "DD/MM/YYYY",
+        amountMode: "single",
+        amountColumn: 2,
+        debitColumn: null,
+        creditColumn: null,
+        amountSign: "negative-out",
+        decimalSeparator: ",",
+        thousandsSeparator: "none",
+        currencyColumn: -1,
+        defaultCurrency: "EUR",
+        merchantColumn: -1,
+        descriptionColumn: 1,
+        notes: "test",
+      });
+
+    const llm = await resolveModelForUser(USERS.cloudConsented, "csv-mapping");
+    const res = await parseCsvWithAi(llm, csv);
+
+    expect(res.rows).toHaveLength(PII.length);
+    expect(captured).toHaveLength(1);
+    expectNoPii(captured[0]!.text);
+  });
+
+  it("travel city", async () => {
+    reply = () => "Lisbon";
+    const llm = await resolveModelForUser(USERS.cloudConsented, "travel-city");
+    const city = await generateCity({
+      llm,
+      country: "Portugal",
+      currency: "EUR",
+      merchantNames: PII.map((pii) => `${MARKER} ${pii}`),
+    });
+
+    expect(city).toBe("Lisbon");
+    expect(captured).toHaveLength(1);
+    expectNoPii(captured[0]!.text);
+  });
+
+  it("travel places — and answers keyed by the redacted name map back to the original", async () => {
+    const places = ["Lisboa", ...PII.map((pii) => `${MARKER} ${pii}`)];
+    // Answer the way a model does: keyed by exactly the strings it was sent.
+    reply = (prompt) => {
+      const sent = JSON.parse(prompt.slice(prompt.indexOf("Items:") + 6)) as string[];
+      return JSON.stringify(Object.fromEntries(sent.map((s) => [s, { country: "PT" }])));
+    };
+    const llm = await resolveModelForUser(USERS.cloudConsented, "travel-places");
+    const result = await resolveCitiesWithAi(llm, places, "ES");
+
+    expect(captured).toHaveLength(1);
+    expectNoPii(captured[0]!.text);
+    for (const place of places) expect(result.get(cityKey(place))?.countryCode).toBe("PT");
+  });
+
+  it("chat — the system prompt built from the user's data", async () => {
+    await addTx(USERS.local, `${MARKER} ${PII.join(" / ")}`);
+    await fixture.db.insert(schema.recurringSubscriptions).values({
+      userId: USERS.local,
+      merchantName: `${MARKER} SUB ${PII.join(" / ")}`,
+      averageAmountCents: 1_299,
+      frequencyDays: 30,
+      lastSeenAt: new Date(),
+      isActive: true,
+    });
+    const ctx = await buildAdvisorContext({ userId: USERS.local });
+    const llm = await resolveModelForUser(USERS.local, "chat");
+
+    const result = llm.streamText({
+      instructions: buildSystemPrompt("en", ctx),
+      messages: [{ role: "user", content: "How am I doing?" }],
+    });
+    expect(await result.text).toBe("ok");
+
+    expect(captured).toHaveLength(1);
+    expectNoPii(captured[0]!.text);
+    expect(captured[0]!.text).toContain(`${MARKER} SUB`);
+  });
+});
+
+describe("gateway provider choice and consent", () => {
+  it("uses the user's stored provider and model", async () => {
+    await addTx(USERS.openai, `${MARKER} UNKNOWN SHOP`);
+    reply = () => JSON.stringify({ categorySlug: "groceries", confidence: 0.9 });
+
+    await categorizePendingBatch({ userId: USERS.openai });
+
+    expect(captured.map(({ provider, modelId }) => ({ provider, modelId }))).toEqual([
+      { provider: "openai", modelId: "gpt-4o-mini" },
+    ]);
+  });
+
+  it("refuses a cloud provider without consent, before any model call", async () => {
+    await expect(resolveModelForUser(USERS.cloudNoConsent, "chat")).rejects.toBeInstanceOf(
+      CloudConsentRequired,
+    );
+    expect(captured).toHaveLength(0);
+  });
+
+  it("categorization without consent still applies keywords and reports why it skipped the LLM", async () => {
+    await addTx(USERS.cloudNoConsent, "MERCADONA MADRID");
+    await addTx(USERS.cloudNoConsent, `${MARKER} UNKNOWN SHOP`);
+
+    const res = await categorizePendingBatch({ userId: USERS.cloudNoConsent });
+
+    expect(res).toMatchObject({
+      processed: 2,
+      keywordMatched: 1,
+      llmMatched: 0,
+      errors: 0,
+      skipped: 1,
+      llmSkipped: "cloudConsentRequired",
+    });
+    expect(captured).toHaveLength(0);
+  });
+
+  it("a local provider needs no consent", async () => {
+    const llm = await resolveModelForUser(USERS.local, "travel-city");
+    expect(llm.info).toMatchObject({ provider: "ollama", isLocal: true });
+  });
+
+  it("hosted mode ignores an Ollama preference, and the cloud fallback needs consent", async () => {
+    testEnv.AUTH_MODE = "oauth";
+    await expect(resolveModelForUser(USERS.local, "chat")).rejects.toBeInstanceOf(
+      CloudConsentRequired,
+    );
+  });
+
+  it("a refused call does not use up the quota", async () => {
+    for (let i = 0; i < 15; i++) {
+      await expect(resolveModelForUser(USERS.cloudNoConsent, "csv-mapping")).rejects.toBeInstanceOf(
+        CloudConsentRequired,
+      );
+    }
+  });
+});
+
+describe("gateway quotas", () => {
+  it("enforces the per-purpose window", async () => {
+    for (let i = 0; i < 10; i++) await resolveModelForUser(USERS.quota, "csv-mapping");
+    await expect(resolveModelForUser(USERS.quota, "csv-mapping")).rejects.toBeInstanceOf(
+      LlmRateLimited,
+    );
+    // Other purposes have their own window.
+    await expect(resolveModelForUser(USERS.quota, "travel-city")).resolves.toBeDefined();
+  });
+
+  it("enforces the per-operation call budget", async () => {
+    reply = () => "Lisbon";
+    const llm = await resolveModelForUser(USERS.budget, "travel-city");
+    await llm.generateText({ prompt: "one" });
+    await expect(llm.generateText({ prompt: "two" })).rejects.toBeInstanceOf(LlmRateLimited);
+    expect(captured).toHaveLength(1);
+  });
+});

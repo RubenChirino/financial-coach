@@ -1,4 +1,3 @@
-import { streamText } from "ai";
 import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { db } from "@/db/client";
@@ -13,9 +12,13 @@ import {
 } from "@/lib/advisor/conversations";
 import { buildSystemPrompt } from "@/lib/advisor/prompt";
 import { getCurrentSession } from "@/lib/auth/session";
-import { getLanguageModel, providerInfo } from "@/lib/llm/provider";
+import {
+  CloudConsentRequired,
+  type LlmHandle,
+  LlmRateLimited,
+  resolveModelForUser,
+} from "@/lib/llm/gateway";
 import { guardCsrf } from "@/lib/security/csrf";
-import { consumeQuota } from "@/lib/security/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,9 +51,9 @@ function textOf(message: ChatBody["messages"][number]): string {
  *
  * Flow per request:
  *   1. Auth check via session cookie. No session → 401.
- *   2. Cloud-consent gate: if provider != ollama and `cloudLlmConsentAt` is null → 403.
- *      The UI shows a consent dialog and POSTs to a separate consent action; only
- *      then is the chat call retried.
+ *   2. The gateway resolves the user's model: a cloud provider without consent
+ *      → 403 `cloudConsentRequired` (the UI shows the consent dialog, then
+ *      retries); over the chat quota → 429. Both before any body parsing.
  *   3. Build a *fresh* `AdvisorContext` (redacted aggregates) per request. We don't
  *      cache it — the user's data may have changed since the last turn.
  *   4. Persist the user's new message immediately (so refresh-mid-stream still
@@ -75,40 +78,28 @@ export async function POST(req: NextRequest): Promise<Response> {
     });
   }
 
-  // Rate limit BEFORE any DB read or LLM call. Caps per-user spend and
-  // contains worst-case abuse (e.g. session theft) to a known ceiling.
-  //
-  // Window sizing rationale:
-  //   - 20 chat turns / 60s is more than any human will sustain (one turn
-  //     per ~3s including read time is already fast), so legitimate use is
-  //     unaffected.
-  //   - At 20/min the Gemini free tier (15 RPM globally) is still the
-  //     binding limit if traffic ever concentrates, but this caps any
-  //     SINGLE user from exhausting it for everyone else.
-  const quota = consumeQuota(`chat:${session.userId}`, 20, 60_000);
-  if (!quota.allowed) {
-    return new Response(JSON.stringify({ error: "rateLimited" }), {
-      status: 429,
-      headers: {
-        "content-type": "application/json",
-        "retry-after": String(Math.ceil(quota.resetInMs / 1000)),
-      },
-    });
-  }
-
   const user = await db.query.users.findFirst({
+    columns: { language: true },
     where: eq(users.id, session.userId),
   });
   if (!user) return new Response("user not found", { status: 401 });
 
-  const prefs = { provider: user.llmProvider, model: user.llmModel };
-  const info = providerInfo(prefs);
-
-  if (!info.isLocal && user.cloudLlmConsentAt == null) {
-    return new Response(JSON.stringify({ error: "cloudConsentRequired" }), {
-      status: 403,
-      headers: { "content-type": "application/json" },
-    });
+  // Consent and the per-user chat quota (gateway policy "chat") are checked
+  // before the body is read or anything is persisted.
+  let llm: LlmHandle;
+  try {
+    llm = await resolveModelForUser(session.userId, "chat");
+  } catch (err) {
+    if (err instanceof CloudConsentRequired) {
+      return Response.json({ error: err.code }, { status: 403 });
+    }
+    if (err instanceof LlmRateLimited) {
+      return Response.json(
+        { error: err.code },
+        { status: 429, headers: { "retry-after": String(Math.ceil(err.retryAfterMs / 1000)) } },
+      );
+    }
+    throw err;
   }
 
   // Bound the request body before parsing. 256 KB is generous for a chat turn
@@ -158,10 +149,8 @@ export async function POST(req: NextRequest): Promise<Response> {
   const ctx = await buildAdvisorContext({ monthsBack: 3, userId: session.userId });
   const instructions = buildSystemPrompt(language, ctx);
 
-  const { model } = getLanguageModel(prefs);
-
-  const result = streamText({
-    model,
+  const { info } = llm;
+  const result = llm.streamText({
     // v7 renamed `system` to `instructions` and `onFinish` to `onEnd`. The old
     // names still work as deprecated aliases; using the current ones keeps the
     // next major from breaking silently.

@@ -7,7 +7,7 @@ import { db } from "@/db/client";
 import { accounts, institutions, requisitions, users } from "@/db/schema";
 import { snapshotBalances } from "@/lib/accounts/history";
 import { getCurrentSession } from "@/lib/auth/session";
-import { categorizeBatchByRules, categorizeUncategorized } from "@/lib/categorize";
+import { categorizeBatchByRules } from "@/lib/categorize";
 import { decrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { detectTransfers } from "@/lib/transfers/detect";
@@ -242,24 +242,6 @@ export async function syncAllAccountsAction(): Promise<
       ok: true,
       data: { inserted, skipped, accounts: rows.length, ruleMatched },
     };
-  } catch (err) {
-    return { ok: false, error: humanizeError(err) };
-  }
-}
-
-export async function categorizeNowAction(maxLlm?: number): Promise<
-  ActionResult<{
-    processed: number;
-    ruleMatched: number;
-    llmMatched: number;
-    llmSkipped: number;
-    errors: number;
-  }>
-> {
-  try {
-    const session = await requireSession();
-    const res = await categorizeUncategorized({ userId: session.userId, maxLlm });
-    return { ok: true, data: res };
   } catch (err) {
     return { ok: false, error: humanizeError(err) };
   }

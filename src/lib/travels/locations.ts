@@ -1,9 +1,10 @@
 import "server-only";
 
-import { generateText, type LanguageModel } from "ai";
 import { inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { cityCountries } from "@/db/schema";
+import type { LlmHandle } from "@/lib/llm/gateway";
+import { type Redacted, redact } from "@/lib/redact";
 import { cityKey } from "./parse-location";
 
 export interface ResolvedCity {
@@ -109,14 +110,35 @@ function parsePlace(raw: unknown): AiPlace {
 }
 
 /**
+ * Build the place-resolution prompt. Place names come from transaction
+ * descriptions, so they arrive only as `Redacted`; `homeCountry` is validated
+ * as an ISO alpha-2 code before use.
+ */
+export function buildPlacesPrompt(places: readonly Redacted[], homeCountry?: string): string {
+  const homeCc = homeCountry?.trim().toUpperCase();
+  const homeBias =
+    homeCc && /^[A-Z]{2}$/.test(homeCc)
+      ? `\nThe card holder lives in ${homeCc}. Many place names exist in several countries (e.g. Córdoba, Santiago, León, Valencia, Mérida); if a place is a real city/town in ${homeCc}, use ${homeCc}. Only use a foreign code when the place is clearly NOT in ${homeCc}.`
+      : "";
+  return `For each place name below (taken from card-payment descriptions), return its country and, for places in Spain (ES), its autonomous community.
+- "country": ISO-3166 alpha-2 code, or null if the item is NOT a real place (a website, brand, or random text).
+- "region": for Spanish places, EXACTLY one of: ${ES_COMMUNITIES.join(", ")}. For non-Spanish places, null.${homeBias}
+Return ONLY a JSON object mapping each input string to {"country": "XX"|null, "region": "..."|null}. No prose.
+
+Items:
+${JSON.stringify(places)}`;
+}
+
+/**
  * Ask the LLM to map a batch of place names to a country (ISO-3166 alpha-2) and,
  * for Spanish places, the autonomous community (so we can spot domestic trips
- * outside the user's home community). Returns a map keyed by normalized cityKey.
+ * outside the user's home community). Returns a map keyed by normalized cityKey
+ * of the original (unredacted) name.
  *
  * One call per ~50 places; resilient to malformed output (returns what parsed).
  */
 export async function resolveCitiesWithAi(
-  model: LanguageModel,
+  llm: LlmHandle,
   cities: string[],
   homeCountry?: string,
 ): Promise<Map<string, AiPlace>> {
@@ -124,29 +146,21 @@ export async function resolveCitiesWithAi(
   const unique = [...new Set(cities)].filter(Boolean);
   if (unique.length === 0) return result;
 
-  const homeCc = homeCountry?.trim().toUpperCase();
-  const homeBias =
-    homeCc && /^[A-Z]{2}$/.test(homeCc)
-      ? `\nThe card holder lives in ${homeCc}. Many place names exist in several countries (e.g. Córdoba, Santiago, León, Valencia, Mérida); if a place is a real city/town in ${homeCc}, use ${homeCc}. Only use a foreign code when the place is clearly NOT in ${homeCc}.`
-      : "";
-
   const BATCH = 50;
   for (let i = 0; i < unique.length; i += BATCH) {
-    const batch = unique.slice(i, i + BATCH);
-    const prompt = `For each place name below (taken from card-payment descriptions), return its country and, for places in Spain (ES), its autonomous community.
-- "country": ISO-3166 alpha-2 code, or null if the item is NOT a real place (a website, brand, or random text).
-- "region": for Spanish places, EXACTLY one of: ${ES_COMMUNITIES.join(", ")}. For non-Spanish places, null.${homeBias}
-Return ONLY a JSON object mapping each input string to {"country": "XX"|null, "region": "..."|null}. No prose.
-
-Items:
-${JSON.stringify(batch)}`;
+    const batch = unique.slice(i, i + BATCH).map((city) => ({ city, sent: redact(city) }));
+    const prompt = buildPlacesPrompt(
+      batch.map((b) => b.sent),
+      homeCountry,
+    );
 
     try {
-      const { text } = await generateText({ model, prompt, temperature: 0, maxOutputTokens: 2500 });
+      const text = await llm.generateText({ prompt, temperature: 0, maxOutputTokens: 2500 });
       const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
       const parsed = JSON.parse(json) as Record<string, unknown>;
-      for (const city of batch) {
-        result.set(cityKey(city), parsePlace(parsed[city]));
+      // The model answers keyed by the string it was sent, i.e. the redacted one.
+      for (const { city, sent } of batch) {
+        result.set(cityKey(city), parsePlace(parsed[sent]));
       }
     } catch {
       // Leave this batch unresolved; the sync pass treats missing keys as "not

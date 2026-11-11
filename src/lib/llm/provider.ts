@@ -1,17 +1,13 @@
 import "server-only";
 
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createOpenAI } from "@ai-sdk/openai";
-import type { LanguageModel } from "ai";
-// `ollama-ai-provider` was archived at the AI SDK v4 provider spec
-// (LanguageModelV1); `ollama-ai-provider-v2` is the maintained continuation.
-// Its major line tracks the provider spec, not the `ai` version, so the two
-// must move together: 4.x is built against `@ai-sdk/provider@4`, which is what
-// `ai@7` speaks. Downgrading `ai` without downgrading this (or vice versa)
-// produces a model object the runtime rejects.
-import { createOllama } from "ollama-ai-provider-v2";
 import { env } from "@/lib/env";
+
+/**
+ * Provider configuration: which providers exist, which are configured, and
+ * which one a user's preferences resolve to. Pure data — no SDK imports. The
+ * only way to obtain a model is `resolveModelForUser` in `./gateway`, which
+ * enforces cloud consent and quotas.
+ */
 
 export type LlmProvider = "ollama" | "anthropic" | "openai" | "google";
 
@@ -82,7 +78,7 @@ export function getAvailableProviders(): AvailableProvider[] {
   ];
 }
 
-interface UserPrefs {
+export interface UserPrefs {
   provider?: string | null;
   model?: string | null;
 }
@@ -101,7 +97,7 @@ interface UserPrefs {
  * preference as if it were unset and fall through to the env-configured
  * provider (which, in hosted mode, should be a cloud provider like Gemini).
  */
-function resolve(prefs?: UserPrefs): { provider: LlmProvider; model: string } {
+export function resolveProvider(prefs?: UserPrefs): ProviderInfo {
   const e = env();
   const isHosted = e.AUTH_MODE === "oauth";
 
@@ -110,16 +106,16 @@ function resolve(prefs?: UserPrefs): { provider: LlmProvider; model: string } {
     const m = prefs.model?.trim() || undefined;
     switch (p) {
       case "anthropic":
-        if (e.ANTHROPIC_API_KEY) return { provider: p, model: m ?? e.ANTHROPIC_MODEL };
+        if (e.ANTHROPIC_API_KEY) return cloud(p, m ?? e.ANTHROPIC_MODEL);
         break;
       case "openai":
-        if (e.OPENAI_API_KEY) return { provider: p, model: m ?? e.OPENAI_MODEL };
+        if (e.OPENAI_API_KEY) return cloud(p, m ?? e.OPENAI_MODEL);
         break;
       case "google":
-        if (e.GOOGLE_GENERATIVE_AI_API_KEY) return { provider: p, model: m ?? e.GOOGLE_MODEL };
+        if (e.GOOGLE_GENERATIVE_AI_API_KEY) return cloud(p, m ?? e.GOOGLE_MODEL);
         break;
       case "ollama":
-        if (!isHosted) return { provider: p, model: m ?? e.OLLAMA_MODEL };
+        if (!isHosted) return { provider: p, model: m ?? e.OLLAMA_MODEL, isLocal: true };
         // Hosted mode: ignore ollama preference, fall through to env fallback.
         break;
     }
@@ -131,47 +127,30 @@ function resolve(prefs?: UserPrefs): { provider: LlmProvider; model: string } {
   const envProvider = e.LLM_PROVIDER === "ollama" && isHosted ? "google" : e.LLM_PROVIDER;
   switch (envProvider) {
     case "anthropic":
-      return { provider: "anthropic", model: e.ANTHROPIC_MODEL };
+      return cloud("anthropic", e.ANTHROPIC_MODEL);
     case "openai":
-      return { provider: "openai", model: e.OPENAI_MODEL };
+      return cloud("openai", e.OPENAI_MODEL);
     case "google":
-      return { provider: "google", model: e.GOOGLE_MODEL };
+      return cloud("google", e.GOOGLE_MODEL);
     default:
-      return { provider: "ollama", model: e.OLLAMA_MODEL };
+      return { provider: "ollama", model: e.OLLAMA_MODEL, isLocal: true };
   }
+}
+
+function cloud(provider: Exclude<LlmProvider, "ollama">, model: string): ProviderInfo {
+  return { provider, model, isLocal: false };
 }
 
 /**
- * Build a Vercel AI SDK `LanguageModel` for the active provider.
- *
- * Pass `prefs` to apply a user's stored provider/model choice; omit for the
- * env-only default.
+ * True when using these preferences would send data to a cloud provider the
+ * user has not consented to. The gateway refuses such calls; UI code uses this
+ * to decide whether to show the consent prompt.
  */
-export function getLanguageModel(prefs?: UserPrefs): { model: LanguageModel; info: ProviderInfo } {
-  const e = env();
-  const { provider, model } = resolve(prefs);
-
-  if (provider === "anthropic") {
-    if (!e.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not set");
-    const anthropic = createAnthropic({ apiKey: e.ANTHROPIC_API_KEY });
-    return { model: anthropic(model), info: { provider, model, isLocal: false } };
-  }
-  if (provider === "openai") {
-    if (!e.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set");
-    const openai = createOpenAI({ apiKey: e.OPENAI_API_KEY });
-    return { model: openai(model), info: { provider, model, isLocal: false } };
-  }
-  if (provider === "google") {
-    if (!e.GOOGLE_GENERATIVE_AI_API_KEY) throw new Error("GOOGLE_GENERATIVE_AI_API_KEY is not set");
-    const google = createGoogleGenerativeAI({ apiKey: e.GOOGLE_GENERATIVE_AI_API_KEY });
-    return { model: google(model), info: { provider, model, isLocal: false } };
-  }
-
-  const ollama = createOllama({ baseURL: `${e.OLLAMA_BASE_URL}/api` });
-  return { model: ollama(model), info: { provider: "ollama", model, isLocal: true } };
-}
-
-export function providerInfo(prefs?: UserPrefs): ProviderInfo {
-  const { provider, model } = resolve(prefs);
-  return { provider, model, isLocal: provider === "ollama" };
+export function needsCloudConsent(user: {
+  llmProvider: string | null;
+  llmModel: string | null;
+  cloudLlmConsentAt: Date | null;
+}): boolean {
+  const info = resolveProvider({ provider: user.llmProvider, model: user.llmModel });
+  return !info.isLocal && user.cloudLlmConsentAt == null;
 }

@@ -21,6 +21,10 @@ interface CategorizeState {
   /** Already-categorized rows fixed by the deterministic correction pass. */
   corrected: number;
   errors: number;
+  /** Rows left pending because the LLM step was refused. */
+  skipped: number;
+  /** Why the LLM step was refused (no cloud consent, quota), if it was. */
+  llmSkipped: "cloudConsentRequired" | "rateLimited" | null;
   error: string | null;
   /** Kick off a full background categorization run. No-op if already running. */
   start: () => Promise<void>;
@@ -42,6 +46,8 @@ export const useCategorizeStore = create<CategorizeState>((set, get) => ({
   llmMatched: 0,
   corrected: 0,
   errors: 0,
+  skipped: 0,
+  llmSkipped: null,
   error: null,
 
   dismiss: () => {
@@ -60,6 +66,8 @@ export const useCategorizeStore = create<CategorizeState>((set, get) => ({
       llmMatched: 0,
       corrected: 0,
       errors: 0,
+      skipped: 0,
+      llmSkipped: null,
       error: null,
     });
 
@@ -103,6 +111,8 @@ async function runBatches(set: SetState): Promise<string | null> {
       keywordMatched: s.keywordMatched + (res.keywordMatched ?? 0),
       llmMatched: s.llmMatched + (res.llmMatched ?? 0),
       errors: s.errors + (res.errors ?? 0),
+      skipped: s.skipped + (res.skipped ?? 0),
+      llmSkipped: res.llmSkipped ?? s.llmSkipped,
     }));
     afterId = res.lastId ?? afterId;
     if (!res.hasMore) return null;
