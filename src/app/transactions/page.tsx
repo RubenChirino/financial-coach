@@ -24,7 +24,13 @@ export const dynamic = "force-dynamic";
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ review?: string; q?: string; heatmapYear?: string; dates?: string }>;
+  searchParams?: Promise<{
+    review?: string;
+    q?: string;
+    heatmapYear?: string;
+    dates?: string;
+    accountId?: string;
+  }>;
 }) {
   const session = await getCurrentSession();
   if (!session) redirect("/lock");
@@ -32,6 +38,10 @@ export default async function TransactionsPage({
   const sp = (await searchParams) ?? {};
   const reviewOnly = sp.review === "1";
   const searchQuery = sp.q?.trim() ?? "";
+  // Set by the dashboard's account tiles. Ownership is enforced by the
+  // userId scope inside listTransactions, so a foreign id just lists nothing.
+  const parsedAccountId = Number.parseInt(sp.accountId ?? "", 10);
+  const accountId = parsedAccountId > 0 ? parsedAccountId : undefined;
 
   // Parse ?dates=YYYY-MM-DD,YYYY-MM-DD — validate each token is a proper ISO date.
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -64,6 +74,7 @@ export default async function TransactionsPage({
       userId: session.userId,
       needsReviewOnly: reviewOnly,
       query: searchQuery || undefined,
+      accountId,
       dates: selectedDates.length ? selectedDates : undefined,
     }),
     listCategoryOptionsAction(),
@@ -211,6 +222,7 @@ export default async function TransactionsPage({
                 fallbackCurrency={accountsTotal.currency}
                 reviewOnly={reviewOnly}
                 initialSearch={searchQuery}
+                accountId={accountId}
                 labels={{
                   searchPlaceholder: t("searchPlaceholder"),
                   allBanks: t("allBanks"),

@@ -10,7 +10,7 @@ import { PrivacyAmount } from "@/components/privacy-amount";
 import { Button } from "@/components/ui/button";
 import { useConvertedFmt } from "@/lib/currency/store";
 import { type CategoryOption, loadMoreTransactionsAction } from "@/lib/transactions/actions";
-import type { TransactionRow } from "@/lib/transactions/list";
+import type { TransactionCursor, TransactionRow } from "@/lib/transactions/list";
 import { unlinkTransferAction } from "@/lib/transfers/actions";
 import { cn } from "@/lib/utils";
 
@@ -36,7 +36,7 @@ export interface TxLabels {
 
 export interface TransactionsViewProps {
   rows: TransactionRow[];
-  initialNextCursor: { bookingDate: number; id: number } | null;
+  initialNextCursor: TransactionCursor | null;
   categoryOptions: CategoryOption[];
   locale: "es" | "en";
   /** ISO locale like "es-ES" / "en-US". */
@@ -44,8 +44,13 @@ export interface TransactionsViewProps {
   /** Fallback currency when rows are empty. */
   fallbackCurrency: string;
   reviewOnly: boolean;
-  /** Pre-fills the search input (e.g. when navigating from the global topbar search). */
+  /**
+   * The URL's `q`: pre-fills the search input and is the server-side search
+   * the first page was fetched with, so "load more" reuses it.
+   */
   initialSearch?: string;
+  /** The URL's `accountId` filter, when the listing is scoped to one account. */
+  accountId?: number;
   labels: TxLabels;
 }
 
@@ -213,9 +218,7 @@ export function TransactionsView(props: TransactionsViewProps) {
   const [bankFilter, setBankFilter] = useState<string>("all");
   const [catFilter, setCatFilter] = useState<string>("all");
   const [extraRows, setExtraRows] = useState<TransactionRow[]>([]);
-  const [cursor, setCursor] = useState<{ bookingDate: number; id: number } | null>(
-    props.initialNextCursor,
-  );
+  const [cursor, setCursor] = useState<TransactionCursor | null>(props.initialNextCursor);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, startLoading] = useTransition();
 
@@ -236,10 +239,20 @@ export function TransactionsView(props: TransactionsViewProps) {
     setLoadError(null);
     startLoading(async () => {
       try {
+        // Same server-side filters as the first page (the URL's `q`,
+        // `accountId` and review toggle) — not the live search box, which
+        // filters the loaded rows client-side.
         const result = await loadMoreTransactionsAction(cursor, {
-          needsReviewOnly: props.reviewOnly,
+          needsReviewOnly: props.reviewOnly || undefined,
+          query: props.initialSearch || undefined,
+          accountId: props.accountId,
         });
-        setExtraRows((prev) => [...prev, ...result.rows]);
+        setExtraRows((prev) => {
+          const seen = new Set<number>();
+          for (const r of props.rows) seen.add(r.id);
+          for (const r of prev) seen.add(r.id);
+          return [...prev, ...result.rows.filter((r) => !seen.has(r.id))];
+        });
         setCursor(result.nextCursor);
       } catch {
         setLoadError("error");
