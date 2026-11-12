@@ -73,22 +73,6 @@ interface SuccessState {
 type Mode = "auto" | "ai" | "strict";
 
 /**
- * Read an ArrayBuffer as a base64 string in chunks. The naive
- * `btoa(String.fromCharCode(...new Uint8Array(buf)))` blows the call stack on
- * files over a few hundred KB. 8 KB chunks are well below any browser's
- * argument-count limit and still fast.
- */
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x2000;
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)));
-  }
-  return btoa(binary);
-}
-
-/**
  * Three import modes:
  *  - "auto" (default) — try the strict parser first; fall back to AI when the
  *    header doesn't look canonical. Best for most users — they paste a CSV
@@ -116,49 +100,40 @@ export function ImportForm({ labels }: { labels: ImportFormLabels }) {
     setFilename(file.name);
     setError(null);
     const isExcel = /\.(xls|xlsx)$/i.test(file.name);
+    if (isExcel) {
+      // Parsed server-side: SheetJS is not shipped to every /import visitor.
+      // The file goes as-is in FormData (no base64), capped at 2 MB there.
+      const form = new FormData();
+      form.set("file", file);
+      startTransition(async () => {
+        try {
+          const res = await excelToCsvAction(form);
+          if (!res.ok) {
+            setError(humanizeError(res.error));
+            return;
+          }
+          setText(res.csv);
+        } catch (err) {
+          console.error("excel parse failed", err);
+          setError(labels.genericError);
+        }
+      });
+      return;
+    }
     const reader = new FileReader();
     reader.onerror = () => {
       console.error("file read failed", reader.error);
       setError(labels.genericError);
     };
-    if (isExcel) {
-      // Parse Excel server-side — the libs (ExcelJS / SheetJS) have Node.js
-      // dependencies that fight browser bundling in production. The
-      // round-trip is fine; payload is capped at 2MB on the server. The
-      // filename hint lets the server pick the right parser (.xls vs .xlsx).
-      reader.onload = () => {
-        const data = reader.result;
-        if (!(data instanceof ArrayBuffer)) {
-          setError(labels.genericError);
-          return;
-        }
-        startTransition(async () => {
-          try {
-            const base64 = arrayBufferToBase64(data);
-            const res = await excelToCsvAction(base64, file.name);
-            if (!res.ok) {
-              setError(humanizeError(res.error));
-              return;
-            }
-            setText(res.csv);
-          } catch (err) {
-            console.error("excel parse failed", err);
-            setError(labels.genericError);
-          }
-        });
-      };
-      reader.readAsArrayBuffer(file);
-    } else {
-      reader.onload = () => {
-        const content = typeof reader.result === "string" ? reader.result : "";
-        if (!content) {
-          setError(labels.emptyError);
-          return;
-        }
-        setText(content);
-      };
-      reader.readAsText(file);
-    }
+    reader.onload = () => {
+      const content = typeof reader.result === "string" ? reader.result : "";
+      if (!content) {
+        setError(labels.emptyError);
+        return;
+      }
+      setText(content);
+    };
+    reader.readAsText(file);
   }
 
   function humanizeError(raw: string): string {

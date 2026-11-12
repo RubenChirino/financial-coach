@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 import { SESSION_COOKIE } from "@/lib/auth/constants";

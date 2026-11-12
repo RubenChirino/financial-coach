@@ -30,8 +30,8 @@ pnpm dev
 
 Requirements: Node.js 24 LTS, pnpm 9+. `.nvmrc` pins the Node version if you use nvm or fnm.
 
-Useful scripts: `pnpm test` (Vitest unit/component), `pnpm e2e` (Playwright
-end-to-end), `pnpm db:studio` (Drizzle Studio), `pnpm lint:fix` (Biome).
+Useful scripts: `pnpm test` (Vitest), `pnpm db:studio` (Drizzle Studio),
+`pnpm lint:fix` (Biome).
 
 ## Branching & commits
 

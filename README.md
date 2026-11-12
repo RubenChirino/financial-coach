@@ -162,6 +162,6 @@ Contributions welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setup, 
 - [Turso](https://turso.tech) — hosted libSQL
 - [Auth.js](https://authjs.dev) — OAuth on Next.js
 - [Ollama](https://ollama.com) — local LLM runtime
-- [shadcn/ui](https://ui.shadcn.com), [Radix UI](https://www.radix-ui.com), [Lucide](https://lucide.dev), [Recharts](https://recharts.org)
+- [shadcn/ui](https://ui.shadcn.com), [Radix UI](https://www.radix-ui.com), [Lucide](https://lucide.dev)
 - [Drizzle ORM](https://orm.drizzle.team), [Next.js](https://nextjs.org), [Vercel AI SDK](https://sdk.vercel.ai)
-- [next-intl](https://next-intl.dev), [Biome](https://biomejs.dev), [Vitest](https://vitest.dev), [Playwright](https://playwright.dev)
+- [next-intl](https://next-intl.dev), [Biome](https://biomejs.dev), [Vitest](https://vitest.dev)

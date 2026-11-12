@@ -297,10 +297,9 @@ deprecated `generateObject` or hand-sliced JSON. Concrete adapters —
 | Client state         | `zustand` v5                     | Tiny pub-sub store for privacy-blur + display currency; no provider tree  |
 | Forms + validation   | `react-hook-form` + `zod`        | Uncontrolled-input performance; `zod` schemas shared by forms *and* env   |
 | Schema validation    | `zod`                            | One validator for env, server-action inputs, and API bodies              |
-| Spreadsheets         | `exceljs` + SheetJS (`xlsx`)     | Server-side XLSX export and import without shipping a parser to the client|
+| Spreadsheets         | SheetJS (`xlsx`, CDN 0.20.x)     | Server-side .xls/.xlsx import without shipping a parser to the client     |
 | Lint + format        | **Biome**                        | One fast Rust tool replacing ESLint + Prettier; near-zero config drift    |
-| Tests                | **Vitest** + Testing Library     | Vite-native speed; `happy-dom` for component tests                        |
-| E2E                  | **Playwright**                   | Cross-browser flows for the auth + sync paths                             |
+| Tests                | **Vitest** (node environment)    | Vite-native speed; data-layer tests on a real in-memory SQLite            |
 | Secret scanning      | **gitleaks**                     | Pre-commit hook + CI; a finance repo must never leak a key                |
 
 ---
@@ -914,7 +913,7 @@ Most state is server state (the DB) reflected through RSC. The little genuinely
 `zustand` stores ([`src/lib/privacy`](src/lib/privacy),
 [`src/lib/currency`](src/lib/currency)), persisted to `localStorage`. No context
 provider tree, no prop-drilling; a component subscribes to exactly the slice it
-needs. `@tanstack/react-query` is available for the few client-fetched bits.
+needs. The few client-fetched bits call server actions directly.
 
 ### 12.3 i18n, theming, PWA
 
@@ -936,8 +935,10 @@ The testing strategy is a pyramid weighted toward the layers where bugs *hurt*:
   redaction, categorization rules/heuristics, recurring detection, travel location
   parsing, CSV parsing, the advisor context/prompt, currency math. These are
   fast, deterministic, and where a regression would corrupt data or leak PII.
-- **Component tests** (Testing Library + `happy-dom`) cover interactive UI.
-- **E2E (Playwright)** covers the critical end-to-end flows.
+- Tests run in Vitest's node environment (no DOM): server code, the proxy
+  (on real `NextRequest` objects) and the service worker's policy.
+- **End-to-end** flows are checked in a browser against a production build on a
+  scratch database; there is no automated browser suite yet.
 - A shared in-memory DB fixture ([`src/test/db-fixture.ts`](src/test/db-fixture.ts))
   lets data-layer tests run against a real (ephemeral) SQLite instance.
 
