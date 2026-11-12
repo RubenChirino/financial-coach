@@ -110,10 +110,21 @@ export interface StreamCall {
   onEnd?: Parameters<typeof streamText>[0]["onEnd"];
 }
 
+/**
+ * Settings a provider needs in its own shape. Ollama's `/api/chat` has no
+ * top-level output limit: `ollama-ai-provider-v2` forwards `maxOutputTokens`
+ * as `max_output_tokens`, which Ollama ignores, so the cap would silently not
+ * apply. Ollama reads it as the `num_predict` model option.
+ */
+function providerSettings(info: ProviderInfo, maxOutputTokens: number | undefined) {
+  if (info.provider !== "ollama" || maxOutputTokens === undefined) return {};
+  return { providerOptions: { ollama: { options: { num_predict: maxOutputTokens } } } };
+}
+
 // A non-generic wrapper so the return type is the concrete default overload
 // (`ReturnType<typeof streamText>` would be the union of all three).
-function startStream(model: LanguageModel, call: StreamCall) {
-  return streamText({ model, ...call });
+function startStream(model: LanguageModel, info: ProviderInfo, call: StreamCall) {
+  return streamText({ model, ...call, ...providerSettings(info, call.maxOutputTokens) });
 }
 export type LlmStream = ReturnType<typeof startStream>;
 
@@ -188,7 +199,11 @@ export async function resolveModelForUser(userId: number, purpose: LlmPurpose): 
     info,
     async generateText(call) {
       spend();
-      const { text } = await generateText({ model, ...call });
+      const { text } = await generateText({
+        model,
+        ...call,
+        ...providerSettings(info, call.maxOutputTokens),
+      });
       return text;
     },
     async generateStructured<T>({ schema, ...call }: StructuredCall<T>): Promise<T> {
@@ -196,13 +211,14 @@ export async function resolveModelForUser(userId: number, purpose: LlmPurpose): 
       const { output } = await generateText({
         model,
         ...call,
+        ...providerSettings(info, call.maxOutputTokens),
         output: Output.object({ schema }),
       });
       return output as T;
     },
     streamText(call) {
       spend();
-      return startStream(model, call);
+      return startStream(model, info, call);
     },
   };
 }

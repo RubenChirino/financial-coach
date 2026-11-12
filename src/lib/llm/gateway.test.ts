@@ -36,6 +36,8 @@ interface Captured {
   provider: string;
   modelId: string;
   text: string;
+  maxOutputTokens?: number;
+  providerOptions?: unknown;
 }
 const captured: Captured[] = [];
 /** What the mock model answers, given the prompt text it received. */
@@ -62,9 +64,9 @@ function mockModel(provider: string, modelId: string) {
   return new MockLanguageModelV4({
     provider,
     modelId,
-    doGenerate: async ({ prompt }) => {
+    doGenerate: async ({ prompt, maxOutputTokens, providerOptions }) => {
       const text = promptText(prompt);
-      captured.push({ provider, modelId, text });
+      captured.push({ provider, modelId, text, maxOutputTokens, providerOptions });
       return {
         content: [{ type: "text", text: reply(text) }],
         finishReason: { unified: "stop", raw: undefined },
@@ -72,8 +74,14 @@ function mockModel(provider: string, modelId: string) {
         warnings: [],
       };
     },
-    doStream: async ({ prompt }) => {
-      captured.push({ provider, modelId, text: promptText(prompt) });
+    doStream: async ({ prompt, maxOutputTokens, providerOptions }) => {
+      captured.push({
+        provider,
+        modelId,
+        text: promptText(prompt),
+        maxOutputTokens,
+        providerOptions,
+      });
       return {
         stream: convertArrayToReadableStream([
           { type: "stream-start", warnings: [] },
@@ -408,6 +416,29 @@ describe("gateway quotas", () => {
     await llm.generateText({ prompt: "one" });
     await expect(llm.generateText({ prompt: "two" })).rejects.toBeInstanceOf(LlmRateLimited);
     expect(captured).toHaveLength(1);
+  });
+});
+
+describe("gateway output cap", () => {
+  it("reaches Ollama as num_predict, which is the only limit it reads", async () => {
+    reply = () => "Lisbon";
+    const local = await resolveModelForUser(USERS.local, "travel-city");
+    await local.generateText({ prompt: "one", maxOutputTokens: 24 });
+    await (await resolveModelForUser(USERS.local, "chat"))
+      .streamText({
+        instructions: "s",
+        messages: [{ role: "user", content: "hi" }],
+        maxOutputTokens: 1500,
+      })
+      .consumeStream();
+    const cloud = await resolveModelForUser(USERS.openai, "travel-city");
+    await cloud.generateText({ prompt: "two", maxOutputTokens: 24 });
+
+    expect(captured.map((c) => [c.provider, c.maxOutputTokens, c.providerOptions])).toEqual([
+      ["ollama", 24, { ollama: { options: { num_predict: 24 } } }],
+      ["ollama", 1500, { ollama: { options: { num_predict: 1500 } } }],
+      ["openai", 24, undefined],
+    ]);
   });
 });
 
