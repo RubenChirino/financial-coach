@@ -166,8 +166,3 @@ export function consumeQuota(bucket: string, limit: number, windowMs: number): Q
   const resetInMs = Math.max(0, windowMs - (t - w.start));
   return { allowed: w.count <= limit, remaining, resetInMs };
 }
-
-/** Test-only: buckets currently tracked. */
-export function _trackedWindows(): number {
-  return windows.size;
-}

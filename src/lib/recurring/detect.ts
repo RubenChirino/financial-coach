@@ -4,6 +4,8 @@ import { and, eq, gte, isNotNull, isNull, notInArray, or, sql } from "drizzle-or
 import type { BatchItem } from "drizzle-orm/batch";
 import { db } from "@/db/client";
 import { recurringSubscriptions, transactions } from "@/db/schema";
+import { normalizeMerchant } from "@/lib/merchant";
+import { mean, median, stdDev } from "@/lib/stats";
 
 /**
  * Recurring-subscription detector.
@@ -60,46 +62,13 @@ const MAX_AMOUNT_COV_IN = 0.05;
 const MIN_OCCURRENCES = 3;
 
 /**
- * Normalize a merchant name for grouping. We collapse whitespace, lowercase,
- * and strip a few common noise suffixes ("S.L.", "S.A.", trailing numbers from
- * card-machine timestamps). The DB still stores the original capitalization
- * from the most-recent transaction so the UI shows something readable.
- */
-function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/\b(s\.?l\.?|s\.?a\.?|inc\.?|ltd\.?|sas|gmbh)\b/g, "")
-    .replace(/\d{4,}/g, "")
-    .trim();
-}
-
-/**
  * The series key of a merchant name and an amount's direction: `-` for money
  * out, `+` for money in, then the normalized name. Null when nothing is left
  * after normalizing.
  */
 export function seriesKeyFor(merchant: string, amountCents: number): string | null {
-  const base = normalize(merchant);
+  const base = normalizeMerchant(merchant);
   return base ? `${amountCents >= 0 ? "+" : "-"}${base}` : null;
-}
-
-function median(nums: number[]): number {
-  const sorted = [...nums].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
-}
-
-function mean(nums: number[]): number {
-  if (nums.length === 0) return 0;
-  return nums.reduce((s, n) => s + n, 0) / nums.length;
-}
-
-function stdDev(nums: number[]): number {
-  if (nums.length < 2) return 0;
-  const m = mean(nums);
-  const variance = nums.reduce((s, n) => s + (n - m) ** 2, 0) / nums.length;
-  return Math.sqrt(variance);
 }
 
 /** Returns the closest known cadence (in days) if within tolerance, else null. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { redact, redactTransaction } from "./redact";
+import { redact } from "./redact";
 
 describe("redact", () => {
   it("strips Spanish IBANs", () => {
@@ -35,35 +35,6 @@ describe("redact", () => {
 
   it("handles empty input", () => {
     expect(redact("")).toBe("");
-  });
-});
-
-describe("redactTransaction", () => {
-  it("converts cents to whole units", () => {
-    const r = redactTransaction({
-      bookingDate: new Date("2024-03-14"),
-      amountCents: -2345,
-      currency: "EUR",
-      merchantName: "Mercadona",
-      rawDescription: "Compra supermercado",
-      category: "groceries",
-    });
-    expect(r.amount).toBe(-23.45);
-    expect(r.date).toBe("2024-03-14");
-    expect(r.merchant).toBe("Mercadona");
-    expect(r.category).toBe("groceries");
-  });
-
-  it("redacts IBANs from raw description when merchant name is missing", () => {
-    const r = redactTransaction({
-      bookingDate: "2024-03-14",
-      amountCents: 100000,
-      currency: "EUR",
-      merchantName: null,
-      rawDescription: "Transfer from ES91 2100 0418 4502 0005 1332",
-      category: null,
-    });
-    expect(r.merchant).toContain("[IBAN]");
   });
 });
 

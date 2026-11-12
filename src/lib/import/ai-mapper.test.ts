@@ -5,8 +5,8 @@ import {
   parseAmountWithSpec,
   parseDateWithSpec,
   sniffDelimiter,
-  splitRow,
 } from "./ai-mapper";
+import { splitRow } from "./split-row";
 
 const baseSpec: CsvMappingSpec = {
   delimiter: ",",

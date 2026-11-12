@@ -178,19 +178,3 @@ export async function updateManualAccountAction(
   revalidatePath("/banks");
   return { ok: true, accountId };
 }
-
-/** List the current user's manual accounts (for the Banks management UI). */
-export async function listManualAccountsAction(): Promise<ManualAccountRow[]> {
-  const session = await getCurrentSession();
-  if (!session) return [];
-  return db
-    .select({
-      id: accounts.id,
-      name: accounts.name,
-      kind: accounts.kind,
-      balanceCents: accounts.balanceCents,
-      currency: accounts.currency,
-    })
-    .from(accounts)
-    .where(and(eq(accounts.userId, session.userId), eq(accounts.isManual, true)));
-}

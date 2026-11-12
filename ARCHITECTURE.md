@@ -675,8 +675,9 @@ principles and grounds them in your real numbers is a feature.
 
 A "provider" is any source of accounts + transactions. The discriminator is
 `requisitions.provider`; downstream tables (`institutions`, `accounts`,
-`transactions`) are provider-agnostic and just hang off a requisition.
-[`src/lib/providers/types.ts`](src/lib/providers/types.ts) defines the contract.
+`transactions`) are provider-agnostic and just hang off a requisition. The
+contract is the ingestion pipeline's input ([§9.2](#92-sync-and-dedup)):
+a provider fetches and normalizes rows, and `ingestTransactions` does the rest.
 Three providers implement it:
 
 - **GoCardless Bank Account Data** (PSD2/Nordigen) — the primary, broad-coverage

@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { LlmHandle } from "@/lib/llm/gateway";
 import { type Redacted, redact } from "@/lib/redact";
 import type { CsvRowError, ParseCsvResult, ParsedCsvRow } from "./csv";
+import { splitRow } from "./split-row";
 
 /**
  * AI-powered CSV mapper.
@@ -129,37 +130,6 @@ export function sniffDelimiter(text: string): "," | ";" | "\t" | "|" {
     }
   }
   return best;
-}
-
-/** RFC-4180-ish row splitter, parameterized by delimiter. */
-export function splitRow(line: string, delim: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (line[i + 1] === '"') {
-          cur += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        cur += ch;
-      }
-    } else if (ch === delim) {
-      out.push(cur);
-      cur = "";
-    } else if (ch === '"' && cur === "") {
-      inQuotes = true;
-    } else {
-      cur += ch;
-    }
-  }
-  out.push(cur);
-  return out;
 }
 
 // ---------- Sample for the LLM ----------

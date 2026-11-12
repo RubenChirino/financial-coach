@@ -50,7 +50,7 @@ Designed for Spanish banks first, English fully supported. Works as an installab
 - **Goals.** Track savings targets with emoji, deadline, progress bar, and optional category linking.
 - **Insights engine.** Rule-based, idempotent alerts: uncategorized transactions, budget overruns, on-track savings, low balance, near-complete goals. Dismissible, severity-ranked.
 - **Privacy mode.** One-tap balance blur across the entire UI — persisted to `localStorage`. Works globally via a React pub-sub store, no provider needed.
-- **Export wizard (CSV + PDF).** Export transactions or the daily spending heatmap from the Transactions page: pick accounts (merged chronologically when several), a period (today → 1 year, or a custom range), and CSV or a branded, print-ready PDF. The legacy `GET /api/export/transactions` full-CSV endpoint still works.
+- **Export wizard (CSV + PDF).** Export transactions or the daily spending heatmap from the Transactions page: pick accounts (merged chronologically when several), a period (today → 1 year, or a custom range), and CSV or a branded, print-ready PDF.
 - **Privacy redaction (LLM).** IBANs, card numbers, DNIs, emails, phone numbers, postal codes, long digit sequences are scrubbed from every LLM prompt — local or cloud.
 - **Spanish + English.** Full ICU-plural i18n, cookie-driven locale, mobile-first responsive layout, PWA manifest.
 

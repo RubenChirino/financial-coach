@@ -38,8 +38,8 @@ export interface NormalizedTransaction {
  * - For outflows we prefer the `creditorName` (who we paid); for inflows we
  *   prefer the `debtorName` (who paid us).
  * - `rawDescription` is built from the remittance-information fields; it's the
- *   only place raw text lives and is shown to the user but never sent to
- *   remote LLMs (see `redactTransaction`).
+ *   only place raw text lives. It is shown to the user, and reaches a model
+ *   prompt only through `redact()` (the `Redacted` type enforces it).
  *
  * Returns `null` if the transaction lacks a booking date or amount — those
  * are unusable for our accounting model.

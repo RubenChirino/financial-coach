@@ -60,23 +60,3 @@ export interface RedactedTransaction {
   merchant: Redacted;
   category: string | null;
 }
-
-export function redactTransaction(tx: {
-  bookingDate: Date | string;
-  amountCents: number;
-  currency: string;
-  merchantName: string | null;
-  rawDescription: string;
-  category: string | null;
-}): RedactedTransaction {
-  const merchant = tx.merchantName?.trim() || redact(tx.rawDescription, 80) || "Unknown";
-  const date =
-    typeof tx.bookingDate === "string" ? tx.bookingDate : tx.bookingDate.toISOString().slice(0, 10);
-  return {
-    date,
-    amount: tx.amountCents / 100,
-    currency: tx.currency,
-    merchant: redact(merchant),
-    category: tx.category,
-  };
-}

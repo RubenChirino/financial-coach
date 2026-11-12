@@ -117,12 +117,3 @@ export async function resetAllTransactions(userId: number): Promise<{ deleted: n
   ]);
   return { deleted: deleted.length };
 }
-
-/** Live transaction count for a batch (useful for confirming the delete). */
-export async function getBatchTransactionCount(userId: number, batchId: number): Promise<number> {
-  const r = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(transactions)
-    .where(and(eq(transactions.userId, userId), eq(transactions.importBatchId, batchId)));
-  return Number(r[0]?.n ?? 0);
-}

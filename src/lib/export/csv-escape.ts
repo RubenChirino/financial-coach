@@ -1,6 +1,5 @@
 /**
- * Shared CSV cell escaping for the export paths (`/api/export/transactions`
- * and the client-side export wizard).
+ * CSV cell escaping for the export wizard's files (`build-files.ts`).
  *
  * Two separate concerns, both handled here:
  *

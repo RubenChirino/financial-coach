@@ -10,6 +10,7 @@ import {
   requisitions,
   transactions,
 } from "@/db/schema";
+import { monthRange } from "@/lib/dates";
 
 export interface MonthSummary {
   month: string;
@@ -36,20 +37,6 @@ export interface AccountsTotal {
   totalCents: number;
   currency: string;
   accountCount: number;
-}
-
-/**
- * Return {year, month} for the month offset from today (0 = current, -1 = prev).
- * Offsets use UTC to avoid off-by-one issues around DST.
- */
-function monthRange(offset = 0): { start: Date; end: Date; label: string } {
-  const now = new Date();
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth() + offset;
-  const start = new Date(Date.UTC(y, m, 1));
-  const end = new Date(Date.UTC(y, m + 1, 1));
-  const label = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, "0")}`;
-  return { start, end, label };
 }
 
 /**
@@ -254,19 +241,6 @@ export interface MonthFlowPoint {
   incomeCents: number;
   expenseCents: number; // positive number (absolute value)
   netCents: number;
-}
-
-/**
- * Last N months (most recent last), from one grouped query. Caller passes a
- * locale so the short label ("Apr" / "abr") is ready to render without a
- * client-side `Intl` pass.
- */
-export async function getMonthlyFlowHistory(
-  userId: number,
-  months = 6,
-  locale: "es" | "en" = "es",
-): Promise<MonthFlowPoint[]> {
-  return toFlow(await getMonthSummaries(userId, -(months - 1), 0), locale);
 }
 
 /** The flow chart's points from month summaries (oldest first). */

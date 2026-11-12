@@ -4,7 +4,8 @@ import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { importMappings } from "@/db/schema";
-import { CsvMappingSchema, type CsvMappingSpec, splitRow } from "./ai-mapper";
+import { CsvMappingSchema, type CsvMappingSpec } from "./ai-mapper";
+import { splitRow } from "./split-row";
 
 /** Lines searched for a remembered header: banks put 0–3 metadata lines above it. */
 const HEADER_SCAN_LINES = 15;

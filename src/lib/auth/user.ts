@@ -36,10 +36,6 @@ export async function userExists(): Promise<boolean> {
   return rows.length > 0;
 }
 
-export async function updateUserLanguage(userId: number, language: "es" | "en"): Promise<void> {
-  await db.update(users).set({ language, updatedAt: new Date() }).where(eq(users.id, userId));
-}
-
 export async function updateUserCurrency(userId: number, currency: string): Promise<void> {
   await db.update(users).set({ currency, updatedAt: new Date() }).where(eq(users.id, userId));
 }
@@ -70,12 +66,5 @@ export async function updateUserDigestOptIn(userId: number, optIn: boolean): Pro
   await db
     .update(users)
     .set({ digestEmailOptIn: optIn, updatedAt: new Date() })
-    .where(eq(users.id, userId));
-}
-
-export async function recordCloudLlmConsent(userId: number): Promise<void> {
-  await db
-    .update(users)
-    .set({ cloudLlmConsentAt: new Date(), updatedAt: new Date() })
     .where(eq(users.id, userId));
 }
