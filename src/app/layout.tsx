@@ -10,6 +10,7 @@ import { RouteProgress } from "@/components/route-progress";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/toaster";
 import { ConfirmProvider } from "@/components/ui/confirm-dialog";
+import { CLIENT_MESSAGE_PATHS, pickMessages } from "@/lib/i18n/client-messages";
 import { getLocale } from "@/lib/i18n/locale";
 import "./globals.css";
 
@@ -58,7 +59,9 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const locale = await getLocale();
-  const messages = await getMessages();
+  // Server components translate on the server; the client gets only what
+  // client components read.
+  const messages = pickMessages(await getMessages(), CLIENT_MESSAGE_PATHS);
   // Per-request nonce produced by `src/proxy.ts`. Forwarded into
   // `next-themes` so its anti-FOUC inline `<script>` is allowed by the
   // strict CSP (`script-src 'self' 'nonce-...' 'strict-dynamic'`). Without

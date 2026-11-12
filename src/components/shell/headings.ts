@@ -39,3 +39,15 @@ export function headingFor(pathname: string, hasData: boolean): Heading {
   }
   return best?.[1] ?? DEFAULT;
 }
+
+/** Every key {@link headingFor} can return — the client needs these messages. */
+export const HEADING_KEYS: readonly string[] = [
+  ...new Set(
+    [
+      DEFAULT,
+      ...BY_PREFIX.map(([, h]) => h),
+      headingFor("/", true),
+      headingFor("/", false),
+    ].flatMap((h) => [h.title, h.subtitle]),
+  ),
+];

@@ -920,7 +920,11 @@ needs. The few client-fetched bits call server actions directly.
 
 - **i18n** — `next-intl` with full ES/EN parity (enforced socially via the PR
   checklist), ICU plurals, and a cookie-driven locale resolved in
-  [`src/lib/i18n`](src/lib/i18n). Spanish is the default locale.
+  [`src/lib/i18n`](src/lib/i18n). Spanish is the default locale. Server
+  components translate on the server; the client provider receives only the
+  namespaces client components read ([`client-messages.ts`](src/lib/i18n/client-messages.ts),
+  about half the catalog), and a test fails when a client component uses one
+  that is not listed.
 - **Theming** — `next-themes` with the anti-FOUC boot script bound to the CSP
   nonce, so the strict policy doesn't flash the wrong theme.
 - **PWA** — a manifest + service worker make it installable on iOS/Android, with
