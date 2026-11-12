@@ -19,6 +19,7 @@ async function seedTx(
   merchantName: string,
   categoryId: number | null,
   confidence: number | null,
+  categorySource: "rule" | "keyword" | "llm" | "user" | null = null,
 ) {
   const [acc] = await fixture.db
     .select({ id: accounts.id })
@@ -36,6 +37,7 @@ async function seedTx(
     rawDescription: merchantName,
     categoryId,
     confidence,
+    categorySource,
   });
 }
 
@@ -78,10 +80,10 @@ beforeEach(async () => {
   await ensureImportedAccount({ userId: OTHER, encryptionKey: KEY });
 
   await seedTx(USER, "Mercadona", cat.other ?? null, null); // keyword → groceries
-  await seedTx(USER, "Netflix", cat.other ?? null, 100); // manual pick: untouched
+  await seedTx(USER, "Netflix", cat.other ?? null, 100, "user"); // manual pick: untouched
   await seedTx(USER, "ACME corp", null, null); // user rule → other
-  await seedTx(USER, "Unknown shop", cat.bank_fees ?? null, 1); // stale rule match → requeue
-  await seedTx(USER, "Mercadona", cat.groceries ?? null, 95); // already right
+  await seedTx(USER, "Unknown shop", cat.bank_fees ?? null, 1, "rule"); // stale rule match → requeue
+  await seedTx(USER, "Mercadona", cat.groceries ?? null, 95, "keyword"); // already right
   await seedTx(OTHER, "Mercadona", cat.other ?? null, null); // another user: untouched
 });
 

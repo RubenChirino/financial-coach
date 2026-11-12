@@ -28,7 +28,7 @@ import type { CsvRowError, ParseCsvResult, ParsedCsvRow } from "./csv";
  *
  * **Prompt injection**: the user's CSV contents are attacker-controlled text
  * that ends up in the LLM prompt. We don't trust the model's output at all —
- * `generateObject` constrains the response to `CsvMappingSchema`, which means
+ * `generateStructured` constrains the response to `CsvMappingSchema`, which means
  * the most a hostile file could do is convince the model to return a *valid*
  * but *misleading* mapping (e.g. point `dateColumn` at the merchant column).
  * The result of that is rows failing per-row validation and ending up in
@@ -243,7 +243,7 @@ export async function inferMapping(
   llm: LlmHandle,
   text: string,
 ): Promise<{ spec: CsvMappingSpec; provider: string; model: string }> {
-  const spec = await llm.generateObject({
+  const spec = await llm.generateStructured({
     schema: CsvMappingSchema,
     instructions: SYSTEM_PROMPT,
     prompt: buildMappingPrompt(buildSample(text)),
@@ -622,7 +622,17 @@ function correctSeparators(text: string, spec: CsvMappingSpec): CsvMappingSpec {
  */
 export async function parseCsvWithAi(llm: LlmHandle, text: string): Promise<ParseCsvWithAiResult> {
   const { spec: rawSpec, provider, model } = await inferMapping(llm, text);
+  return { ...parseCsvWithSpec(text, rawSpec), provider, model };
+}
+
+/**
+ * Apply a mapping — inferred now or remembered from an earlier import — with
+ * the separators re-checked against this file's amounts. Deterministic.
+ */
+export function parseCsvWithSpec(
+  text: string,
+  rawSpec: CsvMappingSpec,
+): ParseCsvResult & { spec: CsvMappingSpec } {
   const spec = correctSeparators(text, rawSpec);
-  const result = applyMapping(text, spec);
-  return { ...result, spec, provider, model };
+  return { ...applyMapping(text, spec), spec };
 }

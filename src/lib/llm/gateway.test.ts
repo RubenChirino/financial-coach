@@ -99,6 +99,9 @@ vi.mock("ollama-ai-provider-v2", () => ({
 }));
 
 const schema = await import("@/db/schema");
+const { eq } = await import("drizzle-orm");
+const eqUser = (userId: number) => eq(schema.transactions.userId, userId);
+const eqRuleUser = (userId: number) => eq(schema.categoryRules.userId, userId);
 const { CloudConsentRequired, LlmRateLimited, resolveModelForUser } = await import("./gateway");
 const { categorizePendingBatch } = await import("@/lib/categorize");
 const { parseCsvWithAi } = await import("@/lib/import/ai-mapper");
@@ -141,6 +144,8 @@ const USERS = {
   openai: 4,
   quota: 5,
   budget: 6,
+  batch: 7,
+  down: 8,
 };
 
 let accountByUser: Record<number, number> = {};
@@ -180,6 +185,8 @@ beforeAll(async () => {
     },
     { id: USERS.quota, encryptionSalt: "5", llmProvider: "ollama" },
     { id: USERS.budget, encryptionSalt: "6", llmProvider: "ollama" },
+    { id: USERS.batch, encryptionSalt: "7", llmProvider: "ollama" },
+    { id: USERS.down, encryptionSalt: "8", llmProvider: "ollama" },
   ]);
   await d.insert(schema.categories).values([
     { slug: "groceries", nameEs: "Súper", nameEn: "Groceries", icon: "x", color: "#000" },
@@ -210,6 +217,14 @@ beforeAll(async () => {
   }
 });
 
+/** A categorize reply answering every numbered item in the prompt. */
+function answerAll(categorySlug: string, confidence: number) {
+  return (prompt: string) => {
+    const ids = [...prompt.matchAll(/^(\d+)\. merchant:/gm)].map((m) => Number(m[1]));
+    return JSON.stringify({ results: ids.map((id) => ({ id, categorySlug, confidence })) });
+  };
+}
+
 beforeEach(() => {
   captured.length = 0;
   reply = () => "";
@@ -220,12 +235,13 @@ describe("gateway redaction — every feature that calls a model", () => {
   it("categorize", async () => {
     for (const pii of PII)
       await addTx(USERS.cloudConsented, `${MARKER} STORE ${pii}`, `PAGO ${pii}`);
-    reply = () => JSON.stringify({ categorySlug: "groceries", confidence: 0.9 });
+    reply = answerAll("groceries", 0.9);
 
     const res = await categorizePendingBatch({ userId: USERS.cloudConsented, limit: 100 });
 
+    // Every row answered, from one call: the rows are grouped by merchant.
     expect(res.llmMatched).toBe(PII.length);
-    expect(captured).toHaveLength(PII.length);
+    expect(captured).toHaveLength(1);
     for (const c of captured) expectNoPii(c.text);
   });
 
@@ -279,10 +295,12 @@ describe("gateway redaction — every feature that calls a model", () => {
 
   it("travel places — and answers keyed by the redacted name map back to the original", async () => {
     const places = ["Lisboa", ...PII.map((pii) => `${MARKER} ${pii}`)];
-    // Answer the way a model does: keyed by exactly the strings it was sent.
+    // Answer the way a model does: naming exactly the strings it was sent.
     reply = (prompt) => {
       const sent = JSON.parse(prompt.slice(prompt.indexOf("Items:") + 6)) as string[];
-      return JSON.stringify(Object.fromEntries(sent.map((s) => [s, { country: "PT" }])));
+      return JSON.stringify({
+        places: sent.map((name) => ({ name, country: "PT", region: null })),
+      });
     };
     const llm = await resolveModelForUser(USERS.cloudConsented, "travel-places");
     const result = await resolveCitiesWithAi(llm, places, "ES");
@@ -320,7 +338,7 @@ describe("gateway redaction — every feature that calls a model", () => {
 describe("gateway provider choice and consent", () => {
   it("uses the user's stored provider and model", async () => {
     await addTx(USERS.openai, `${MARKER} UNKNOWN SHOP`);
-    reply = () => JSON.stringify({ categorySlug: "groceries", confidence: 0.9 });
+    reply = answerAll("groceries", 0.9);
 
     await categorizePendingBatch({ userId: USERS.openai });
 
@@ -390,5 +408,82 @@ describe("gateway quotas", () => {
     await llm.generateText({ prompt: "one" });
     await expect(llm.generateText({ prompt: "two" })).rejects.toBeInstanceOf(LlmRateLimited);
     expect(captured).toHaveLength(1);
+  });
+});
+
+describe("categorization by merchant", () => {
+  const rowsOf = (userId: number) =>
+    fixture.db
+      .select({
+        merchant: schema.transactions.merchantName,
+        categoryId: schema.transactions.categoryId,
+        source: schema.transactions.categorySource,
+        needsReview: schema.transactions.needsReview,
+      })
+      .from(schema.transactions)
+      .where(eqUser(userId));
+
+  it("asks once per merchant, applies the answer to every row, and learns an ai rule", async () => {
+    for (let i = 0; i < 3; i++) await addTx(USERS.batch, "ZQX Bakery Uno");
+    await addTx(USERS.batch, "ZQX Hardware Dos");
+    reply = (prompt) => {
+      const ids = [...prompt.matchAll(/^(\d+)\. merchant: (.*?) \|/gm)];
+      return JSON.stringify({
+        results: ids.map(([, id, merchant]) => ({
+          id: Number(id),
+          categorySlug: "groceries",
+          // Confident about the bakery only.
+          confidence: merchant?.includes("Bakery") ? 0.95 : 0.5,
+        })),
+      });
+    };
+
+    const res = await categorizePendingBatch({ userId: USERS.batch });
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.text.match(/^\d+\. merchant:/gm)).toHaveLength(2);
+    expect(res).toMatchObject({ processed: 4, llmMatched: 4, llmCalls: 1, errors: 0 });
+    const rows = await rowsOf(USERS.batch);
+    expect(rows.every((r) => r.source === "llm" && r.categoryId != null)).toBe(true);
+    // Below 0.7 the answer is kept but flagged for review.
+    expect(rows.filter((r) => r.needsReview).map((r) => r.merchant)).toEqual(["ZQX Hardware Dos"]);
+    const rules = await fixture.db
+      .select({ pattern: schema.categoryRules.matchPattern, by: schema.categoryRules.createdBy })
+      .from(schema.categoryRules)
+      .where(eqRuleUser(USERS.batch));
+    expect(rules).toEqual([{ pattern: "zqx bakery uno", by: "ai" }]);
+
+    // The next charge from the bakery is matched by that rule: no call.
+    captured.length = 0;
+    await addTx(USERS.batch, "ZQX Bakery Uno");
+    // The low-confidence hardware row stays flagged for the user, not re-asked.
+    const next = await categorizePendingBatch({ userId: USERS.batch });
+    expect(next).toMatchObject({ processed: 1, ruleMatched: 1, llmCalls: 0 });
+    expect(captured).toHaveLength(0);
+  });
+
+  it("stops after the first failed call and reports the provider unavailable", async () => {
+    // 30 merchants: two calls' worth.
+    for (let i = 0; i < 30; i++) await addTx(USERS.down, `ZQX Shop ${i}`);
+    reply = () => {
+      throw new Error("connect ECONNREFUSED 127.0.0.1:11434");
+    };
+
+    const res = await categorizePendingBatch({ userId: USERS.down, limit: 100 });
+
+    expect(captured).toHaveLength(1);
+    expect(res).toMatchObject({
+      processed: 30,
+      llmMatched: 0,
+      llmCalls: 1,
+      skipped: 30,
+      llmSkipped: "unavailable",
+    });
+
+    // The client then runs with skipLlm: rules and keywords only, no call.
+    captured.length = 0;
+    const again = await categorizePendingBatch({ userId: USERS.down, skipLlm: true });
+    expect(again).toMatchObject({ llmCalls: 0, skipped: 30, llmSkipped: null });
+    expect(captured).toHaveLength(0);
   });
 });

@@ -5,9 +5,10 @@ import { join } from "node:path";
 import { revalidatePath } from "next/cache";
 import { getCurrentSession } from "@/lib/auth/session";
 import { llmRefusalCode, resolveModelForUser } from "@/lib/llm/gateway";
-import { type CsvMappingSpec, parseCsvWithAi } from "./ai-mapper";
+import { type CsvMappingSpec, parseCsvWithAi, parseCsvWithSpec } from "./ai-mapper";
 import { type ParseCsvResult, parseCsv } from "./csv";
 import { ensureImportedAccount, importParsedRows } from "./ingest";
+import { findRememberedMapping, rememberMapping } from "./mappings";
 import { extractAccountMetadata } from "./metadata";
 
 export interface AiDetectionInfo {
@@ -17,6 +18,8 @@ export interface AiDetectionInfo {
   spec?: CsvMappingSpec;
   /** Set when AI was tried and threw (e.g. local Ollama daemon down). */
   error?: string;
+  /** The mapping was remembered from an earlier import of this format: no model call. */
+  remembered?: boolean;
 }
 
 export interface ImportActionOk {
@@ -97,6 +100,27 @@ async function resolveParse(
     if (mode === "strict") return { kind: "error", error: `header:${strict.headerError}` };
   }
 
+  // A format this user imported before: the remembered mapping, no model call.
+  // Not when the user forced AI detection — that is how a wrong mapping is
+  // replaced (the fresh answer overwrites the remembered one).
+  const remembered = mode === "auto" ? await findRememberedMapping(userId, text) : null;
+  if (remembered) {
+    const again = parseCsvWithSpec(text, remembered.spec);
+    if (!again.headerError && again.rows.length > 0) {
+      return {
+        kind: "parsed",
+        parsed: { rows: again.rows, errors: again.errors, headerError: null },
+        ai: {
+          used: true,
+          remembered: true,
+          provider: remembered.provider,
+          model: remembered.model,
+          spec: again.spec,
+        },
+      };
+    }
+  }
+
   try {
     // Consent and the per-user quota are enforced by the gateway.
     const llm = await resolveModelForUser(userId, "csv-mapping");
@@ -109,6 +133,14 @@ async function resolveParse(
     };
     if (aiResult.headerError) {
       return { kind: "error", error: `header:${aiResult.headerError}`, ai };
+    }
+    // A mapping that read rows is worth remembering for this bank's next export.
+    if (aiResult.rows.length > 0) {
+      await rememberMapping(userId, text, {
+        spec: aiResult.spec,
+        provider: aiResult.provider,
+        model: aiResult.model,
+      }).catch((err) => console.warn("could not remember the CSV mapping", err));
     }
     return {
       kind: "parsed",

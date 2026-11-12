@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { redact } from "@/lib/redact";
 import type { AdvisorContext } from "./context";
-import { buildSystemPrompt } from "./prompt";
+import { buildSystemPrompt, chatHistory } from "./prompt";
 
 const ctx: AdvisorContext = {
-  generatedAt: "2026-04-20T12:00:00.000Z",
+  generatedAt: "2026-04-20",
   currency: "EUR",
   dataThrough: "2026-04",
   accounts: { totalBalance: 1234, count: 2 },
@@ -50,7 +50,12 @@ describe("buildSystemPrompt", () => {
     expect(p).toContain("USER_FINANCIAL_SNAPSHOT");
     expect(p).toContain('"totalBalance":1234');
     expect(p).toContain('"groceries"');
-    expect(p).toContain("2026-04-20T12:00:00.000Z");
+    expect(p).toContain("as of 2026-04-20");
+  });
+
+  it("is the same for every turn of a day — nothing per-request in it", () => {
+    expect(buildSystemPrompt("en", { ...ctx })).toBe(buildSystemPrompt("en", ctx));
+    expect(buildSystemPrompt("en", ctx)).not.toMatch(/T\d{2}:\d{2}/);
   });
 
   it("uses the English system prompt when language is 'en'", () => {
@@ -72,5 +77,24 @@ describe("buildSystemPrompt", () => {
     expect(en).toMatch(/NEVER recommend specific instruments/);
     expect(es).toMatch(/No inventes números/);
     expect(es).toMatch(/NUNCA recomiendes instrumentos concretos/);
+  });
+});
+
+describe("chatHistory", () => {
+  const m = (role: string, content: string) => ({ role, content });
+
+  it("keeps user and assistant turns, the last N, starting on a user turn", () => {
+    const msgs = [
+      m("user", "q1"),
+      m("assistant", "a1"),
+      m("system", "note"),
+      m("user", "q2"),
+      m("assistant", "a2"),
+      m("user", "q3"),
+    ];
+    // The last 4 turns open on "a1"; the window drops it to start at "q2".
+    expect(chatHistory(msgs, 4)).toEqual([m("user", "q2"), m("assistant", "a2"), m("user", "q3")]);
+    expect(chatHistory(msgs)).toHaveLength(5);
+    expect(chatHistory([m("assistant", "hi")])).toEqual([]);
   });
 });

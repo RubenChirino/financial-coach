@@ -250,7 +250,9 @@ can read and audit.
 ### 4.5 The LLM layer — Vercel AI SDK + a provider seam
 
 The [Vercel AI SDK](https://sdk.vercel.ai) (`ai` v7) gives one `streamText` /
-`generateObject` interface across providers. Concrete adapters —
+`generateText` interface across providers; structured answers use `generateText`
+with an `Output.object` schema (the gateway's `generateStructured`), never the
+deprecated `generateObject` or hand-sliced JSON. Concrete adapters —
 `@ai-sdk/anthropic`, `@ai-sdk/openai`, `@ai-sdk/google`, and
 `ollama-ai-provider-v2` — are selected behind a single resolver in
 [`src/lib/llm/provider.ts`](src/lib/llm/provider.ts).
@@ -362,10 +364,17 @@ See [`src/app/api/advisor/chat/route.ts`](src/app/api/advisor/chat/route.ts):
    consented, return 403; the UI shows a one-time modal and retries.
 5. **Context** — `buildAdvisorContext()` assembles a small, **redacted** JSON
    snapshot (rounded aggregates, redacted merchant names — never rows). See
-   [§8.2](#82-the-context-the-only-thing-the-model-sees).
-6. **Persist-then-stream** — the user's message is saved *before* the model call
-   (so a crash mid-stream doesn't lose it); `streamText` streams the reply; the
-   assistant message is persisted in `onFinish`.
+   [§8.2](#82-the-context-the-only-thing-the-model-sees). It is built *while*
+   the turn is persisted (step 6), not after it.
+6. **Persist-then-stream** — the user's message is saved *before* the model call,
+   in one batch with the conversation and its title (so a crash mid-stream
+   doesn't lose it); `streamText` streams the reply; the assistant message is
+   persisted in `onEnd`.
+7. **Bounded, cache-friendly calls** — the system prompt holds nothing
+   per-request (the snapshot is dated by day), so consecutive turns share a
+   prefix a provider's prompt cache can serve; history is the last 20 messages;
+   replies are capped at 1,500 tokens; and the request's abort signal stops the
+   generation when the client goes away.
 
 ---
 
@@ -713,6 +722,12 @@ browser; an AI-assisted column mapper handles unfamiliar bank export formats; an
 every import is grouped under an `import_batches` row so a bad upload can be
 deleted as a unit.
 
+A mapping the LLM inferred is remembered per user in `import_mappings`, keyed by
+a hash of the file's header row (metadata lines above it vary between exports;
+the header row does not). The next export from that bank is parsed with the
+stored mapping and no model call. Forcing AI detection bypasses the memo and
+replaces it — the way to fix a mapping that was wrong.
+
 ---
 
 ## 10. The categorization pipeline
@@ -721,21 +736,37 @@ Categorizing a transaction is a cost/accuracy ladder
 ([`src/lib/categorize/index.ts`](src/lib/categorize/index.ts)). For each pending
 row, in order:
 
-1. **Deterministic rules** (`category_rules`) — fast, free, exact. Confidence 1.0.
+1. **Deterministic rules** (`category_rules`) — fast, free, exact.
 2. **Well-known-merchant keywords** — a curated heuristic for the long tail of
    common merchants. Free.
-3. **LLM fallback** — only for what the first two miss, with PII redacted, capped
-   per run, and flagged `needsReview` when the model's confidence is low.
+3. **LLM fallback** — only for what the first two miss, with PII redacted, and
+   flagged `needsReview` when the model's confidence is below 0.7.
+
+Ingest runs steps 1–2 in memory, so rows land categorized. The background run
+(`categorizePendingBatch`) applies the rule and keyword matches as one batch,
+then groups the rest **by merchant** and asks the model about up to 25
+merchants in one structured call. Each answer is applied as one batch: every
+row of each merchant, plus — for an answer at confidence ≥ 0.85 — a rule with
+`created_by = 'ai'` (priority 50: below the user's own rules, above the
+built-in ones), so that merchant is never sent to the model again. A
+low-confidence answer stays flagged for the user rather than being re-asked:
+the same question gets the same answer.
+
+Each row records **how** it was categorized in `category_source` (`rule`,
+`keyword`, `llm`, `user`). That replaced reading provenance from sentinel
+confidences (100 = user, 95 = keyword, 1 = rule); migration `0032` backfilled it
+from them — an old LLM answer that happened to round to exactly 95 or 1 is
+indistinguishable from a keyword or rule match, which is why the column exists.
 
 > **Decision — cheapest reliable signal first.** Hitting an LLM for "MERCADONA →
 > Groceries" would be slow, costly, and *less* reliable than a rule. So the LLM is
-> the last resort, not the first reach. Confidence is encoded so the system stays
-> honest: rules/keywords are authoritative, LLM guesses below threshold go to a
-> review queue, and **only a user's manual pick ever reaches confidence 100** — a
-> sentinel the re-correction pass (`recorrectCategories`) refuses to overwrite.
-> The batch path is cursor-based so the background "categorize everything" loop
-> always terminates even if the LLM is offline (failed rows fall behind the cursor
-> and are retried next run, never stalling it).
+> the last resort, not the first reach, and it is asked about each merchant
+> once: per merchant, not per row, and then never again once a confident answer
+> became a rule. A user's pick (`category_source = 'user'`) is never overwritten
+> by an automatic pass. The batch path is cursor-based so the background loop
+> always terminates, and **the first failed model call ends the LLM step**: the
+> run reports `unavailable` and continues with rules and keywords only, so an
+> unreachable provider costs one call, not one per row.
 
 > **Decision — learn from corrections, scoped per user.** A manual re-categorize
 > doesn't just fix one row. The user can promote it to a reusable rule

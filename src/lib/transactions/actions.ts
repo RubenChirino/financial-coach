@@ -63,6 +63,7 @@ export async function setTransactionCategoryAction(
       categoryId,
       needsReview: false,
       confidence: categoryId == null ? null : 100,
+      categorySource: categoryId == null ? null : "user",
       updatedAt: new Date(),
     })
     .where(and(eq(transactions.id, txId), eq(transactions.userId, session.userId)));

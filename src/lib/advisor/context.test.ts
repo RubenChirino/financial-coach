@@ -210,3 +210,10 @@ describe("buildAdvisorContext", () => {
     expect(blob).not.toMatch(/\bES\d{20,}\b/);
   });
 });
+
+describe("snapshot date", () => {
+  it("dates the snapshot by day, so the system prompt is stable across turns", async () => {
+    const ctx = await buildAdvisorContext({ userId });
+    expect(ctx.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});

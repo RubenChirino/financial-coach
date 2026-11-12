@@ -198,7 +198,10 @@ async function dropRelinkOverlap(
   return rows.filter((r) => !dropped.has(r));
 }
 
-type Categorized = Pick<NewTransactionRow, "categoryId" | "confidence" | "needsReview"> & {
+type Categorized = Pick<
+  NewTransactionRow,
+  "categoryId" | "confidence" | "needsReview" | "categorySource"
+> & {
   via: "rule" | "keyword" | null;
 };
 
@@ -206,19 +209,30 @@ async function makeCategorizer(userId: number): Promise<(row: IngestRow) => Cate
   const [rules, idBySlug] = await Promise.all([loadRules(userId), loadCategoryIdsBySlug()]);
   return (row) => {
     if (row.categoryId != null) {
+      // A category the source chose (manual entry, demo seed) is the user's.
       return {
         categoryId: row.categoryId,
         confidence: row.confidence ?? null,
         needsReview: row.needsReview ?? false,
+        categorySource: "user",
         via: null,
       };
     }
     const match = matchDeterministic(row, rules, idBySlug);
-    if (!match) return { categoryId: null, confidence: null, needsReview: true, via: null };
+    if (!match) {
+      return {
+        categoryId: null,
+        confidence: null,
+        needsReview: true,
+        categorySource: null,
+        via: null,
+      };
+    }
     return {
       categoryId: match.categoryId,
       confidence: match.confidence,
       needsReview: false,
+      categorySource: match.via,
       via: match.via,
     };
   };

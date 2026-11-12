@@ -204,6 +204,7 @@
     "catDoneErrors": "{count, plural, one {# para la próxima vez} other {# para la próxima vez}}",
     "catSkippedConsent": "{count, plural, one {# sin categorizar} other {# sin categorizar}}: aprueba la IA en la nube en Ajustes → Coach IA para ordenar el resto.",
     "catSkippedRateLimited": "{count, plural, one {# para la próxima vez} other {# para la próxima vez}}: se alcanzó el límite de IA, inténtalo en un minuto.",
+    "catSkippedUnavailable": "{count, plural, one {# para la próxima vez} other {# para la próxima vez}}: el modelo de IA no respondió, así que las reglas y palabras clave ordenaron el resto.",
     "catErrorTitle": "Categorización detenida",
     "catClose": "Descartar",
     "guestNudge": "Inicia sesión para guardar cambios — el modo invitado es solo lectura.",

@@ -186,7 +186,10 @@ export async function buildAdvisorContext(opts: {
   }));
 
   return {
-    generatedAt: new Date().toISOString(),
+    // The day, not the instant: the snapshot is part of the system prompt, and
+    // a per-request timestamp would make every prompt unique — no provider
+    // prompt cache could ever hit. A day is all the coach needs.
+    generatedAt: new Date().toISOString().slice(0, 10),
     currency: accountsTotal.currency,
     dataThrough: months.find((m) => m.txCount > 0)?.month ?? null,
     accounts: {

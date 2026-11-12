@@ -364,6 +364,31 @@ export const importBatches = sqliteTable(
   (t) => [index("import_batches_user_created_idx").on(t.userId, t.createdAt)],
 );
 
+/**
+ * CSV column mappings the LLM worked out, remembered per user by the file's
+ * header row: the next export from the same bank is parsed with the stored
+ * mapping, without a model call. `spec` is the mapping as JSON (column
+ * indices, formats and the model's one-line note — no row data).
+ */
+export const importMappings = sqliteTable(
+  "import_mappings",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** sha256 of the normalized header row (see `headerKey`). */
+    headerHash: text("header_hash").notNull(),
+    spec: text("spec").notNull(),
+    /** "provider · model" that inferred the mapping, for display. */
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    createdAt: timestamp("created_at"),
+    updatedAt: timestamp("updated_at"),
+  },
+  (t) => [uniqueIndex("import_mappings_user_header_uniq").on(t.userId, t.headerHash)],
+);
+
 export const transactions = sqliteTable(
   "transactions",
   {
@@ -397,6 +422,14 @@ export const transactions = sqliteTable(
     categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
     subcategory: text("subcategory"),
     confidence: integer("confidence", { mode: "number" }),
+    /**
+     * How the category was set: a rule (built-in, learned or AI-learned), a
+     * well-known-merchant keyword, the LLM, or the user's own pick ("user" is
+     * never overwritten by an automatic pass). NULL when uncategorized, or for
+     * rows categorized before this column whose confidence carried no marker.
+     * Replaces reading provenance from sentinel confidences (100 / 95 / 1).
+     */
+    categorySource: text("category_source", { enum: ["rule", "keyword", "llm", "user"] }),
     isRecurring: integer("is_recurring", { mode: "boolean" }).notNull().default(false),
     needsReview: integer("needs_review", { mode: "boolean" }).notNull().default(false),
     notes: text("notes"),
@@ -442,7 +475,8 @@ export const categoryRules = sqliteTable(
      * wins over a generic guess. See `src/lib/categorize/rules.ts`.
      */
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
-    createdBy: text("created_by", { enum: ["system", "user"] })
+    /** "ai": learned from a confident LLM answer, so the merchant skips the LLM next time. */
+    createdBy: text("created_by", { enum: ["system", "user", "ai"] })
       .notNull()
       .default("system"),
     matchPattern: text("match_pattern").notNull(),

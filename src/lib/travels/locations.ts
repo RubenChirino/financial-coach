@@ -1,6 +1,7 @@
 import "server-only";
 
 import { inArray } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "@/db/client";
 import { cityCountries } from "@/db/schema";
 import type { LlmHandle } from "@/lib/llm/gateway";
@@ -100,7 +101,14 @@ const ES_COMMUNITIES = [
   "Melilla",
 ];
 
-/** Coerce one `{country, region}` entry from the model's JSON into an AiPlace. */
+/** The answer: one entry per place, keyed by the exact string the model was sent. */
+const PlacesSchema = z.object({
+  places: z.array(
+    z.object({ name: z.string(), country: z.string().nullable(), region: z.string().nullable() }),
+  ),
+});
+
+/** Coerce one `{country, region}` entry from the model's answer into an AiPlace. */
 function parsePlace(raw: unknown): AiPlace {
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const ccRaw = typeof obj.country === "string" ? obj.country : null;
@@ -123,7 +131,7 @@ export function buildPlacesPrompt(places: readonly Redacted[], homeCountry?: str
   return `For each place name below (taken from card-payment descriptions), return its country and, for places in Spain (ES), its autonomous community.
 - "country": ISO-3166 alpha-2 code, or null if the item is NOT a real place (a website, brand, or random text).
 - "region": for Spanish places, EXACTLY one of: ${ES_COMMUNITIES.join(", ")}. For non-Spanish places, null.${homeBias}
-Return ONLY a JSON object mapping each input string to {"country": "XX"|null, "region": "..."|null}. No prose.
+Return {"places": [...]} with one entry per item: {"name": the item exactly as given, "country": "XX" or null, "region": "..." or null}.
 
 Items:
 ${JSON.stringify(places)}`;
@@ -135,7 +143,8 @@ ${JSON.stringify(places)}`;
  * outside the user's home community). Returns a map keyed by normalized cityKey
  * of the original (unredacted) name.
  *
- * One call per ~50 places; resilient to malformed output (returns what parsed).
+ * One structured call per ~50 places; a batch whose answer does not match the
+ * schema is left unresolved (returns what parsed).
  */
 export async function resolveCitiesWithAi(
   llm: LlmHandle,
@@ -155,12 +164,16 @@ export async function resolveCitiesWithAi(
     );
 
     try {
-      const text = await llm.generateText({ prompt, temperature: 0, maxOutputTokens: 2500 });
-      const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
-      const parsed = JSON.parse(json) as Record<string, unknown>;
-      // The model answers keyed by the string it was sent, i.e. the redacted one.
+      const { places } = await llm.generateStructured({
+        schema: PlacesSchema,
+        prompt,
+        temperature: 0,
+        maxOutputTokens: 2500,
+      });
+      // The model answers with the string it was sent, i.e. the redacted one.
+      const byName = new Map(places.map((p) => [p.name, p]));
       for (const { city, sent } of batch) {
-        result.set(cityKey(city), parsePlace(parsed[sent]));
+        result.set(cityKey(city), parsePlace(byName.get(sent)));
       }
     } catch {
       // Leave this batch unresolved; the sync pass treats missing keys as "not

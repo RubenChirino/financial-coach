@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { categories, categoryRules, transactions } from "@/db/schema";
+import { categoryRules } from "@/db/schema";
 import { cleanMerchant } from "./heuristics";
 
 export type MatchType = "merchant_exact" | "contains" | "regex";
@@ -147,6 +147,26 @@ export async function upsertUserRule(
   ]);
 }
 
+/** "ai" rules rank below the user's own (5) and above the built-in ones (100). */
+export const AI_RULE_PRIORITY = 50;
+
+/**
+ * A statement (for a batch) that records "always categorise {pattern} as
+ * {category}" learned from a confident LLM answer — only when the user has no
+ * rule for that pattern yet, so it never overrides a rule the user made.
+ */
+export function insertAiRuleIfAbsent(userId: number, pattern: string, categoryId: number) {
+  return db.run(sql`insert into "category_rules"
+      ("user_id", "created_by", "match_pattern", "match_type", "category_id", "priority")
+    select ${userId}, 'ai', ${pattern}, 'contains', ${categoryId}, ${AI_RULE_PRIORITY}
+    where not exists (
+      select 1 from "category_rules"
+      where "category_rules"."user_id" = ${userId}
+        and "category_rules"."match_pattern" = ${pattern}
+        and "category_rules"."match_type" = 'contains'
+    )`);
+}
+
 export async function loadRules(userId: number): Promise<RuleRow[]> {
   const rows = await db
     .select({
@@ -160,29 +180,4 @@ export async function loadRules(userId: number): Promise<RuleRow[]> {
     .where(or(isNull(categoryRules.userId), eq(categoryRules.userId, userId)))
     .orderBy(asc(categoryRules.priority));
   return rows;
-}
-
-export async function categoryIdBySlug(slug: string): Promise<number | null> {
-  const row = await db
-    .select({ id: categories.id })
-    .from(categories)
-    .where(eq(categories.slug, slug))
-    .limit(1);
-  return row[0]?.id ?? null;
-}
-
-export async function assignCategory(
-  transactionId: number,
-  categoryId: number,
-  opts?: { needsReview?: boolean; confidence?: number | null },
-): Promise<void> {
-  await db
-    .update(transactions)
-    .set({
-      categoryId,
-      needsReview: opts?.needsReview ?? false,
-      confidence: opts?.confidence ?? null,
-      updatedAt: new Date(),
-    })
-    .where(eq(transactions.id, transactionId));
 }

@@ -218,6 +218,27 @@
       "when": 1794493344492,
       "tag": "0030_per_user_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1794493593132,
+      "tag": "0031_category_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1794493593501,
+      "tag": "0032_category_source_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1794509267439,
+      "tag": "0033_import_mappings",
+      "breakpoints": true
     }
   ]
 }

@@ -3,13 +3,7 @@ import "server-only";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
-import {
-  generateObject,
-  generateText,
-  type LanguageModel,
-  type ModelMessage,
-  streamText,
-} from "ai";
+import { generateText, type LanguageModel, type ModelMessage, Output, streamText } from "ai";
 import { eq } from "drizzle-orm";
 // `ollama-ai-provider` was archived at the AI SDK v4 provider spec
 // (LanguageModelV1); `ollama-ai-provider-v2` is the maintained continuation.
@@ -62,8 +56,9 @@ const POLICY: Record<LlmPurpose, PurposePolicy> = {
   chat: { limit: 20, windowMs: MINUTE, maxCalls: 1 },
   // One call per import; each carries a few KB of redacted bank text.
   "csv-mapping": { limit: 10, windowMs: 5 * MINUTE, maxCalls: 1 },
-  // One operation = one batch from the background loop (12 rows by default).
-  categorize: { limit: 30, windowMs: MINUTE, maxCalls: 25 },
+  // One operation = one batch from the background loop (≤ 100 rows), sent
+  // 25 merchants per call — so at most 4 calls.
+  categorize: { limit: 30, windowMs: MINUTE, maxCalls: 4 },
   "travel-city": { limit: 30, windowMs: MINUTE, maxCalls: 1 },
   // One operation = one batch of ≤ 100 places, sent 50 at a time.
   "travel-places": { limit: 30, windowMs: MINUTE, maxCalls: 2 },
@@ -101,7 +96,8 @@ export interface TextCall {
   maxRetries?: number;
 }
 
-export interface ObjectCall<T> extends TextCall {
+export interface StructuredCall<T> extends TextCall {
+  /** The shape of the answer; the provider is asked for JSON matching it. */
   schema: z.ZodType<T>;
 }
 
@@ -124,7 +120,12 @@ export type LlmStream = ReturnType<typeof startStream>;
 export interface LlmHandle {
   readonly info: ProviderInfo;
   generateText(call: TextCall): Promise<string>;
-  generateObject<T>(call: ObjectCall<T>): Promise<T>;
+  /**
+   * One call whose answer is parsed and validated against `call.schema` —
+   * `generateText` with an `Output.object` spec (the SDK's replacement for
+   * the deprecated `generateObject`). Throws when the answer does not match.
+   */
+  generateStructured<T>(call: StructuredCall<T>): Promise<T>;
   streamText(call: StreamCall): LlmStream;
 }
 
@@ -190,10 +191,14 @@ export async function resolveModelForUser(userId: number, purpose: LlmPurpose): 
       const { text } = await generateText({ model, ...call });
       return text;
     },
-    async generateObject<T>(call: ObjectCall<T>): Promise<T> {
+    async generateStructured<T>({ schema, ...call }: StructuredCall<T>): Promise<T> {
       spend();
-      const { object } = await generateObject({ model, ...call });
-      return object as T;
+      const { output } = await generateText({
+        model,
+        ...call,
+        output: Output.object({ schema }),
+      });
+      return output as T;
     },
     streamText(call) {
       spend();

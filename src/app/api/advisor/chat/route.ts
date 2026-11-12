@@ -9,7 +9,7 @@ import {
   startTurn,
   userOwnsConversation,
 } from "@/lib/advisor/conversations";
-import { buildSystemPrompt } from "@/lib/advisor/prompt";
+import { buildSystemPrompt, chatHistory } from "@/lib/advisor/prompt";
 import { getCurrentSession } from "@/lib/auth/session";
 import {
   CloudConsentRequired,
@@ -61,6 +61,9 @@ function textOf(message: ChatBody["messages"][number]): string {
  *   5. Stream the response via the AI SDK's data-stream protocol so the React
  *      `useChat` hook can render tokens as they arrive.
  */
+/** Output cap per reply: room for a deep analysis, not for a runaway one. */
+const MAX_REPLY_TOKENS = 1500;
+
 export async function POST(req: NextRequest): Promise<Response> {
   // CSRF: a cross-site form submission would otherwise rack up paid LLM calls
   // and persist messages under the victim's account.
@@ -134,26 +137,31 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   // Persist the inbound user message (and the conversation, when new) before
   // any LLM work, in one batch, so a crash or a cancelled stream loses nothing.
-  const conversationId = await startTurn(session.userId, body.conversationId ?? null, lastUserText);
-
-  // History from DB is the source of truth (the client may be out of sync after
-  // refresh). We pass the full history every turn — at typical sizes this fits
-  // easily in the context window.
-  const persisted = await getConversationMessages(session.userId, conversationId);
+  // The financial snapshot does not depend on it, so both run at once.
   const language = user.language === "en" ? "en" : "es";
-  const ctx = await buildAdvisorContext({ monthsBack: 3, userId: session.userId });
-  const instructions = buildSystemPrompt(language, ctx);
+  const [{ conversationId, persisted }, ctx] = await Promise.all([
+    (async () => {
+      const id = await startTurn(session.userId, body.conversationId ?? null, lastUserText);
+      // History from the DB is the source of truth (the client may be out of
+      // sync after a refresh).
+      return { conversationId: id, persisted: await getConversationMessages(session.userId, id) };
+    })(),
+    buildAdvisorContext({ monthsBack: 3, userId: session.userId }),
+  ]);
 
   const { info } = llm;
   const result = llm.streamText({
     // v7 renamed `system` to `instructions` and `onFinish` to `onEnd`. The old
     // names still work as deprecated aliases; using the current ones keeps the
     // next major from breaking silently.
-    instructions,
-    messages: persisted
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) => ({ role: m.role, content: m.content })),
+    instructions: buildSystemPrompt(language, ctx),
+    messages: chatHistory(persisted),
     temperature: 0.4,
+    // The coach answers in a few sentences; the cap bounds a runaway reply.
+    maxOutputTokens: MAX_REPLY_TOKENS,
+    // The client closing the stream stops the generation (and its cost). The
+    // user's message is already saved; a reply cut short is not.
+    abortSignal: req.signal,
     onEnd: async ({ text, usage }) => {
       try {
         await appendMessage(conversationId, "assistant", text, {
