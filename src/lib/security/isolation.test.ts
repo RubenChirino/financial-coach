@@ -83,7 +83,7 @@ async function seedUserA(): Promise<Ids> {
     .returning();
   const [inst] = await d
     .insert(schema.institutions)
-    .values({ gocardlessId: "DEMO_A", name: "Demo", country: "ES" })
+    .values({ providerInstitutionId: "DEMO_A", name: "Demo", country: "ES" })
     .returning();
   const [req] = await d
     .insert(schema.requisitions)
@@ -91,21 +91,21 @@ async function seedUserA(): Promise<Ids> {
       userId: USER_A,
       institutionId: inst!.id,
       provider: "demo",
-      gocardlessRequisitionId: "enc",
+      providerRequisitionId: "enc",
       status: "linked",
       reference: "a",
     })
     .returning();
   const [acc] = await d
     .insert(schema.accounts)
-    .values({ userId: USER_A, requisitionId: req!.id, gocardlessAccountId: "enc", name: "A" })
+    .values({ userId: USER_A, requisitionId: req!.id, providerAccountId: "enc", name: "A" })
     .returning();
   const [manual] = await d
     .insert(schema.accounts)
     .values({
       userId: USER_A,
       requisitionId: req!.id,
-      gocardlessAccountId: "enc",
+      providerAccountId: "enc",
       name: "Cash",
       kind: "cash",
       isManual: true,
@@ -123,7 +123,7 @@ async function seedUserA(): Promise<Ids> {
         userId: USER_A,
         accountId: acc!.id,
         importBatchId: batch!.id,
-        gocardlessTransactionId: "a-1",
+        externalId: "a-1",
         bookingDate: new Date(Date.UTC(2026, 9, 1)),
         amountCents: -5_000,
         merchantName: "Mercadona Madrid",
@@ -135,7 +135,7 @@ async function seedUserA(): Promise<Ids> {
         userId: USER_A,
         accountId: acc!.id,
         importBatchId: batch!.id,
-        gocardlessTransactionId: "a-2",
+        externalId: "a-2",
         bookingDate: new Date(Date.UTC(2026, 9, 1)),
         amountCents: 5_000,
         rawDescription: "Transfer in",

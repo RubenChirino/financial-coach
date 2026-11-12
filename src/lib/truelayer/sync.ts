@@ -41,7 +41,7 @@ export async function upsertTrueLayerInstitution(opts: {
   country: string;
 }): Promise<number> {
   return upsertInstitution({
-    gocardlessId: `tl_${opts.providerId}`,
+    providerInstitutionId: `tl_${opts.providerId}`,
     name: opts.displayName,
     logoUrl: opts.logoUrl,
     country: opts.country,
@@ -72,7 +72,7 @@ export async function createTrueLayerPendingConnection(opts: {
       userId: opts.userId,
       institutionId: opts.placeholderInstitutionId,
       provider: "truelayer",
-      gocardlessRequisitionId: placeholder,
+      providerRequisitionId: placeholder,
       status: "created",
       reference: opts.reference,
       link: null,
@@ -118,7 +118,7 @@ export async function finalizeTrueLayerConnection(
     // it as an incomplete connection.
     await db
       .update(requisitions)
-      .set({ gocardlessRequisitionId: encrypt(serializeTokens(tokens), opts.encryptionKey) })
+      .set({ providerRequisitionId: encrypt(serializeTokens(tokens), opts.encryptionKey) })
       .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
     return { accountIds: [], created: 0, adopted: 0, pendingChoices: 0 };
   }
@@ -139,7 +139,7 @@ export async function finalizeTrueLayerConnection(
     .set({
       institutionId: institutionRowId,
       status: "linked",
-      gocardlessRequisitionId: encrypt(serializeTokens(tokens), opts.encryptionKey),
+      providerRequisitionId: encrypt(serializeTokens(tokens), opts.encryptionKey),
     })
     .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
 
@@ -179,7 +179,7 @@ export async function getValidAccessToken(
   opts: { userId: number; requisitionRowId: number; encryptionKey: Buffer },
 ): Promise<string> {
   const row = await db
-    .select({ blob: requisitions.gocardlessRequisitionId })
+    .select({ blob: requisitions.providerRequisitionId })
     .from(requisitions)
     .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)))
     .limit(1);
@@ -200,7 +200,7 @@ export async function getValidAccessToken(
   };
   await db
     .update(requisitions)
-    .set({ gocardlessRequisitionId: encrypt(serializeTokens(next), opts.encryptionKey) })
+    .set({ providerRequisitionId: encrypt(serializeTokens(next), opts.encryptionKey) })
     .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
   return next.accessToken;
 }
@@ -238,7 +238,7 @@ export async function syncTrueLayerAccounts(
   const rows = await db
     .select({
       accountRowId: accounts.id,
-      cipher: accounts.gocardlessAccountId,
+      cipher: accounts.providerAccountId,
       lastSyncedAt: accounts.lastSyncedAt,
       requisitionId: requisitions.id,
     })

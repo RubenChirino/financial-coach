@@ -48,7 +48,7 @@ async function seed() {
   await fixture.db.insert(transactions).values({
     userId: USER,
     accountId: accountRowId,
-    gocardlessTransactionId: "t1",
+    externalId: "t1",
     bookingDate: new Date(),
     amountCents: -100,
     currency: "EUR",

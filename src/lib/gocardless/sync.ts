@@ -37,7 +37,7 @@ function statusFromApi(
 
 export async function upsertInstitution(inst: Institution): Promise<number> {
   return upsertInstitutionRow({
-    gocardlessId: inst.id,
+    providerInstitutionId: inst.id,
     name: inst.name,
     logoUrl: inst.logo,
     country: inst.countries[0] ?? "ES",
@@ -54,7 +54,7 @@ export async function createRequisition(
     encryptionKey: Buffer;
     language: "ES" | "EN";
   },
-): Promise<{ requisitionRowId: number; link: string; gocardlessRequisitionId: string }> {
+): Promise<{ requisitionRowId: number; link: string; providerRequisitionId: string }> {
   const institutionRowId = await upsertInstitution(opts.institution);
 
   const req = await client.createRequisition({
@@ -72,7 +72,7 @@ export async function createRequisition(
     .values({
       userId: opts.userId,
       institutionId: institutionRowId,
-      gocardlessRequisitionId: encryptedId,
+      providerRequisitionId: encryptedId,
       status: statusFromApi(req.status),
       reference: opts.reference,
       link: req.link,
@@ -82,7 +82,7 @@ export async function createRequisition(
 
   const requisitionRowId = inserted[0]?.id;
   if (!requisitionRowId) throw new Error("failed to insert requisition");
-  return { requisitionRowId, link: req.link, gocardlessRequisitionId: req.id };
+  return { requisitionRowId, link: req.link, providerRequisitionId: req.id };
 }
 
 /**
@@ -97,11 +97,11 @@ export async function linkRequisitionAccounts(
   opts: {
     userId: number;
     requisitionRowId: number;
-    gocardlessRequisitionId: string;
+    providerRequisitionId: string;
     encryptionKey: Buffer;
   },
 ): Promise<LinkResult> {
-  const req = await client.getRequisition(opts.gocardlessRequisitionId);
+  const req = await client.getRequisition(opts.providerRequisitionId);
   const status = statusFromApi(req.status);
 
   await db
@@ -139,12 +139,12 @@ export async function linkRequisitionAccounts(
 /** Fetch and normalize one account's booked transactions since `since`. */
 export async function fetchGoCardlessAccount(
   client: GoCardlessClient,
-  opts: { gocardlessAccountId: string; since: Date },
+  opts: { providerAccountId: string; since: Date },
 ): Promise<IngestRow[]> {
   const dateFrom = opts.since.toISOString().slice(0, 10);
-  const txs = await client.getAccountTransactions(opts.gocardlessAccountId, { dateFrom });
+  const txs = await client.getAccountTransactions(opts.providerAccountId, { dateFrom });
   return txs.transactions.booked
-    .map((t) => normalizeTransaction(t, opts.gocardlessAccountId))
+    .map((t) => normalizeTransaction(t, opts.providerAccountId))
     .filter((t): t is NonNullable<typeof t> => t !== null);
 }
 
@@ -170,7 +170,7 @@ export async function syncGoCardlessAccounts(
   const rows = await db
     .select({
       accountRowId: accounts.id,
-      cipher: accounts.gocardlessAccountId,
+      cipher: accounts.providerAccountId,
       lastSyncedAt: accounts.lastSyncedAt,
     })
     .from(accounts)
@@ -187,11 +187,11 @@ export async function syncGoCardlessAccounts(
   let failed = 0;
   for (const r of rows) {
     try {
-      const gocardlessAccountId = decrypt(r.cipher, opts.encryptionKey);
+      const providerAccountId = decrypt(r.cipher, opts.encryptionKey);
       const since = syncWindowStart(r.lastSyncedAt);
       parts.push({
         accountId: r.accountRowId,
-        rows: await fetchGoCardlessAccount(client, { gocardlessAccountId, since }),
+        rows: await fetchGoCardlessAccount(client, { providerAccountId, since }),
       });
     } catch (err) {
       failed++;

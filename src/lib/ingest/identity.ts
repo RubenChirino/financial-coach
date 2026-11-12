@@ -66,9 +66,9 @@ export async function insertTransactionsIdempotent(
       .insert(transactions)
       .values(chunk)
       .onConflictDoNothing({
-        target: [transactions.accountId, transactions.gocardlessTransactionId],
+        target: [transactions.accountId, transactions.externalId],
       })
-      .returning({ id: transactions.id, externalId: transactions.gocardlessTransactionId });
+      .returning({ id: transactions.id, externalId: transactions.externalId });
     inserted.push(...out);
   }
   return inserted;

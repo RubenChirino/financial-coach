@@ -211,7 +211,7 @@ async function slugToCategoryId(): Promise<Map<string, number>> {
 
 async function upsertDemoInstitution(spec: DemoBankSpec): Promise<number> {
   return upsertInstitution({
-    gocardlessId: spec.externalId,
+    providerInstitutionId: spec.externalId,
     name: spec.name,
     logoUrl: spec.logoUrl,
     country: spec.country,
@@ -241,7 +241,7 @@ export async function seedDemoBank(
       userId,
       institutionId: institutionRowId,
       provider: "demo",
-      gocardlessRequisitionId: encrypt(gcRequisitionId, encryptionKey),
+      providerRequisitionId: encrypt(gcRequisitionId, encryptionKey),
       status: "linked",
       reference,
       link: null,
@@ -257,7 +257,7 @@ export async function seedDemoBank(
     .values({
       userId,
       requisitionId: requisitionRowId,
-      gocardlessAccountId: encrypt(gcAccountId, encryptionKey),
+      providerAccountId: encrypt(gcAccountId, encryptionKey),
       ibanLast4: spec.ibanLast4,
       name: spec.accountName,
       ownerName: null,
@@ -325,7 +325,7 @@ export async function wipeAllDemoData(userId: number): Promise<{ removedRequisit
   const orphans = await db
     .select({ id: institutions.id, name: institutions.name })
     .from(institutions)
-    .where(like(institutions.gocardlessId, "DEMO_%"));
+    .where(like(institutions.providerInstitutionId, "DEMO_%"));
   for (const o of orphans) {
     const refs = await db
       .select({ id: requisitions.id })

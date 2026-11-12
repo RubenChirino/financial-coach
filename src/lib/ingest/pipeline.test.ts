@@ -215,7 +215,7 @@ describe("ingestTransactions", () => {
 
     const all = await accountRows(accountId);
     expect(all).toHaveLength(1200);
-    expect(new Set(all.map((t) => t.gocardlessTransactionId)).size).toBe(1200);
+    expect(new Set(all.map((t) => t.externalId)).size).toBe(1200);
     const [done] = await fixture.db
       .select({ balance: accounts.balanceCents, lastSyncedAt: accounts.lastSyncedAt })
       .from(accounts)
@@ -285,13 +285,13 @@ describe("ingestTransactions", () => {
 
 describe("upsertInstitution", () => {
   it("converges on one row under concurrent get-or-create", async () => {
-    const spec = { gocardlessId: "RACE_BANK", name: "Race", logoUrl: null, country: "ES" };
+    const spec = { providerInstitutionId: "RACE_BANK", name: "Race", logoUrl: null, country: "ES" };
     const ids = await Promise.all(Array.from({ length: 5 }, () => upsertInstitution(spec)));
     expect(new Set(ids).size).toBe(1);
     const rows = await fixture.db
       .select()
       .from(institutions)
-      .where(eq(institutions.gocardlessId, "RACE_BANK"));
+      .where(eq(institutions.providerInstitutionId, "RACE_BANK"));
     expect(rows).toHaveLength(1);
   });
 });
@@ -325,7 +325,7 @@ async function bankAccount(
   providerAccountId: string,
 ): Promise<number> {
   const institutionId = await upsertInstitution({
-    gocardlessId: `${provider}_PARITY`,
+    providerInstitutionId: `${provider}_PARITY`,
     name: provider,
     logoUrl: null,
     country: "ES",
@@ -336,7 +336,7 @@ async function bankAccount(
       userId,
       institutionId,
       provider,
-      gocardlessRequisitionId: encrypt(requisitionSecret, KEY),
+      providerRequisitionId: encrypt(requisitionSecret, KEY),
       status: "linked",
       reference: `${provider}-parity`,
     })
@@ -347,7 +347,7 @@ async function bankAccount(
     .values({
       userId,
       requisitionId: req.id,
-      gocardlessAccountId: encrypt(providerAccountId, KEY),
+      providerAccountId: encrypt(providerAccountId, KEY),
       name: `${provider} account`,
       balanceCents: 0,
       currency: "EUR",

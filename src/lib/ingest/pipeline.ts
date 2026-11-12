@@ -155,7 +155,7 @@ async function dropRelinkOverlap(
   );
   const stored = await db
     .select({
-      externalId: transactions.gocardlessTransactionId,
+      externalId: transactions.externalId,
       bookingDate: transactions.bookingDate,
       amountCents: transactions.amountCents,
       rawDescription: transactions.rawDescription,
@@ -278,7 +278,7 @@ export async function ingestTransactions(input: IngestInput): Promise<IngestResu
         userId,
         accountId: part.accountId,
         importBatchId: input.importBatchId ?? null,
-        gocardlessTransactionId: row.externalId,
+        externalId: row.externalId,
         bookingDate: row.bookingDate,
         valueDate: row.valueDate ?? null,
         amountCents: row.amountCents,

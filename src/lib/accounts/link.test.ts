@@ -31,7 +31,7 @@ beforeAll(async () => {
     .values(Object.values(U).map((id) => ({ id, encryptionSalt: `salt-${id}` })));
   const [inst] = await fixture.db
     .insert(institutions)
-    .values({ gocardlessId: "BANK_A", name: "Bank A", country: "ES" })
+    .values({ providerInstitutionId: "BANK_A", name: "Bank A", country: "ES" })
     .returning({ id: institutions.id });
   if (!inst) throw new Error("no institution");
   bank = inst.id;
@@ -44,7 +44,7 @@ async function consent(userId: number, key: Buffer, status: "linked" | "expired"
       userId,
       institutionId: bank,
       provider: "gocardless",
-      gocardlessRequisitionId: encrypt(`req-${Math.random()}`, key),
+      providerRequisitionId: encrypt(`req-${Math.random()}`, key),
       status,
       reference: `ref-${Math.random()}`,
     })
@@ -65,7 +65,7 @@ async function legacyAccount(
     .values({
       userId,
       requisitionId,
-      gocardlessAccountId: encrypt(providerId, key),
+      providerAccountId: encrypt(providerId, key),
       ibanLast4: "1332",
       name: "Cuenta Online",
     })
@@ -156,7 +156,7 @@ describe("re-link: a new consent for an account the user already has", () => {
     const linked1 = await linkRequisitionAccounts(first.client, {
       userId,
       requisitionRowId: req1,
-      gocardlessRequisitionId: "gc-req-1",
+      providerRequisitionId: "gc-req-1",
       encryptionKey: KEY_A,
     });
     expect(linked1).toMatchObject({ created: 1, adopted: 0, pendingChoices: 0 });
@@ -187,7 +187,7 @@ describe("re-link: a new consent for an account the user already has", () => {
     const linked2 = await linkRequisitionAccounts(second.client, {
       userId,
       requisitionRowId: req2,
-      gocardlessRequisitionId: "gc-req-2",
+      providerRequisitionId: "gc-req-2",
       encryptionKey: KEY_A,
     });
     expect(linked2).toMatchObject({
@@ -213,7 +213,7 @@ describe("re-link: a new consent for an account the user already has", () => {
     const again = await linkRequisitionAccounts(second.client, {
       userId,
       requisitionRowId: req2,
-      gocardlessRequisitionId: "gc-req-2",
+      providerRequisitionId: "gc-req-2",
       encryptionKey: KEY_A,
     });
     expect(again).toMatchObject({ created: 0, adopted: 0, accountIds: [accountId] });

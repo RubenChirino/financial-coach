@@ -27,14 +27,19 @@ async function seed(userId = USER_A, balanceCents = 250_000) {
   // institutions, requisition, account
   const inst = await fixture.db
     .insert(institutions)
-    .values({ gocardlessId: `INST-${userId}`, name: "Test Bank", logoUrl: null, country: "ES" })
+    .values({
+      providerInstitutionId: `INST-${userId}`,
+      name: "Test Bank",
+      logoUrl: null,
+      country: "ES",
+    })
     .returning({ id: institutions.id });
   const req = await fixture.db
     .insert(requisitions)
     .values({
       userId,
       institutionId: inst[0]!.id,
-      gocardlessRequisitionId: "ENC",
+      providerRequisitionId: "ENC",
       status: "linked",
       reference: `ref-${userId}`,
       link: null,
@@ -45,7 +50,7 @@ async function seed(userId = USER_A, balanceCents = 250_000) {
     .values({
       userId,
       requisitionId: req[0]!.id,
-      gocardlessAccountId: "ENC",
+      providerAccountId: "ENC",
       ibanLast4: "1234",
       name: "Checking",
       ownerName: null,
@@ -94,7 +99,7 @@ async function seed(userId = USER_A, balanceCents = 250_000) {
     {
       userId,
       accountId: acc[0]!.id,
-      gocardlessTransactionId: `tx-income-${userId}`,
+      externalId: `tx-income-${userId}`,
       bookingDate: thisMonth(1),
       amountCents: 200_000,
       currency: "EUR",
@@ -107,7 +112,7 @@ async function seed(userId = USER_A, balanceCents = 250_000) {
     {
       userId,
       accountId: acc[0]!.id,
-      gocardlessTransactionId: `tx-g1-${userId}`,
+      externalId: `tx-g1-${userId}`,
       bookingDate: thisMonth(5),
       amountCents: -5000,
       currency: "EUR",
@@ -119,7 +124,7 @@ async function seed(userId = USER_A, balanceCents = 250_000) {
     {
       userId,
       accountId: acc[0]!.id,
-      gocardlessTransactionId: `tx-g2-${userId}`,
+      externalId: `tx-g2-${userId}`,
       bookingDate: thisMonth(10),
       amountCents: -3000,
       currency: "EUR",
@@ -132,7 +137,7 @@ async function seed(userId = USER_A, balanceCents = 250_000) {
     {
       userId,
       accountId: acc[0]!.id,
-      gocardlessTransactionId: `tx-r1-${userId}`,
+      externalId: `tx-r1-${userId}`,
       bookingDate: thisMonth(12),
       amountCents: -2500,
       currency: "EUR",
@@ -145,7 +150,7 @@ async function seed(userId = USER_A, balanceCents = 250_000) {
     {
       userId,
       accountId: acc[0]!.id,
-      gocardlessTransactionId: `tx-rv-${userId}`,
+      externalId: `tx-rv-${userId}`,
       bookingDate: thisMonth(15),
       amountCents: -1000,
       currency: "EUR",
@@ -158,7 +163,7 @@ async function seed(userId = USER_A, balanceCents = 250_000) {
     {
       userId,
       accountId: acc[0]!.id,
-      gocardlessTransactionId: `tx-old-${userId}`,
+      externalId: `tx-old-${userId}`,
       bookingDate: lastMonth,
       amountCents: -9999,
       currency: "EUR",

@@ -130,7 +130,7 @@ async function candidateAccounts(
       ibanLast4: accounts.ibanLast4,
       ibanHash: accounts.ibanHash,
       lastSyncedAt: accounts.lastSyncedAt,
-      cipher: accounts.gocardlessAccountId,
+      cipher: accounts.providerAccountId,
     })
     .from(accounts)
     .innerJoin(requisitions, eq(accounts.requisitionId, requisitions.id))
@@ -164,7 +164,7 @@ function adoptStatement(opts: {
     .update(accounts)
     .set({
       requisitionId: opts.requisitionId,
-      gocardlessAccountId: encrypt(account.providerAccountId, opts.encryptionKey),
+      providerAccountId: encrypt(account.providerAccountId, opts.encryptionKey),
       ibanHash: opts.digest ?? target.ibanHash,
       ibanLast4: account.ibanLast4 ?? target.ibanLast4,
       ownerName: account.ownerName,
@@ -205,7 +205,7 @@ function insertAccountValues(opts: {
   return {
     userId: opts.userId,
     requisitionId: opts.requisitionId,
-    gocardlessAccountId: encrypt(account.providerAccountId, opts.encryptionKey),
+    providerAccountId: encrypt(account.providerAccountId, opts.encryptionKey),
     ibanHash: opts.digest,
     ibanLast4: account.ibanLast4,
     name: account.name,
@@ -303,7 +303,7 @@ async function seenUnderConsent(
 ): Promise<{ seen: Set<string>; waiting: number }> {
   const [linkedHere, waitingHere] = await Promise.all([
     db
-      .select({ cipher: accounts.gocardlessAccountId })
+      .select({ cipher: accounts.providerAccountId })
       .from(accounts)
       .where(and(eq(accounts.userId, userId), eq(accounts.requisitionId, consentId))),
     db
@@ -529,7 +529,7 @@ export async function resolveLinkChoice(opts: {
     });
     apply = db.run(sql`insert into "accounts"
       ("user_id", "requisition_id", "gocardless_account_id", "iban_hash", "iban_last4", "name", "owner_name", "balance_cents", "currency")
-      select ${v.userId}, ${v.requisitionId}, ${v.gocardlessAccountId}, ${v.ibanHash ?? null}, ${v.ibanLast4 ?? null}, ${v.name}, ${v.ownerName ?? null}, ${v.balanceCents ?? 0}, ${v.currency ?? "EUR"}
+      select ${v.userId}, ${v.requisitionId}, ${v.providerAccountId}, ${v.ibanHash ?? null}, ${v.ibanLast4 ?? null}, ${v.name}, ${v.ownerName ?? null}, ${v.balanceCents ?? 0}, ${v.currency ?? "EUR"}
       where ${pending}`);
   }
 

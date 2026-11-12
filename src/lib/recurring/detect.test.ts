@@ -24,14 +24,14 @@ function daysAgo(n: number): Date {
 async function seedSkeleton() {
   const inst = await fixture.db
     .insert(institutions)
-    .values({ gocardlessId: "INST-1", name: "Bank", logoUrl: null, country: "ES" })
+    .values({ providerInstitutionId: "INST-1", name: "Bank", logoUrl: null, country: "ES" })
     .returning({ id: institutions.id });
   const req = await fixture.db
     .insert(requisitions)
     .values({
       userId: USER,
       institutionId: inst[0]!.id,
-      gocardlessRequisitionId: "ENC",
+      providerRequisitionId: "ENC",
       status: "linked",
       reference: "ref",
       link: null,
@@ -42,7 +42,7 @@ async function seedSkeleton() {
     .values({
       userId: USER,
       requisitionId: req[0]!.id,
-      gocardlessAccountId: "ENC",
+      providerAccountId: "ENC",
       ibanLast4: "1234",
       name: "Checking",
       ownerName: null,
@@ -162,7 +162,7 @@ describe("detectRecurringSubscriptions (DB)", () => {
     const newTx = (date: Date, amount: number, merchant: string, categoryId: number | null) => ({
       userId: USER,
       accountId,
-      gocardlessTransactionId: `tx-${txCounter++}`,
+      externalId: `tx-${txCounter++}`,
       bookingDate: date,
       amountCents: amount,
       currency: "EUR",
@@ -204,7 +204,7 @@ describe("detectRecurringSubscriptions (DB)", () => {
     const newTx = (date: Date, amount: number, merchant: string) => ({
       userId: USER,
       accountId,
-      gocardlessTransactionId: `tx-${txCounter++}`,
+      externalId: `tx-${txCounter++}`,
       bookingDate: date,
       amountCents: amount,
       currency: "EUR",
@@ -235,7 +235,7 @@ describe("detectRecurringSubscriptions (DB)", () => {
     const newTx = (date: Date, merchant: string) => ({
       userId: USER,
       accountId,
-      gocardlessTransactionId: `tx-${txCounter++}`,
+      externalId: `tx-${txCounter++}`,
       bookingDate: date,
       amountCents: -1500,
       currency: "EUR",
@@ -266,7 +266,7 @@ describe("detectRecurringSubscriptions (DB)", () => {
     const charge = (date: Date, merchant: string, amount = -1_199) => ({
       userId: USER,
       accountId,
-      gocardlessTransactionId: `id-${n++}`,
+      externalId: `id-${n++}`,
       bookingDate: date,
       amountCents: amount,
       currency: "EUR",

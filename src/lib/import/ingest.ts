@@ -52,7 +52,7 @@ export async function ensureImportedAccount(opts: {
 }): Promise<EnsureImportedAccountResult> {
   const { userId } = opts;
   const institutionRowId = await upsertInstitution({
-    gocardlessId: IMPORTED_INSTITUTION_GCID,
+    providerInstitutionId: IMPORTED_INSTITUTION_GCID,
     name: "Imported",
     logoUrl: null,
     country: "ES",
@@ -80,7 +80,7 @@ export async function ensureImportedAccount(opts: {
         .values({
           userId,
           institutionId: institutionRowId,
-          gocardlessRequisitionId: encrypt(IMPORTED_REFERENCE, opts.encryptionKey),
+          providerRequisitionId: encrypt(IMPORTED_REFERENCE, opts.encryptionKey),
           status: "linked",
           reference: IMPORTED_REFERENCE,
           link: null,
@@ -97,7 +97,7 @@ export async function ensureImportedAccount(opts: {
   // Match an existing account by the user-visible name within the imported
   // requisition. Names are deterministic (formatted IBAN or the fallback
   // string), so this gives us a stable, plaintext-searchable key without
-  // needing to decrypt every `gocardlessAccountId` cipher.
+  // needing to decrypt every `providerAccountId` cipher.
   const existingAcc = await db
     .select({ id: accounts.id })
     .from(accounts)
@@ -118,10 +118,7 @@ export async function ensureImportedAccount(opts: {
         .values({
           userId,
           requisitionId: requisitionRowId,
-          gocardlessAccountId: encrypt(
-            opts.iban ?? IMPORTED_ACCOUNT_PLACEHOLDER,
-            opts.encryptionKey,
-          ),
+          providerAccountId: encrypt(opts.iban ?? IMPORTED_ACCOUNT_PLACEHOLDER, opts.encryptionKey),
           ibanLast4,
           name: accountName,
           ownerName: null,

@@ -134,9 +134,16 @@ export const providerCredentials = sqliteTable(
   (t) => [uniqueIndex("provider_credentials_user_provider_uniq").on(t.userId, t.provider)],
 );
 
+/*
+ * Provider ids. Every bank source (GoCardless, TrueLayer, demo, manual, CSV)
+ * stores its own id for an institution, requisition, account and transaction
+ * in columns that still carry their original `gocardless_*` names. Only the
+ * TypeScript property names say what they hold; renaming the columns would be
+ * a destructive migration for no runtime gain.
+ */
 export const institutions = sqliteTable("institutions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  gocardlessId: text("gocardless_id").notNull().unique(),
+  providerInstitutionId: text("gocardless_id").notNull().unique(),
   name: text("name").notNull(),
   logoUrl: text("logo_url"),
   country: text("country").notNull(),
@@ -166,7 +173,7 @@ export const requisitions = sqliteTable(
     provider: text("provider", { enum: ["gocardless", "demo", "truelayer", "manual"] })
       .notNull()
       .default("gocardless"),
-    gocardlessRequisitionId: encryptedText("gocardless_requisition_id").notNull(),
+    providerRequisitionId: encryptedText("gocardless_requisition_id").notNull(),
     status: text("status", {
       enum: ["created", "linked", "expired", "suspended", "revoked"],
     })
@@ -195,7 +202,7 @@ export const accounts = sqliteTable(
     requisitionId: integer("requisition_id")
       .notNull()
       .references(() => requisitions.id, { onDelete: "cascade" }),
-    gocardlessAccountId: encryptedText("gocardless_account_id").notNull(),
+    providerAccountId: encryptedText("gocardless_account_id").notNull(),
     ibanLast4: text("iban_last4"),
     name: text("name").notNull(),
     ownerName: text("owner_name"),
@@ -408,7 +415,7 @@ export const transactions = sqliteTable(
      * ACCOUNT, not globally — see `transactions_account_external_uniq`. A
      * global constraint made one user's import collide with another's.
      */
-    gocardlessTransactionId: text("gocardless_transaction_id").notNull(),
+    externalId: text("gocardless_transaction_id").notNull(),
     /** Which import batch this came from. Null for bank-synced transactions. */
     importBatchId: integer("import_batch_id").references(() => importBatches.id, {
       onDelete: "set null",
@@ -453,7 +460,7 @@ export const transactions = sqliteTable(
     updatedAt: timestamp("updated_at"),
   },
   (t) => [
-    uniqueIndex("transactions_account_external_uniq").on(t.accountId, t.gocardlessTransactionId),
+    uniqueIndex("transactions_account_external_uniq").on(t.accountId, t.externalId),
     index("transactions_account_date_idx").on(t.accountId, t.bookingDate),
     index("transactions_category_idx").on(t.categoryId),
     index("transactions_needs_review_idx").on(t.needsReview),

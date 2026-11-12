@@ -157,12 +157,12 @@ export async function finalizeBankLinkAction(
     const req = row[0];
     if (!req) return { ok: false, error: "requisitionNotFound" };
 
-    const gcId = decrypt(req.gocardlessRequisitionId, session.encryptionKey);
+    const gcId = decrypt(req.providerRequisitionId, session.encryptionKey);
 
     const linked = await linkRequisitionAccounts(client, {
       userId: session.userId,
       requisitionRowId: req.id,
-      gocardlessRequisitionId: gcId,
+      providerRequisitionId: gcId,
       encryptionKey: session.encryptionKey,
     });
     return {
@@ -265,7 +265,7 @@ export async function deleteBankConnectionAction(requisitionId: number): Promise
       const client = await requireClient(session.userId, session.encryptionKey).catch(() => null);
       if (client) {
         try {
-          const gcId = decrypt(req.gocardlessRequisitionId, session.encryptionKey);
+          const gcId = decrypt(req.providerRequisitionId, session.encryptionKey);
           await client.deleteRequisition(gcId);
         } catch (err) {
           console.warn("remote requisition delete failed (continuing)", err);

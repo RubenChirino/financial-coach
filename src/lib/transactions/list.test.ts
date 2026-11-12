@@ -25,21 +25,25 @@ function mulberry32(seed: number) {
 async function createAccount(userId: number, name: string): Promise<number> {
   const inst = await fixture.db
     .insert(institutions)
-    .values({ gocardlessId: `INST-${userId}-${name}`, name: `Bank ${name}`, country: "ES" })
+    .values({
+      providerInstitutionId: `INST-${userId}-${name}`,
+      name: `Bank ${name}`,
+      country: "ES",
+    })
     .returning({ id: institutions.id });
   const req = await fixture.db
     .insert(requisitions)
     .values({
       userId,
       institutionId: inst[0]!.id,
-      gocardlessRequisitionId: "ENC",
+      providerRequisitionId: "ENC",
       status: "linked",
       reference: `ref-${userId}-${name}`,
     })
     .returning({ id: requisitions.id });
   const acc = await fixture.db
     .insert(accounts)
-    .values({ userId, requisitionId: req[0]!.id, gocardlessAccountId: "ENC", name })
+    .values({ userId, requisitionId: req[0]!.id, providerAccountId: "ENC", name })
     .returning({ id: accounts.id });
   return acc[0]!.id;
 }
@@ -61,7 +65,7 @@ beforeAll(async () => {
     rows.push({
       userId: USER_A,
       accountId: rand() < 0.5 ? accountA1 : accountA2,
-      gocardlessTransactionId: `a-${i}`,
+      externalId: `a-${i}`,
       bookingDate: day(Math.floor(rand() * 6)),
       amountCents: -Math.floor(rand() * 10_000) - 1,
       currency: "EUR",
@@ -75,7 +79,7 @@ beforeAll(async () => {
     rows.push({
       userId: USER_B,
       accountId: accountB,
-      gocardlessTransactionId: `b-${i}`,
+      externalId: `b-${i}`,
       bookingDate: day(i % 6),
       amountCents: -100,
       currency: "EUR",

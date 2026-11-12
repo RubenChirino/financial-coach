@@ -21,7 +21,7 @@ async function income(userId: number, date: Date, cents = 250_000) {
   await fixture.db.insert(transactions).values({
     userId,
     accountId,
-    gocardlessTransactionId: `tx-${tx++}`,
+    externalId: `tx-${tx++}`,
     bookingDate: date,
     amountCents: cents,
     currency: "EUR",
@@ -38,14 +38,14 @@ beforeAll(async () => {
   ]);
   const [inst] = await fixture.db
     .insert(institutions)
-    .values({ gocardlessId: "BANK", name: "Bank", country: "ES" })
+    .values({ providerInstitutionId: "BANK", name: "Bank", country: "ES" })
     .returning({ id: institutions.id });
   const [req] = await fixture.db
     .insert(requisitions)
     .values({
       userId: USER,
       institutionId: inst!.id,
-      gocardlessRequisitionId: "enc",
+      providerRequisitionId: "enc",
       status: "linked",
       reference: "ref",
     })
@@ -55,7 +55,7 @@ beforeAll(async () => {
     .values({
       userId: USER,
       requisitionId: req!.id,
-      gocardlessAccountId: "enc",
+      providerAccountId: "enc",
       name: "Everyday",
       balanceCents: 4_200, // under €100: a low-balance insight
     })
@@ -142,7 +142,7 @@ describe("recurring_increase", () => {
       fixture.db.insert(transactions).values({
         userId: USER,
         accountId,
-        gocardlessTransactionId: `tx-${tx++}`,
+        externalId: `tx-${tx++}`,
         bookingDate: date,
         amountCents: -cents,
         currency: "EUR",

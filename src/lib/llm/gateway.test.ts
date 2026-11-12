@@ -164,7 +164,7 @@ async function addTx(userId: number, merchantName: string, rawDescription = merc
   await fixture.db.insert(schema.transactions).values({
     userId,
     accountId: accountByUser[userId]!,
-    gocardlessTransactionId: `tx-${txSeq}`,
+    externalId: `tx-${txSeq}`,
     bookingDate: new Date(),
     amountCents: -1_000 - txSeq,
     merchantName,
@@ -202,7 +202,7 @@ beforeAll(async () => {
   ]);
   const [inst] = await d
     .insert(schema.institutions)
-    .values({ gocardlessId: "DEMO", name: "Demo", country: "ES" })
+    .values({ providerInstitutionId: "DEMO", name: "Demo", country: "ES" })
     .returning();
   accountByUser = {};
   for (const userId of Object.values(USERS)) {
@@ -212,14 +212,14 @@ beforeAll(async () => {
         userId,
         institutionId: inst!.id,
         provider: "demo",
-        gocardlessRequisitionId: `enc-${userId}`,
+        providerRequisitionId: `enc-${userId}`,
         status: "linked",
         reference: `r-${userId}`,
       })
       .returning();
     const [acc] = await d
       .insert(schema.accounts)
-      .values({ userId, requisitionId: req!.id, gocardlessAccountId: "enc", name: "A" })
+      .values({ userId, requisitionId: req!.id, providerAccountId: "enc", name: "A" })
       .returning();
     accountByUser[userId] = acc!.id;
   }

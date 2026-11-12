@@ -10,7 +10,7 @@ import { institutions } from "@/db/schema";
  * could). The display fields are refreshed from the provider each time.
  */
 export async function upsertInstitution(values: {
-  gocardlessId: string;
+  providerInstitutionId: string;
   name: string;
   logoUrl: string | null;
   country: string;
@@ -19,7 +19,7 @@ export async function upsertInstitution(values: {
     .insert(institutions)
     .values(values)
     .onConflictDoUpdate({
-      target: institutions.gocardlessId,
+      target: institutions.providerInstitutionId,
       set: { name: values.name, logoUrl: values.logoUrl, country: values.country },
     })
     .returning({ id: institutions.id });
