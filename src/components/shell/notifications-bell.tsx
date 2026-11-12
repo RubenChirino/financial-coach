@@ -16,12 +16,13 @@ const REFRESH_MS = 60 * 60 * 1000; // 1 hour
 /**
  * Topbar notifications bell — opens a dropdown listing active insights with a
  * count badge. Insights are computed on read, so refreshing is just reloading
- * the list; it also reloads hourly while the app stays open.
+ * the list; it also reloads hourly while the app stays open. The first list
+ * arrives with the server render (`initial`), so mounting costs no request.
  */
-export function NotificationsBell() {
+export function NotificationsBell({ initial }: { initial: InsightView[] }) {
   const t = useTranslations("shell");
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<InsightView[]>([]);
+  const [items, setItems] = useState<InsightView[]>(initial);
   const [loading, setLoading] = useState(false);
   const [, startRefresh] = useTransition();
   const ref = useRef<HTMLDivElement | null>(null);
@@ -35,9 +36,11 @@ export function NotificationsBell() {
     }
   }, []);
 
-  // Hourly refresh + initial load.
+  // A server re-render (navigation refresh, `router.refresh()`) brings a new list.
+  useEffect(() => setItems(initial), [initial]);
+
+  // Hourly refresh.
   useEffect(() => {
-    void reload();
     const id = setInterval(() => {
       startRefresh(reload);
     }, REFRESH_MS);

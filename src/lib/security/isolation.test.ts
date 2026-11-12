@@ -42,7 +42,7 @@ const { createRuleFromTransactionAction, deleteUserRuleAction } = await import(
   "@/lib/categorize/rules-actions"
 );
 const { unlinkTransferAction, confirmTransferAction } = await import("@/lib/transfers/actions");
-const { deleteImportBatchAction } = await import("@/app/import/batch-actions");
+const { deleteImportBatchAction } = await import("@/app/(app)/import/batch-actions");
 const { deleteAccountAction } = await import("@/lib/accounts/actions");
 const { updateManualAccountAction } = await import("@/lib/accounts/manual");
 const { updateGoalAction, updateGoalProgressAction, deleteGoalAction } = await import(

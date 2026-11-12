@@ -314,10 +314,12 @@ Three representative flows show how the pieces compose.
 1. The browser requests `/` (the dashboard).
 2. [`src/proxy.ts`](src/proxy.ts) runs first: it checks for a session cookie
    (PIN-mode `fc_session` or an Auth.js cookie). No session and not a public path
-   → redirect to `/lock`. It also mints a per-request CSP nonce, exposes it via
-   the `x-nonce` header (so the root layout can read it through `headers()` and
-   feed it to scripts that need to be allowed) and writes the matching
-   `Content-Security-Policy` response header.
+   → redirect to `/lock`. It also mints a per-request CSP nonce and puts it on
+   the **request** it forwards — as `x-nonce` (the root layout reads it through
+   `headers()` for the theme script) and inside a `Content-Security-Policy`
+   request header (Next reads the nonce from there to stamp its own scripts) —
+   and writes the matching `Content-Security-Policy` response header. Headers
+   set only on the response would reach the browser but not the render.
 3. The dashboard page is an **async server component**. It calls
    `getCurrentSession()`, then fires its data queries *in parallel*
    (`Promise.all`) — month summaries, account tiles, top categories, insights.
@@ -329,7 +331,11 @@ Three representative flows show how the pieces compose.
    the six months of the flow chart (and the two month KPIs, which are its
    last two points) come from one `GROUP BY month` query, the coach's
    per-month categories likewise, and per-user lookups have indexes
-   (migration `0030`).
+   (migration `0030`). The shell (sidebar, topbar, the bell's first list of
+   insights) is rendered once by the `(app)` route-group layout rather than by
+   each page; it persists across client navigation, so the topbar heading is
+   derived from the pathname on the client. The bell's insights and the
+   dashboard's come from one request-memoized call.
 4. The server renders HTML and streams it. The client receives a painted page;
    only the genuinely interactive bits (the privacy toggle, charts that need
    hover) hydrate as client components.
@@ -999,9 +1005,11 @@ src/
 ├── proxy.ts                  # Next 16 middleware: auth gate + per-request CSP nonce
 ├── app/                      # App Router: pages (RSC), layouts, API route handlers
 │   ├── api/                  #   streaming chat, auth, backup, export, exchange-rate, health, cron/*
-│   ├── (pages)/              #   dashboard, transactions, categories, subscriptions,
-│   │                         #   advisor, goals, predictions, opportunities, travels,
-│   │                         #   import, banks, settings, onboarding, lock
+│   ├── (app)/                #   signed-in pages under one shell (layout.tsx), plus
+│   │                         #   loading.tsx and error.tsx: dashboard, transactions,
+│   │                         #   categories, subscriptions, advisor, goals, predictions,
+│   │                         #   opportunities, travels, import, banks, settings
+│   ├── lock/  onboarding/    #   the two pages outside the shell
 │   └── layout.tsx            #   root: theme + intl providers, PWA register
 ├── components/               # UI. ui/ = shadcn primitives; the rest are feature components
 │   ├── ui/  charts/  dashboard/  advisor/  travels/  shell/  pin/ …

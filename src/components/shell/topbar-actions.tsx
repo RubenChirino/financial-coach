@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { lockAction } from "@/lib/auth/actions";
 import { useCurrencyStore } from "@/lib/currency/store";
+import type { InsightView } from "@/lib/insights/engine";
 import { usePrivacy } from "@/lib/privacy/use-privacy";
 import { cn } from "@/lib/utils";
 import { NotificationsBell } from "./notifications-bell";
@@ -28,9 +29,11 @@ import { NotificationsBell } from "./notifications-bell";
 interface TopbarActionsProps {
   /** False when the user has neither an account nor a transaction yet. */
   hasData: boolean;
+  /** The bell's list as of the server render. */
+  initialInsights: InsightView[];
 }
 
-export function TopbarActions({ hasData }: TopbarActionsProps) {
+export function TopbarActions({ hasData, initialInsights }: TopbarActionsProps) {
   const t = useTranslations("shell");
   const { displayCurrency, fetching, setDisplayCurrency } = useCurrencyStore();
   const [privacy, togglePrivacy] = usePrivacy();
@@ -141,7 +144,7 @@ export function TopbarActions({ hasData }: TopbarActionsProps) {
       ) : null}
 
       {/* Notifications — opens dropdown with active insights, hourly poll */}
-      <NotificationsBell />
+      <NotificationsBell initial={initialInsights} />
 
       <Button
         type="button"

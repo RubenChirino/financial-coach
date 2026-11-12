@@ -57,6 +57,9 @@
     "importTransactionsGuest": "Importar o añadir movimientos",
     "loading": "Cargando…",
     "notAvailable": "No disponible",
+    "pageErrorBody": "Algo falló por nuestra parte. Tus datos están a salvo: inténtalo de nuevo.",
+    "pageErrorTitle": "No se pudo cargar esta página",
+    "retry": "Reintentar",
     "save": "Guardar",
     "success": "Hecho"
   },

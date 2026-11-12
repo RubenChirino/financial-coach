@@ -119,7 +119,7 @@ export function proxy(req: NextRequest) {
 
   // ---------- Auth gate ----------
   if (ASSET_PREFIXES.some((p) => pathname.startsWith(p))) {
-    return withSecurityHeaders(NextResponse.next(), req);
+    return passThrough(req);
   }
 
   const hasSessionCookie = hasAuthCookie(req);
@@ -140,28 +140,38 @@ export function proxy(req: NextRequest) {
     ) {
       url.searchParams.set("from", pathname);
     }
-    return withSecurityHeaders(NextResponse.redirect(url), req);
+    return withCsp(NextResponse.redirect(url), buildCsp(newNonce()));
   }
 
-  return withSecurityHeaders(NextResponse.next(), req);
+  return passThrough(req);
+}
+
+const newNonce = () => crypto.randomUUID().replace(/-/g, "");
+
+function withCsp(res: NextResponse, csp: string): NextResponse {
+  res.headers.set("Content-Security-Policy", csp);
+  return res;
 }
 
 /**
- * Generate a fresh nonce, set it on the request's `x-nonce` header so Next
- * can read it inside server components, and write the matching CSP header
- * onto the response. This must run on every response Next emits — including
- * redirects and asset passes — otherwise the page that finally lands at the
- * browser may carry no CSP at all.
+ * Let the request through with a fresh nonce, and the CSP built on it on the
+ * response. This must run on every response Next emits — including asset
+ * passes — otherwise the page that finally lands at the browser may carry no
+ * CSP at all.
+ *
+ * The nonce has to travel on the *request*: Next reads it from the request's
+ * `Content-Security-Policy` header to stamp its own inline and chunk scripts,
+ * and server components read `x-nonce` (`headers().get("x-nonce")`) for
+ * theirs. Headers set only on the response reach the browser, not the render
+ * — every script would then be unnonced, and `'strict-dynamic'` blocks them.
  */
-function withSecurityHeaders(res: NextResponse, _req: NextRequest): NextResponse {
-  const nonce = crypto.randomUUID().replace(/-/g, "");
+function passThrough(req: NextRequest): NextResponse {
+  const nonce = newNonce();
   const csp = buildCsp(nonce);
-
-  // The request-side header is how Next.js components pull the nonce
-  // (via `headers().get("x-nonce")`) to stamp inline scripts.
-  res.headers.set("x-nonce", nonce);
-  res.headers.set("Content-Security-Policy", csp);
-  return res;
+  const headers = new Headers(req.headers);
+  headers.set("x-nonce", nonce);
+  headers.set("Content-Security-Policy", csp);
+  return withCsp(NextResponse.next({ request: { headers } }), csp);
 }
 
 export const config = {

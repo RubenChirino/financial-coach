@@ -59,7 +59,7 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const locale = await getLocale();
   const messages = await getMessages();
-  // Per-request nonce produced by `src/middleware.ts`. Forwarded into
+  // Per-request nonce produced by `src/proxy.ts`. Forwarded into
   // `next-themes` so its anti-FOUC inline `<script>` is allowed by the
   // strict CSP (`script-src 'self' 'nonce-...' 'strict-dynamic'`). Without
   // this, the script is blocked, hydration warnings appear, and the page

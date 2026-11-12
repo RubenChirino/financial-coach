@@ -57,6 +57,9 @@
     "importTransactionsGuest": "Import or add transactions",
     "loading": "Loading…",
     "notAvailable": "Not available",
+    "pageErrorBody": "Something went wrong on our side. Your data is safe — try again.",
+    "pageErrorTitle": "This page could not load",
+    "retry": "Try again",
     "save": "Save",
     "success": "Done"
   },

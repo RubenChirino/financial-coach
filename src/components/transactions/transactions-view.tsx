@@ -4,7 +4,7 @@ import { ArrowDownLeft, ArrowLeftRight, Loader2, SearchX, X } from "lucide-react
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useMemo, useRef, useState, useTransition } from "react";
-import { CategoryPicker } from "@/app/transactions/category-picker";
+import { CategoryPicker } from "@/app/(app)/transactions/category-picker";
 import { CategoryIcon } from "@/components/category-icon";
 import { PrivacyAmount } from "@/components/privacy-amount";
 import { Button } from "@/components/ui/button";
