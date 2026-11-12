@@ -3,6 +3,7 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, lt, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { db } from "@/db/client";
 import { sessions, users } from "@/db/schema";
 import {
@@ -155,6 +156,9 @@ export function replaceSessionsIfPinHash(userId: number, encryptionKey: Buffer, 
   };
 }
 
+/** `last_activity_at` is rewritten only when older than this. */
+export const ACTIVITY_WRITE_EVERY_MS = 60_000;
+
 export async function getSessionByToken(token: string | undefined): Promise<SessionData | null> {
   if (!token) return null;
   const tokenHash = hashToken(token);
@@ -176,17 +180,23 @@ export async function getSessionByToken(token: string | undefined): Promise<Sess
     return null;
   }
 
-  const nowDate = new Date();
-  await db
-    .update(sessions)
-    .set({ lastActivityAt: nowDate })
-    .where(eq(sessions.tokenHash, tokenHash));
+  // Slide the inactivity window — but write only when the stored value is
+  // more than a minute old: the expiry is 15 minutes, so a minute of slack
+  // changes nothing, and most requests skip a write.
+  let activityAt = lastActivity;
+  if (now() - lastActivity > ACTIVITY_WRITE_EVERY_MS) {
+    activityAt = now();
+    await db
+      .update(sessions)
+      .set({ lastActivityAt: new Date(activityAt) })
+      .where(eq(sessions.tokenHash, tokenHash));
+  }
 
   return {
     userId: row.userId,
     encryptionKey,
     createdAt: row.createdAt.getTime(),
-    lastActivityAt: nowDate.getTime(),
+    lastActivityAt: activityAt,
   };
 }
 
@@ -266,7 +276,15 @@ async function purgeStaleGuests(): Promise<void> {
   }
 }
 
-export async function getCurrentSession(): Promise<SessionData | null> {
+/**
+ * The session for the current request, resolved once per server render:
+ * React's `cache()` memoizes it for the request (the page, the shell and every
+ * helper they call share one lookup). Outside a render — route handlers,
+ * tests — it simply runs each time. No request reads the session after
+ * changing it (sign-in, lock and guest mode redirect), so a memo never hands
+ * back a stale one.
+ */
+export const getCurrentSession = cache(async (): Promise<SessionData | null> => {
   // OAuth mode: defer to Auth.js's JWT session. The userId travels on the
   // token; we derive the encryption key on-demand from APP_SECRET + the
   // user's stored encryptionSalt (no PIN, no DB session row).
@@ -283,7 +301,7 @@ export async function getCurrentSession(): Promise<SessionData | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   return getSessionByToken(token);
-}
+});
 
 /**
  * OAuth-mode equivalent of `getSessionByToken`. Reads Auth.js's JWT-decoded

@@ -134,3 +134,44 @@ describe("insights", () => {
     expect(await fixture.db.select().from(insightDismissals)).toEqual(before);
   });
 });
+
+describe("recurring_increase", () => {
+  it("flags a subscription whose latest charge rose, from one query over all of them", async () => {
+    const { recurringSubscriptions } = await import("@/db/schema");
+    const charge = async (merchantName: string, date: Date, cents: number) =>
+      fixture.db.insert(transactions).values({
+        userId: USER,
+        accountId,
+        gocardlessTransactionId: `tx-${tx++}`,
+        bookingDate: date,
+        amountCents: -cents,
+        currency: "EUR",
+        merchantName,
+        rawDescription: merchantName,
+        needsReview: false,
+      });
+    const sub = (merchantName: string, averageAmountCents: number) => ({
+      userId: USER,
+      merchantName,
+      seriesKey: `out:${merchantName.toLowerCase()}`,
+      averageAmountCents,
+      frequencyDays: 30,
+      lastSeenAt: MARCH_20,
+    });
+    const [hiked] = await fixture.db
+      .insert(recurringSubscriptions)
+      .values([sub("Streamly", 1_000), sub("Gymbox", 3_000)])
+      .returning({ id: recurringSubscriptions.id });
+    // Streamly: older charges at the average, the latest one 30 % higher.
+    await charge("Streamly", new Date(MARCH_20.getTime() - 60 * DAY_MS), 1_000);
+    await charge("Streamly", new Date(MARCH_20.getTime() - 2 * DAY_MS), 1_300);
+    // Gymbox: an older high charge, but the latest is at the average.
+    await charge("Gymbox", new Date(MARCH_20.getTime() - 40 * DAY_MS), 4_500);
+    await charge("Gymbox", new Date(MARCH_20.getTime() - 5 * DAY_MS), 3_000);
+
+    const keys = (await computeInsights(USER, "en", MARCH_20))
+      .map((i) => i.key)
+      .filter((k) => k.startsWith("recurring_increase:"));
+    expect(keys).toEqual([`recurring_increase:${hiked?.id}:1300`]);
+  });
+});

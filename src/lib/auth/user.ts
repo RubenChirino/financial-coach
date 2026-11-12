@@ -1,6 +1,7 @@
 import "server-only";
 
 import { eq } from "drizzle-orm";
+import { cache } from "react";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { getCurrentSession } from "./session";
@@ -11,8 +12,12 @@ import { getCurrentSession } from "./session";
  * session's own user — never another user's row. The fallback to the sole user
  * applies only pre-session in local/PIN mode (e.g. the PIN-unlock action runs
  * before a session cookie is set), where there is exactly one user anyway.
+ *
+ * Memoized per server render, like `getCurrentSession`: the shell and the page
+ * share one row. A request that updates the user (settings) re-reads only on
+ * the next request, after its revalidate.
  */
-export async function getUser() {
+export const getUser = cache(async () => {
   const session = await getCurrentSession();
   if (session) {
     const rows = await db.select().from(users).where(eq(users.id, session.userId)).limit(1);
@@ -20,7 +25,7 @@ export async function getUser() {
   }
   const rows = await db.select().from(users).limit(1);
   return rows[0] ?? null;
-}
+});
 
 /**
  * Whether ANY user has been provisioned — a global check, independent of the

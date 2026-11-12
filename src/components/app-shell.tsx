@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import {
   ArrowLeftRight,
   Landmark,
@@ -22,10 +21,9 @@ import { NavLink } from "@/components/shell/nav-link";
 import { SidebarShell } from "@/components/shell/sidebar-shell";
 import { TopbarActions } from "@/components/shell/topbar-actions";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { db } from "@/db/client";
-import { users } from "@/db/schema";
 import { hasFinancialData } from "@/lib/accounts/has-data";
 import { getCurrentSession } from "@/lib/auth/session";
+import { getUser } from "@/lib/auth/user";
 import { getLocale } from "@/lib/i18n/locale";
 
 interface NavEntry {
@@ -87,10 +85,8 @@ export async function AppShell({ children, title, subtitle, coachUnread = 0 }: A
   const resolvedSubtitle = subtitle ?? tApp("tagline");
 
   // Account chip: guest, OAuth (with provider avatar/name), or local.
-  const session = await getCurrentSession();
-  const account = session
-    ? await db.query.users.findFirst({ where: eq(users.id, session.userId) })
-    : null;
+  const [session, user] = await Promise.all([getCurrentSession(), getUser()]);
+  const account = session ? user : null;
   const isGuest = !!session?.isGuest;
   const accountName = isGuest
     ? tShell("guestLabel")

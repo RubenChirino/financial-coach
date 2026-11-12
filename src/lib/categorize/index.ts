@@ -32,7 +32,7 @@ export function matchDeterministic(
   rules: readonly RuleRow[],
   idBySlug: ReadonlyMap<string, number>,
 ): DeterministicMatch | null {
-  const rule = matchRule(tx, [...rules]);
+  const rule = matchRule(tx, rules);
   if (rule) return { categoryId: rule.categoryId, confidence: RULE_CONFIDENCE, via: "rule" };
   const slug = keywordCategory(cleanMerchant(tx.merchantName, tx.rawDescription), tx.amountCents);
   const categoryId = slug ? idBySlug.get(slug) : undefined;

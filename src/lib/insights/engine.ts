@@ -1,9 +1,9 @@
 import "server-only";
 
-import { and, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { createTranslator } from "next-intl";
 import { db } from "@/db/client";
-import { accounts, goals, insightDismissals, requisitions, transactions } from "@/db/schema";
+import { accounts, goals, insightDismissals, requisitions } from "@/db/schema";
 import {
   getMonthSummary,
   getNeedsReviewCount,
@@ -191,25 +191,36 @@ async function ruleGoalNear(ctx: RuleContext): Promise<Hit[]> {
  * price hike. Needs a ≥ 15 % rise and at least €1, to ignore rounding noise.
  */
 async function ruleRecurringIncrease(ctx: RuleContext): Promise<Hit[]> {
-  const subs = await listRecurringSubscriptions(ctx.userId);
+  const subs = (await listRecurringSubscriptions(ctx.userId)).filter(
+    (s) => s.isActive && s.merchantName && s.averageAmountCents > 0,
+  );
+  if (subs.length === 0) return [];
+
+  // The latest charge per merchant, for every subscription at once: one
+  // window query instead of one query per subscription.
+  const merchants = [...new Set(subs.map((s) => s.merchantName))];
+  const latestRows = await db.all<{ merchant: string; amountCents: number }>(sql`
+    select "merchant_name" as "merchant", "amount_cents" as "amountCents" from (
+      select "transactions"."merchant_name", "transactions"."amount_cents",
+        row_number() over (
+          partition by "transactions"."merchant_name"
+          order by "transactions"."booking_date" desc, "transactions"."id" desc
+        ) as "rn"
+      from "transactions"
+      where "transactions"."user_id" = ${ctx.userId}
+        and "transactions"."amount_cents" < 0
+        and "transactions"."transfer_group_id" is null
+        and "transactions"."merchant_name" in (${sql.join(
+          merchants.map((m) => sql`${m}`),
+          sql`, `,
+        )})
+    ) where "rn" = 1`);
+  const latestBy = new Map(latestRows.map((r) => [r.merchant, Math.abs(Number(r.amountCents))]));
+
   const hits: Hit[] = [];
   for (const s of subs) {
     const avg = s.averageAmountCents;
-    if (!s.isActive || !s.merchantName || avg <= 0) continue;
-    const [latest] = await db
-      .select({ amountCents: transactions.amountCents })
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.userId, ctx.userId),
-          eq(transactions.merchantName, s.merchantName),
-          lt(transactions.amountCents, 0),
-          isNull(transactions.transferGroupId),
-        ),
-      )
-      .orderBy(desc(transactions.bookingDate))
-      .limit(1);
-    const latestAbs = latest ? Math.abs(latest.amountCents) : 0;
+    const latestAbs = latestBy.get(s.merchantName) ?? 0;
     if (latestAbs < avg * 1.15 || latestAbs - avg < 100) continue;
     hits.push({
       key: `recurring_increase:${s.id}:${latestAbs}`,

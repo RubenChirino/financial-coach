@@ -24,11 +24,12 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { userExists } from "@/lib/auth/user";
 import {
   getAccountsTotal,
-  getMonthlyFlowHistory,
-  getMonthSummary,
+  getMonthSummaries,
   getNeedsReviewCount,
   getTopCategoriesThisMonth,
   listAccountsWithInstitutions,
+  type MonthSummary,
+  toFlow,
 } from "@/lib/dashboard/summary";
 import { env } from "@/lib/env";
 import { formatAmount } from "@/lib/format";
@@ -97,29 +98,29 @@ export default async function DashboardPage({
 
   const [
     accountsTotal,
-    thisMonth,
-    lastMonth,
+    months,
     topCategories,
     needsReview,
     recent,
     subsTotals,
-    monthlyFlow,
     accountTiles,
     activeInsights,
     netWorthSeries,
   ] = await Promise.all([
     getAccountsTotal(session.userId),
-    getMonthSummary(session.userId, 0),
-    getMonthSummary(session.userId, -1),
+    // The flow chart's six months; the last two are the month KPIs.
+    getMonthSummaries(session.userId, -5, 0),
     getTopCategoriesThisMonth(session.userId, 6, 0),
     getNeedsReviewCount(session.userId),
-    listTransactions({ userId: session.userId }),
+    listTransactions({ userId: session.userId, limit: 5 }),
     getActiveSubscriptionsTotals(session.userId),
-    getMonthlyFlowHistory(session.userId, 6, locale),
     listAccountsWithInstitutions(session.userId),
     listActiveInsights(session.userId, locale),
     getNetWorthSeries(session.userId, { days: 180 }),
   ]);
+  const monthlyFlow = toFlow(months, locale);
+  const thisMonth = months[months.length - 1] as MonthSummary;
+  const lastMonth = months[months.length - 2] as MonthSummary;
 
   const guestDialog = (
     <GuestWelcomeDialog
@@ -223,7 +224,7 @@ export default async function DashboardPage({
   });
 
   // Recent transactions for the activity card.
-  const recentRows: RecentTransactionRow[] = recent.rows.slice(0, 5).map((r) => {
+  const recentRows: RecentTransactionRow[] = recent.rows.map((r) => {
     const catName = r.categoryNameEs
       ? locale === "es"
         ? r.categoryNameEs

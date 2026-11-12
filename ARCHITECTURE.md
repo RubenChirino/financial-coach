@@ -317,9 +317,17 @@ Three representative flows show how the pieces compose.
    feed it to scripts that need to be allowed) and writes the matching
    `Content-Security-Policy` response header.
 3. The dashboard page is an **async server component**. It calls
-   `getCurrentSession()` once, then fires its data queries *in parallel*
-   (`Promise.all`) — month summaries, account tiles, top categories, the digest.
-   Each query is scoped by `userId`.
+   `getCurrentSession()`, then fires its data queries *in parallel*
+   (`Promise.all`) — month summaries, account tiles, top categories, insights.
+   Each query is scoped by `userId`. `getCurrentSession()` and `getUser()` are
+   wrapped in React's `cache()`, so the page, the shell and every helper share
+   one session lookup and one user row per render; the session's
+   `last_activity_at` is rewritten only when more than a minute old, so most
+   renders do no write at all. Queries are shaped for one round trip each:
+   the six months of the flow chart (and the two month KPIs, which are its
+   last two points) come from one `GROUP BY month` query, the coach's
+   per-month categories likewise, and per-user lookups have indexes
+   (migration `0030`).
 4. The server renders HTML and streams it. The client receives a painted page;
    only the genuinely interactive bits (the privacy toggle, charts that need
    hover) hydrate as client components.

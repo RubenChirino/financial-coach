@@ -40,30 +40,25 @@ export async function userOwnsConversation(
 }
 
 export async function listConversations(userId: number): Promise<ConversationSummary[]> {
+  // One query: the message count is a grouped left join, not a query per row.
   const rows = await db
     .select({
       id: advisorConversations.id,
       title: advisorConversations.title,
       updatedAt: advisorConversations.updatedAt,
+      messageCount: sql<number>`count(${advisorMessages.id})`,
     })
     .from(advisorConversations)
+    .leftJoin(advisorMessages, eq(advisorMessages.conversationId, advisorConversations.id))
     .where(eq(advisorConversations.userId, userId))
-    .orderBy(desc(advisorConversations.updatedAt));
-
-  const summaries: ConversationSummary[] = [];
-  for (const r of rows) {
-    const msgCount = await db
-      .select({ id: advisorMessages.id })
-      .from(advisorMessages)
-      .where(eq(advisorMessages.conversationId, r.id));
-    summaries.push({
-      id: r.id,
-      title: r.title || "(new)",
-      updatedAt: r.updatedAt.getTime(),
-      messageCount: msgCount.length,
-    });
-  }
-  return summaries;
+    .groupBy(advisorConversations.id)
+    .orderBy(desc(advisorConversations.updatedAt), desc(advisorConversations.id));
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title || "(new)",
+    updatedAt: r.updatedAt.getTime(),
+    messageCount: Number(r.messageCount),
+  }));
 }
 
 export async function getConversationMessages(

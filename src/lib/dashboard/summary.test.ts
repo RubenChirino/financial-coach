@@ -8,8 +8,15 @@ vi.mock("@/db/client", () => ({ db: fixture.db, client: fixture.client }));
 const { accounts, categories, institutions, requisitions, transactions } = await import(
   "@/db/schema"
 );
-const { getMonthSummary, getTopCategoriesThisMonth, getAccountsTotal, getNeedsReviewCount } =
-  await import("./summary");
+const {
+  getMonthSummaries,
+  getMonthSummary,
+  getTopCategoriesByMonth,
+  getTopCategoriesThisMonth,
+  getAccountsTotal,
+  getNeedsReviewCount,
+  toFlow,
+} = await import("./summary");
 
 // The data owner under test. A second user (USER_B) is used by the isolation
 // test to prove one user's queries never see another's rows.
@@ -183,6 +190,43 @@ describe("dashboard/summary", () => {
     expect(s.netCents).toBe(s.incomeCents + s.expenseCents);
     expect(s.txCount).toBe(5); // excludes last-month tx
     expect(s.currency).toBe("EUR");
+  });
+
+  it("getMonthSummaries groups months in one query, equal to month-by-month, zero-filled", async () => {
+    const months = await getMonthSummaries(USER_A, -5, 0);
+    expect(months).toHaveLength(6);
+    for (let i = 0; i < 6; i++) {
+      expect(months[i]).toEqual(await getMonthSummary(USER_A, i - 5));
+    }
+    // The current month as asserted above; the previous one holds the seeded
+    // last-month row; the older ones are empty.
+    expect(months[5]?.txCount).toBe(5);
+    expect(months[4]?.txCount).toBeGreaterThan(0);
+    expect(months.slice(0, 4).every((m) => m.txCount === 0 && m.netCents === 0)).toBe(true);
+    // Labels are consecutive months, oldest first.
+    const now = new Date();
+    const label = (back: number) => {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    };
+    expect(months.map((m) => m.month)).toEqual([5, 4, 3, 2, 1, 0].map(label));
+    // The flow chart derives from the same rows.
+    const flow = toFlow(months, "en");
+    expect(flow[5]).toMatchObject({
+      incomeCents: months[5]?.incomeCents,
+      expenseCents: Math.abs(months[5]?.expenseCents ?? 0),
+    });
+  });
+
+  it("getTopCategoriesByMonth equals the single-month query for every month, in one query", async () => {
+    const byMonth = await getTopCategoriesByMonth(USER_A, -2, 0, 1);
+    const months = await getMonthSummaries(USER_A, -2, 0);
+    expect([...byMonth.keys()]).toEqual(months.map((m) => m.month));
+    for (let offset = -2; offset <= 0; offset++) {
+      const label = months[offset + 2]?.month ?? "";
+      expect(byMonth.get(label)).toEqual(await getTopCategoriesThisMonth(USER_A, 1, offset));
+    }
+    expect(byMonth.get(months[2]?.month ?? "")?.map((c) => c.slug)).toEqual(["groceries"]);
   });
 
   it("getTopCategoriesThisMonth orders by spend desc and excludes income", async () => {

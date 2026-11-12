@@ -177,7 +177,10 @@ export const requisitions = sqliteTable(
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
     createdAt: timestamp("created_at"),
   },
-  (t) => [index("requisitions_institution_idx").on(t.institutionId)],
+  (t) => [
+    index("requisitions_institution_idx").on(t.institutionId),
+    index("requisitions_user_idx").on(t.userId),
+  ],
 );
 
 export const accounts = sqliteTable(
@@ -229,7 +232,10 @@ export const accounts = sqliteTable(
      */
     relinkedThrough: integer("relinked_through", { mode: "timestamp_ms" }),
   },
-  (t) => [index("accounts_requisition_idx").on(t.requisitionId)],
+  (t) => [
+    index("accounts_requisition_idx").on(t.requisitionId),
+    index("accounts_user_idx").on(t.userId),
+  ],
 );
 
 /**
@@ -331,28 +337,32 @@ export const budgets = sqliteTable(
  * One row per CSV/XLS file the user imports. Lets users see what they uploaded
  * and delete a specific batch if they imported something wrong.
  */
-export const importBatches = sqliteTable("import_batches", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  /** Owner of the import. Scopes the import-history list per user. */
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  /** Original filename, or null when data was pasted directly. */
-  filename: text("filename"),
-  rowsParsed: integer("rows_parsed").notNull().default(0),
-  rowsInserted: integer("rows_inserted").notNull().default(0),
-  rowsDuplicate: integer("rows_duplicate").notNull().default(0),
-  createdAt: timestamp("created_at"),
-  /**
-   * "running" from creation until the ingest finalizes, then "complete". A
-   * batch still "running" well after it started was interrupted: its rows are
-   * whole and categorized, it can be undone, and re-importing the same file
-   * adds only the missing rows. Rows from before this column read "complete".
-   */
-  status: text("status", { enum: ["running", "complete"] })
-    .notNull()
-    .default("complete"),
-});
+export const importBatches = sqliteTable(
+  "import_batches",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** Owner of the import. Scopes the import-history list per user. */
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Original filename, or null when data was pasted directly. */
+    filename: text("filename"),
+    rowsParsed: integer("rows_parsed").notNull().default(0),
+    rowsInserted: integer("rows_inserted").notNull().default(0),
+    rowsDuplicate: integer("rows_duplicate").notNull().default(0),
+    createdAt: timestamp("created_at"),
+    /**
+     * "running" from creation until the ingest finalizes, then "complete". A
+     * batch still "running" well after it started was interrupted: its rows are
+     * whole and categorized, it can be undone, and re-importing the same file
+     * adds only the missing rows. Rows from before this column read "complete".
+     */
+    status: text("status", { enum: ["running", "complete"] })
+      .notNull()
+      .default("complete"),
+  },
+  (t) => [index("import_batches_user_created_idx").on(t.userId, t.createdAt)],
+);
 
 export const transactions = sqliteTable(
   "transactions",
@@ -416,6 +426,7 @@ export const transactions = sqliteTable(
     index("transactions_needs_review_idx").on(t.needsReview),
     index("transactions_user_date_idx").on(t.userId, t.bookingDate),
     index("transactions_transfer_group_idx").on(t.transferGroupId),
+    index("transactions_user_review_idx").on(t.userId, t.needsReview),
   ],
 );
 
@@ -549,23 +560,27 @@ export const cityCountries = sqliteTable("city_countries", {
  * themselves (or from the advisor suggestion). No auto-link to accounts yet;
  * that can be wired in a later phase.
  */
-export const goals = sqliteTable("goals", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  emoji: text("emoji").notNull().default("🎯"),
-  targetCents: integer("target_cents", { mode: "number" }).notNull(),
-  savedCents: integer("saved_cents", { mode: "number" }).notNull().default(0),
-  /** Optional soft deadline shown as a countdown. */
-  deadline: integer("deadline", { mode: "timestamp_ms" }),
-  /** Optional link to a category — e.g. "reduce Dining spend toward this goal". */
-  categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
-  notes: text("notes"),
-  createdAt: timestamp("created_at"),
-  updatedAt: timestamp("updated_at"),
-});
+export const goals = sqliteTable(
+  "goals",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    emoji: text("emoji").notNull().default("🎯"),
+    targetCents: integer("target_cents", { mode: "number" }).notNull(),
+    savedCents: integer("saved_cents", { mode: "number" }).notNull().default(0),
+    /** Optional soft deadline shown as a countdown. */
+    deadline: integer("deadline", { mode: "timestamp_ms" }),
+    /** Optional link to a category — e.g. "reduce Dining spend toward this goal". */
+    categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at"),
+    updatedAt: timestamp("updated_at"),
+  },
+  (t) => [index("goals_user_idx").on(t.userId)],
+);
 
 /**
  * Persisted insights generated by the rule engine (Phase 7h).
@@ -691,16 +706,20 @@ export type NewBudget = typeof budgets.$inferInsert;
 export type Goal = typeof goals.$inferSelect;
 export type NewGoal = typeof goals.$inferInsert;
 
-export const advisorConversations = sqliteTable("advisor_conversations", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  title: text("title").notNull().default(""),
-  summary: text("summary").notNull().default(""),
-  createdAt: timestamp("created_at"),
-  updatedAt: timestamp("updated_at"),
-});
+export const advisorConversations = sqliteTable(
+  "advisor_conversations",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull().default(""),
+    summary: text("summary").notNull().default(""),
+    createdAt: timestamp("created_at"),
+    updatedAt: timestamp("updated_at"),
+  },
+  (t) => [index("advisor_conversations_user_updated_idx").on(t.userId, t.updatedAt)],
+);
 
 export const advisorMessages = sqliteTable(
   "advisor_messages",

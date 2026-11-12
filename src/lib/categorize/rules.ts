@@ -48,22 +48,45 @@ export interface RuleInput {
  *
  * Within each type, rules with lower `priority` win. Returns the first match.
  */
-function ruleMatches(rule: RuleRow, merchant: string, haystack: string): boolean {
-  const pat = rule.matchPattern.toLowerCase();
-  if (rule.matchType === "merchant_exact") return Boolean(merchant) && merchant === pat;
-  if (rule.matchType === "contains") return haystack.includes(pat);
-  if (rule.matchType === "regex") {
-    try {
-      return new RegExp(rule.matchPattern, "i").test(haystack);
-    } catch {
-      // malformed regex — skip silently
-      return false;
-    }
-  }
-  return false;
+interface CompiledRule {
+  rule: RuleRow;
+  test: (merchant: string, haystack: string) => boolean;
 }
 
-export function matchRule(input: RuleInput, rules: RuleRow[]): RuleRow | null {
+/**
+ * Rules sorted by priority with their patterns prepared (lower-cased, regexes
+ * built), once per rules array: a categorization run loads the rules once and
+ * matches every row against that same array.
+ */
+const compiledCache = new WeakMap<readonly RuleRow[], CompiledRule[]>();
+
+function compiled(rules: readonly RuleRow[]): CompiledRule[] {
+  let out = compiledCache.get(rules);
+  if (!out) {
+    out = [...rules].sort((a, b) => a.priority - b.priority).map(compileRule);
+    compiledCache.set(rules, out);
+  }
+  return out;
+}
+
+function compileRule(rule: RuleRow): CompiledRule {
+  const pat = rule.matchPattern.toLowerCase();
+  if (rule.matchType === "merchant_exact") {
+    return { rule, test: (merchant) => Boolean(merchant) && merchant === pat };
+  }
+  if (rule.matchType === "contains") return { rule, test: (_, haystack) => haystack.includes(pat) };
+  if (rule.matchType === "regex") {
+    try {
+      const re = new RegExp(rule.matchPattern, "i");
+      return { rule, test: (_, haystack) => re.test(haystack) };
+    } catch {
+      // malformed regex — never matches
+    }
+  }
+  return { rule, test: () => false };
+}
+
+export function matchRule(input: RuleInput, rules: readonly RuleRow[]): RuleRow | null {
   const merchant = (input.merchantName ?? "").trim().toLowerCase();
   const haystack = `${input.merchantName ?? ""} ${input.rawDescription ?? ""}`
     .trim()
@@ -75,9 +98,8 @@ export function matchRule(input: RuleInput, rules: RuleRow[]): RuleRow | null {
     // is left intact and still matches.
     .replace(/comisi[oó]n\s*0[.,]00/g, " ");
 
-  const sorted = [...rules].sort((a, b) => a.priority - b.priority);
-  for (const r of sorted) {
-    if (ruleMatches(r, merchant, haystack)) return r;
+  for (const r of compiled(rules)) {
+    if (r.test(merchant, haystack)) return r.rule;
   }
   return null;
 }
