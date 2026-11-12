@@ -730,7 +730,9 @@
       "tryAgain": "Back",
       "done": "Continue",
       "toastTitle": "Bank linked successfully",
-      "toastDescription": "{accounts, plural, one {# account} other {# accounts}} connected · {inserted, plural, one {# transaction} other {# transactions}} imported"
+      "toastDescription": "{accounts, plural, one {# account} other {# accounts}} connected · {inserted, plural, one {# transaction} other {# transactions}} imported",
+      "needsChoice": "{count, plural, one {# account needs} other {# accounts need}} your confirmation before syncing.",
+      "reviewAccounts": "Review accounts"
     },
     "providers": {
       "gocardless": "GoCardless",
@@ -791,7 +793,17 @@
     "deleteAccountTitle": "Delete account",
     "deleteAccountBody": "Permanently delete \"{name}\" and all of its transactions? This cannot be undone.",
     "deleteAccountDone": "Account deleted",
-    "deleteAccountError": "Couldn't delete account"
+    "deleteAccountError": "Couldn't delete account",
+    "relink": {
+      "title": "Confirm reconnected accounts",
+      "hint": "These accounts came with a new connection to a bank you had linked before. Say whether each one continues an account you already have, so its history isn't counted twice. They won't sync until you answer.",
+      "question": "Is {account} at {bank} an account you already have?",
+      "sameAs": "Same as {account}",
+      "newAccount": "It's a new account",
+      "resolved": "Account linked",
+      "imported": "{count, plural, one {# transaction} other {# transactions}} imported",
+      "failed": "Couldn't link the account"
+    }
   },
   "goals": {
     "title": "Goals",

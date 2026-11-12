@@ -3,6 +3,7 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, requisitions } from "@/db/schema";
+import { type LinkResult, linkProviderAccounts, normalizeAccountNumber } from "@/lib/accounts/link";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { upsertInstitution as upsertInstitutionRow } from "@/lib/ingest/institutions";
 import {
@@ -86,8 +87,10 @@ export async function createRequisition(
 
 /**
  * After the user finishes consent at their bank, GoCardless lists the
- * approved account IDs on the requisition. We persist one account row per
- * GoCardless account, storing the GC account id encrypted.
+ * approved account ids on the requisition. Each one is linked through
+ * `linkProviderAccounts`: a new account, an existing account continued
+ * (re-link), or a question for the user. Safe to call again for the same
+ * requisition (the callback page can be reloaded).
  */
 export async function linkRequisitionAccounts(
   client: GoCardlessClient,
@@ -97,7 +100,7 @@ export async function linkRequisitionAccounts(
     gocardlessRequisitionId: string;
     encryptionKey: Buffer;
   },
-): Promise<{ accountRowIds: number[] }> {
+): Promise<LinkResult> {
   const req = await client.getRequisition(opts.gocardlessRequisitionId);
   const status = statusFromApi(req.status);
 
@@ -106,39 +109,31 @@ export async function linkRequisitionAccounts(
     .set({ status })
     .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
 
-  if (status !== "linked") return { accountRowIds: [] };
+  if (status !== "linked") return { accountIds: [], created: 0, adopted: 0, pendingChoices: 0 };
 
-  const rowIds: number[] = [];
-  for (const accId of req.accounts) {
-    const [details, balances] = await Promise.all([
-      client.getAccountDetails(accId),
-      client.getAccountBalances(accId).catch(() => ({ balances: [] })),
-    ]);
-
-    const encryptedAccId = encrypt(accId, opts.encryptionKey);
-    const iban = details.account.iban ?? null;
-    const ibanLast4 = iban ? iban.replace(/\s/g, "").slice(-4) : null;
-    const primary = pickPrimaryBalance(balances.balances);
-    const balanceCents = primary ? toCents(primary.balanceAmount.amount) : 0;
-    const currency = primary?.balanceAmount.currency ?? details.account.currency ?? "EUR";
-
-    const inserted = await db
-      .insert(accounts)
-      .values({
-        userId: opts.userId,
-        requisitionId: opts.requisitionRowId,
-        gocardlessAccountId: encryptedAccId,
-        ibanLast4,
+  return linkProviderAccounts({
+    userId: opts.userId,
+    requisitionId: opts.requisitionRowId,
+    encryptionKey: opts.encryptionKey,
+    providerAccountIds: req.accounts,
+    describe: async (accId) => {
+      const [details, balances] = await Promise.all([
+        client.getAccountDetails(accId),
+        client.getAccountBalances(accId).catch(() => ({ balances: [] })),
+      ]);
+      const iban = normalizeAccountNumber(details.account.iban);
+      const primary = pickPrimaryBalance(balances.balances);
+      return {
+        providerAccountId: accId,
+        accountNumber: iban,
+        ibanLast4: iban ? iban.slice(-4) : null,
         name: details.account.name ?? details.account.product ?? "Cuenta",
         ownerName: details.account.ownerName ?? null,
-        balanceCents,
-        currency,
-      })
-      .returning({ id: accounts.id });
-    const id = inserted[0]?.id;
-    if (id) rowIds.push(id);
-  }
-  return { accountRowIds: rowIds };
+        balanceCents: primary ? toCents(primary.balanceAmount.amount) : 0,
+        currency: primary?.balanceAmount.currency ?? details.account.currency ?? "EUR",
+      };
+    },
+  });
 }
 
 /** Fetch and normalize one account's booked transactions since `since`. */

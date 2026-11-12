@@ -624,12 +624,23 @@ Three providers implement it:
 
 ### 9.2 Sync and dedup
 
-Sync pulls **booked** transactions (pending ones can change or vanish), normalizes
-them, and upserts keyed by the provider's stable transaction id with fallbacks
-(see each provider's `normalize.ts`). Re-running sync is therefore idempotent.
-Right after a sync, the cheap deterministic categorizer (rules only, no LLM) runs
-so new rows aren't uncategorized for long, and the recurring-subscription detector
-refreshes.
+Sync pulls **booked** transactions (pending ones can change or vanish) from
+`last_synced_at − 10 days` (90 days on the first sync), normalizes them, and hands
+them to the ingest pipeline ([`src/lib/ingest/pipeline.ts`](src/lib/ingest/pipeline.ts)),
+the only code that inserts transactions, for every source. A transaction is
+identified by `(account_id, external_id)`; rows are categorized by rules and
+keywords before insert, and re-running a sync inserts nothing.
+
+**Re-linking a bank.** Consents expire and the user links the bank again. Neither
+provider promises the same account id under a new consent, so
+[`src/lib/accounts/link.ts`](src/lib/accounts/link.ts) decides, per account:
+the same provider account id, or the same account number (a per-user blind
+index, `accounts.iban_hash`) matching exactly one existing account at that bank,
+continues the existing account — its history, budgets and sync cursor kept;
+when nothing proves it either way, the user is asked ("same as X" or "new
+account") before anything is linked or synced; otherwise it is a new account. A
+continued account's overlap with the old consent is matched by booking date and
+amount, since transaction ids can change with the consent too.
 
 ### 9.3 CSV / XLSX import as a first-class provider
 

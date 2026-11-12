@@ -1,0 +1,1 @@
+ALTER TABLE `accounts` ADD `relinked_through` integer;

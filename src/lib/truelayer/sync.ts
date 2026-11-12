@@ -3,6 +3,7 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, requisitions } from "@/db/schema";
+import { type LinkResult, linkProviderAccounts, normalizeAccountNumber } from "@/lib/accounts/link";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { upsertInstitution } from "@/lib/ingest/institutions";
 import {
@@ -84,8 +85,9 @@ export async function createTrueLayerPendingConnection(opts: {
 
 /**
  * After the OAuth callback produces an authorization code, exchange it for
- * tokens, resolve the real provider, persist accounts + balances, and flip
- * the requisition to "linked".
+ * tokens, resolve the real provider, flip the requisition to "linked", and
+ * link its accounts through `linkProviderAccounts` (new, continued, or a
+ * question for the user).
  */
 export async function finalizeTrueLayerConnection(
   client: TrueLayerClient,
@@ -96,7 +98,7 @@ export async function finalizeTrueLayerConnection(
     redirectUri: string;
     encryptionKey: Buffer;
   },
-): Promise<{ accountRowIds: number[] }> {
+): Promise<LinkResult> {
   const tokenRes = await client.exchangeCode(opts.code, opts.redirectUri);
   if (!tokenRes.refresh_token) {
     throw new Error(
@@ -118,7 +120,7 @@ export async function finalizeTrueLayerConnection(
       .update(requisitions)
       .set({ gocardlessRequisitionId: encrypt(serializeTokens(tokens), opts.encryptionKey) })
       .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
-    return { accountRowIds: [] };
+    return { accountIds: [], created: 0, adopted: 0, pendingChoices: 0 };
   }
 
   // Resolve the institution from the first account's provider (TrueLayer
@@ -141,32 +143,31 @@ export async function finalizeTrueLayerConnection(
     })
     .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
 
-  const rowIds: number[] = [];
-  for (const acc of tlAccounts) {
-    const balance = await client.getBalance(tokens.accessToken, acc.account_id).catch(() => null);
-    const balanceCents = balance ? decimalToCents(balance.current) : 0;
-    const ibanLast4 = acc.account_number?.iban
-      ? acc.account_number.iban.replace(/\s/g, "").slice(-4)
-      : (acc.account_number?.number?.slice(-4) ?? null);
-
-    const encryptedAccId = encrypt(acc.account_id, opts.encryptionKey);
-    const inserted = await db
-      .insert(accounts)
-      .values({
-        userId: opts.userId,
-        requisitionId: opts.requisitionRowId,
-        gocardlessAccountId: encryptedAccId,
-        ibanLast4,
+  const byId = new Map(tlAccounts.map((acc) => [acc.account_id, acc]));
+  return linkProviderAccounts({
+    userId: opts.userId,
+    requisitionId: opts.requisitionRowId,
+    encryptionKey: opts.encryptionKey,
+    providerAccountIds: tlAccounts.map((acc) => acc.account_id),
+    describe: async (accountId) => {
+      const acc = byId.get(accountId);
+      if (!acc) throw new Error("unknown TrueLayer account");
+      const balance = await client.getBalance(tokens.accessToken, acc.account_id).catch(() => null);
+      const n = acc.account_number;
+      const iban = normalizeAccountNumber(n?.iban);
+      const accountNumber =
+        iban ?? (n?.sort_code && n.number ? normalizeAccountNumber(n.sort_code + n.number) : null);
+      return {
+        providerAccountId: acc.account_id,
+        accountNumber,
+        ibanLast4: iban ? iban.slice(-4) : (n?.number?.slice(-4) ?? null),
         name: acc.display_name || acc.account_type || "Account",
-        balanceCents,
+        ownerName: null,
+        balanceCents: balance ? decimalToCents(balance.current) : 0,
         currency: acc.currency || "GBP",
-      })
-      .returning({ id: accounts.id });
-    const id = inserted[0]?.id;
-    if (id) rowIds.push(id);
-  }
-
-  return { accountRowIds: rowIds };
+      };
+    },
+  });
 }
 
 /**

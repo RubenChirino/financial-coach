@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, inArray, type SQL, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, type SQL, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { db } from "@/db/client";
 import { accounts, importBatches, transactions } from "@/db/schema";
@@ -21,7 +21,9 @@ import {
  * to "fetch + normalize" and hands its rows to `ingestTransactions`, which:
  *
  *  1. checks every target account belongs to the user;
- *  2. gives content-derived ids an occurrence ordinal;
+ *  2. gives content-derived ids an occurrence ordinal, and on an account a
+ *     re-link adopted, drops rows the previous consent already stored under
+ *     another id (`dropRelinkOverlap`);
  *  3. categorizes in memory (rules, then keywords), so rows land categorized;
  *  4. inserts in chunks, each one `INSERT … ON CONFLICT DO NOTHING RETURNING`;
  *  5. finalizes in one atomic batch: account balance and `last_synced_at`,
@@ -115,15 +117,85 @@ export function syncWindowStart(lastSyncedAt: Date | null, now: Date = new Date(
   return new Date(Math.max(lastSyncedAt.getTime() - SYNC_OVERLAP_DAYS * DAY_MS, floor));
 }
 
-async function assertOwnsAccounts(userId: number, accountIds: number[]): Promise<void> {
-  if (accountIds.length === 0) return;
+/** Step 1. Returns each account's `relinked_through` (null unless a re-link adopted it). */
+async function assertOwnsAccounts(
+  userId: number,
+  accountIds: number[],
+): Promise<Map<number, Date | null>> {
+  if (accountIds.length === 0) return new Map();
   const owned = await db
-    .select({ id: accounts.id })
+    .select({ id: accounts.id, relinkedThrough: accounts.relinkedThrough })
     .from(accounts)
     .where(and(eq(accounts.userId, userId), inArray(accounts.id, accountIds)));
-  const ownedIds = new Set(owned.map((r) => r.id));
-  const missing = accountIds.filter((id) => !ownedIds.has(id));
+  const relinked = new Map(owned.map((r) => [r.id, r.relinkedThrough]));
+  const missing = accountIds.filter((id) => !relinked.has(id));
   if (missing.length > 0) throw new AccountNotOwned(missing);
+  return relinked;
+}
+
+/**
+ * Re-link continuity (see `src/lib/accounts/link.ts`). After a new consent
+ * adopted an account, the bank may report the overlap under new transaction
+ * ids. Rows booked on or before `through` whose id is not stored are matched
+ * against stored rows of the account whose id the input does not contain
+ * (those came from the previous consent): same booking date and amount,
+ * preferring the same description. Each stored row matches at most one
+ * incoming row, so a genuinely new row with the same date and amount as an
+ * old one still goes in. Rows whose id is stored are left to the unique index.
+ */
+async function dropRelinkOverlap(
+  accountId: number,
+  rows: readonly IngestRow[],
+  through: Date,
+): Promise<IngestRow[]> {
+  const guarded = rows.filter((r) => r.bookingDate.getTime() <= through.getTime());
+  if (guarded.length === 0) return [...rows];
+  const from = new Date(
+    guarded.reduce((min, r) => Math.min(min, r.bookingDate.getTime()), Number.POSITIVE_INFINITY),
+  );
+  const stored = await db
+    .select({
+      externalId: transactions.gocardlessTransactionId,
+      bookingDate: transactions.bookingDate,
+      amountCents: transactions.amountCents,
+      rawDescription: transactions.rawDescription,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.accountId, accountId),
+        gte(transactions.bookingDate, from),
+        lte(transactions.bookingDate, through),
+      ),
+    );
+
+  const incomingIds = new Set(rows.map((r) => r.externalId));
+  const storedIds = new Set(stored.map((s) => s.externalId));
+  const key = (date: Date, cents: number) => `${date.getTime()}|${cents}`;
+  const previous = new Map<string, { rawDescription: string; used: boolean }[]>();
+  for (const s of stored) {
+    if (incomingIds.has(s.externalId)) continue;
+    const k = key(s.bookingDate, s.amountCents);
+    const bucket = previous.get(k) ?? [];
+    bucket.push({ rawDescription: s.rawDescription, used: false });
+    previous.set(k, bucket);
+  }
+
+  const candidates = guarded.filter((r) => !storedIds.has(r.externalId));
+  const dropped = new Set<IngestRow>();
+  for (const sameText of [true, false]) {
+    for (const r of candidates) {
+      if (dropped.has(r)) continue;
+      const match = previous
+        .get(key(r.bookingDate, r.amountCents))
+        ?.find((p) => !p.used && (!sameText || p.rawDescription === r.rawDescription));
+      if (match) {
+        match.used = true;
+        dropped.add(r);
+      }
+    }
+  }
+  return rows.filter((r) => !dropped.has(r));
 }
 
 type Categorized = Pick<NewTransactionRow, "categoryId" | "confidence" | "needsReview"> & {
@@ -165,7 +237,7 @@ function balanceSet(part: AccountIngest): SQL | number | undefined {
 export async function ingestTransactions(input: IngestInput): Promise<IngestResult> {
   const { userId } = input;
   const accountIds = [...new Set(input.accounts.map((a) => a.accountId))];
-  await assertOwnsAccounts(userId, accountIds);
+  const relinkedThrough = await assertOwnsAccounts(userId, accountIds);
 
   const categorize = await makeCategorizer(userId);
   const result: IngestResult = {
@@ -177,7 +249,13 @@ export async function ingestTransactions(input: IngestInput): Promise<IngestResu
   };
 
   for (const part of input.accounts) {
-    const rows = withOccurrenceOrdinals(part.rows);
+    let rows = withOccurrenceOrdinals(part.rows);
+    const through = relinkedThrough.get(part.accountId);
+    if (through) {
+      const kept = await dropRelinkOverlap(part.accountId, rows, through);
+      result.duplicates += rows.length - kept.length;
+      rows = kept;
+    }
     const viaByExternalId = new Map<string, Categorized["via"]>();
     const values: NewTransactionRow[] = rows.map((row) => {
       const { via, ...category } = categorize(row);

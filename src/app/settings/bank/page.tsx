@@ -6,12 +6,14 @@ import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { listAccountLinkChoicesAction } from "@/lib/accounts/link-actions";
 import { getCurrentSession } from "@/lib/auth/session";
 import { hasBankCredentialsAction, listBankConnectionsAction } from "@/lib/gocardless/actions";
 import { hasDemoConnectionsAction } from "@/lib/providers/demo/actions";
 import { hasTrueLayerCredentialsAction } from "@/lib/truelayer/actions";
 import { ConnectionRow } from "./connection-row";
 import { BankCredentialsCard } from "./credentials-card";
+import { LinkChoicesCard } from "./link-choices-card";
 import { ProviderPanel } from "./provider-panel";
 import { SyncButton } from "./sync-button";
 import { TrueLayerCard } from "./truelayer-card";
@@ -20,14 +22,17 @@ export const dynamic = "force-dynamic";
 
 export default async function BankSettingsPage() {
   if (!(await getCurrentSession())) redirect("/lock");
-  const [t, tCommon, hasCreds, connections, hasDemo, hasTrueLayer] = await Promise.all([
-    getTranslations("bank"),
-    getTranslations("common"),
-    hasBankCredentialsAction(),
-    listBankConnectionsAction(),
-    hasDemoConnectionsAction(),
-    hasTrueLayerCredentialsAction(),
-  ]);
+  const [t, tCommon, hasCreds, connections, hasDemo, hasTrueLayer, linkChoices] = await Promise.all(
+    [
+      getTranslations("bank"),
+      getTranslations("common"),
+      hasBankCredentialsAction(),
+      listBankConnectionsAction(),
+      hasDemoConnectionsAction(),
+      hasTrueLayerCredentialsAction(),
+      listAccountLinkChoicesAction(),
+    ],
+  );
 
   return (
     <AppShell>
@@ -36,6 +41,8 @@ export default async function BankSettingsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
           <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
         </header>
+
+        {linkChoices.length > 0 ? <LinkChoicesCard choices={linkChoices} /> : null}
 
         <ProviderPanel
           tabs={{

@@ -155,6 +155,27 @@
       "when": 1794437915884,
       "tag": "0021_users_wrapped_dek",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1794473261523,
+      "tag": "0022_accounts_iban_hash",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1794473267440,
+      "tag": "0023_accounts_relinked_through",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1794473275424,
+      "tag": "0024_account_link_choices",
+      "breakpoints": true
     }
   ]
 }

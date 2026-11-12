@@ -142,7 +142,7 @@ export async function startTrueLayerLinkAction(
 export async function finalizeTrueLayerLinkAction(
   reference: string,
   code: string,
-): Promise<TLActionResult<{ accountCount: number }>> {
+): Promise<TLActionResult<{ accountCount: number; pendingChoices: number }>> {
   try {
     const session = await requireSession();
     const client = await requireClient(session.userId, session.encryptionKey);
@@ -164,14 +164,17 @@ export async function finalizeTrueLayerLinkAction(
     const origin = await originFromHeaders();
     const redirectUri = `${origin}/settings/bank/truelayer/callback`;
 
-    const { accountRowIds } = await finalizeTrueLayerConnection(client, {
+    const linked = await finalizeTrueLayerConnection(client, {
       userId: session.userId,
       requisitionRowId: req.id,
       code,
       redirectUri,
       encryptionKey: session.encryptionKey,
     });
-    return { ok: true, data: { accountCount: accountRowIds.length } };
+    return {
+      ok: true,
+      data: { accountCount: linked.accountIds.length, pendingChoices: linked.pendingChoices },
+    };
   } catch (err) {
     return { ok: false, error: humanizeError(err) };
   }

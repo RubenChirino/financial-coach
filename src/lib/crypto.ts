@@ -1,6 +1,7 @@
 import {
   createCipheriv,
   createDecipheriv,
+  createHmac,
   hkdfSync,
   randomBytes,
   scryptSync,
@@ -181,4 +182,25 @@ export function unwrapDataKey(wrapped: string, kek: Buffer, userId: number): Buf
   } catch {
     throw new CryptoError("data key unwrap failed (bad key, wrong user or tampered)");
   }
+}
+
+// ---------------------------------------------------------------------------
+// Blind index: equality lookups on a value that is only stored encrypted.
+// ---------------------------------------------------------------------------
+
+/**
+ * A keyed, deterministic digest of `value` for equality matching (for
+ * example "is this the same IBAN as before?") without storing the value.
+ *
+ * HMAC-SHA256 under a subkey that HKDF derives from the user's data key and
+ * `purpose`, so it is per-user (the same IBAN digests differently for two
+ * users), separate from the encryption key itself, and stable across PIN
+ * changes (the data key never changes).
+ */
+export function blindIndex(value: string, dataKey: Buffer, purpose: string): string {
+  if (dataKey.length !== KEY_LEN) throw new CryptoError(`key must be ${KEY_LEN} bytes`);
+  const subkey = Buffer.from(
+    hkdfSync("sha256", dataKey, Buffer.alloc(0), `fc:blind-index:v1:${purpose}`, KEY_LEN),
+  );
+  return createHmac("sha256", subkey).update(value, "utf8").digest("base64url");
 }

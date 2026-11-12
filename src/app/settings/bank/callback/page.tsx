@@ -48,6 +48,7 @@ export default async function BankCallbackPage({
   }
 
   const count = finalize.data?.accountCount ?? 0;
+  const pendingChoices = finalize.data?.pendingChoices ?? 0;
   let syncedInserted = 0;
   if (count > 0) {
     const syncRes = await syncAllAccountsAction();
@@ -57,9 +58,13 @@ export default async function BankCallbackPage({
   return (
     <Result
       title={t("linked")}
-      description={t("linkedDetail", { accounts: count, inserted: syncedInserted })}
+      description={
+        pendingChoices > 0
+          ? `${t("linkedDetail", { accounts: count, inserted: syncedInserted })} ${t("needsChoice", { count: pendingChoices })}`
+          : t("linkedDetail", { accounts: count, inserted: syncedInserted })
+      }
       success
-      tAgain={t("done")}
+      tAgain={pendingChoices > 0 ? t("reviewAccounts") : t("done")}
       toastTitle={t("toastTitle")}
       toastDescription={t("toastDescription", { accounts: count, inserted: syncedInserted })}
     />

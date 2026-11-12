@@ -144,7 +144,7 @@ export async function startBankLinkAction(
 
 export async function finalizeBankLinkAction(
   reference: string,
-): Promise<ActionResult<{ accountCount: number }>> {
+): Promise<ActionResult<{ accountCount: number; pendingChoices: number }>> {
   try {
     const session = await requireSession();
     const client = await requireClient(session.userId, session.encryptionKey);
@@ -159,13 +159,16 @@ export async function finalizeBankLinkAction(
 
     const gcId = decrypt(req.gocardlessRequisitionId, session.encryptionKey);
 
-    const { accountRowIds } = await linkRequisitionAccounts(client, {
+    const linked = await linkRequisitionAccounts(client, {
       userId: session.userId,
       requisitionRowId: req.id,
       gocardlessRequisitionId: gcId,
       encryptionKey: session.encryptionKey,
     });
-    return { ok: true, data: { accountCount: accountRowIds.length } };
+    return {
+      ok: true,
+      data: { accountCount: linked.accountIds.length, pendingChoices: linked.pendingChoices },
+    };
   } catch (err) {
     return { ok: false, error: humanizeError(err) };
   }

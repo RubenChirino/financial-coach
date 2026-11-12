@@ -730,7 +730,9 @@
       "tryAgain": "Volver",
       "done": "Continuar",
       "toastTitle": "Banco conectado correctamente",
-      "toastDescription": "{accounts, plural, one {# cuenta} other {# cuentas}} conectada · {inserted, plural, one {# movimiento} other {# movimientos}} importado"
+      "toastDescription": "{accounts, plural, one {# cuenta} other {# cuentas}} conectada · {inserted, plural, one {# movimiento} other {# movimientos}} importado",
+      "needsChoice": "{count, plural, one {# cuenta necesita} other {# cuentas necesitan}} tu confirmación antes de sincronizar.",
+      "reviewAccounts": "Revisar cuentas"
     },
     "providers": {
       "gocardless": "GoCardless",
@@ -791,7 +793,17 @@
     "deleteAccountTitle": "Eliminar cuenta",
     "deleteAccountBody": "¿Eliminar permanentemente «{name}» y todas sus transacciones? Esta acción no se puede deshacer.",
     "deleteAccountDone": "Cuenta eliminada",
-    "deleteAccountError": "No se pudo eliminar la cuenta"
+    "deleteAccountError": "No se pudo eliminar la cuenta",
+    "relink": {
+      "title": "Confirma las cuentas reconectadas",
+      "hint": "Estas cuentas llegaron con una nueva conexión a un banco que ya tenías vinculado. Indica si cada una continúa una cuenta que ya tienes, para no contar su historial dos veces. No se sincronizarán hasta que respondas.",
+      "question": "¿{account} de {bank} es una cuenta que ya tienes?",
+      "sameAs": "La misma que {account}",
+      "newAccount": "Es una cuenta nueva",
+      "resolved": "Cuenta vinculada",
+      "imported": "{count, plural, one {# movimiento importado} other {# movimientos importados}}",
+      "failed": "No se pudo vincular la cuenta"
+    }
   },
   "goals": {
     "title": "Objetivos",

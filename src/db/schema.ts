@@ -214,8 +214,46 @@ export const accounts = sqliteTable(
     isManual: integer("is_manual", { mode: "boolean" }).notNull().default(false),
     lastSyncedAt: integer("last_synced_at", { mode: "timestamp_ms" }),
     createdAt: timestamp("created_at"),
+    /**
+     * `blindIndex(IBAN or sort code + number, dataKey, "account-number")`:
+     * recognises the same bank account when it is linked again under a new
+     * consent, without storing the number. NULL for accounts linked before
+     * this column existed; those are matched by asking the user.
+     */
+    ibanHash: text("iban_hash"),
+    /**
+     * Set when a re-link adopted this account: rows booked on or before this
+     * instant were stored under the previous consent, whose transaction ids
+     * may differ from the new one's. The pipeline matches such rows by
+     * (booking date, amount) instead of by id, so the overlap is not doubled.
+     */
+    relinkedThrough: integer("relinked_through", { mode: "timestamp_ms" }),
   },
   (t) => [index("accounts_requisition_idx").on(t.requisitionId)],
+);
+
+/**
+ * A bank account from a new consent that might be one the user already has
+ * (same bank, but nothing proves it is the same account). It waits here,
+ * neither linked nor synced, until the user says "continue account X" or
+ * "it's a new account". See `src/lib/accounts/link.ts`.
+ */
+export const accountLinkChoices = sqliteTable(
+  "account_link_choices",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The new consent the account arrived with. */
+    requisitionId: integer("requisition_id")
+      .notNull()
+      .references(() => requisitions.id, { onDelete: "cascade" }),
+    /** Encrypted JSON of the provider account (`LinkedAccount` in link.ts). */
+    payload: encryptedText("payload").notNull(),
+    createdAt: timestamp("created_at"),
+  },
+  (t) => [index("account_link_choices_user_idx").on(t.userId)],
 );
 
 /**
