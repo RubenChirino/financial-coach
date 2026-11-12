@@ -61,40 +61,61 @@ export async function listImportBatches(userId: number): Promise<ImportBatchRow[
   }));
 }
 
+/**
+ * Undo an import: its transactions, its batch record, and the cached balance
+ * of every account it touched — one atomic batch, scoped to `userId` so one
+ * user can never delete another's rows.
+ *
+ * The balance update runs first and sums each account's rows minus this
+ * batch's, so the set of affected accounts and the new balances come from
+ * the same snapshot as the delete (no read before the batch).
+ */
 export async function deleteImportBatch(
   userId: number,
   batchId: number,
 ): Promise<{ deleted: number }> {
-  // Delete all transactions linked to this batch first (FK onDelete=set null
-  // won't cascade-delete, it just nulls the FK — we want the rows gone). Scoped
-  // by userId so one user can never delete another's transactions.
-  const result = await db
-    .delete(transactions)
-    .where(and(eq(transactions.userId, userId), eq(transactions.importBatchId, batchId)))
-    .returning({ id: transactions.id, accountId: transactions.accountId });
+  const [, deleted] = await db.batch([
+    // The balance is a cached sum — it doesn't follow deleted rows. Qualified
+    // names: the subquery's columns must bind to `transactions`, the outer
+    // `accounts.id` to the row being updated.
+    db.run(sql`update "accounts" set "balance_cents" = (
+        select coalesce(sum("transactions"."amount_cents"), 0) from "transactions"
+        where "transactions"."account_id" = "accounts"."id"
+          and "transactions"."import_batch_id" is not ${batchId}
+      )
+      where "accounts"."user_id" = ${userId}
+        and "accounts"."id" in (
+          select "transactions"."account_id" from "transactions"
+          where "transactions"."user_id" = ${userId} and "transactions"."import_batch_id" = ${batchId}
+        )`),
+    // The FK is ON DELETE SET NULL, which would orphan the rows rather than
+    // remove them — so they are deleted explicitly.
+    db
+      .delete(transactions)
+      .where(and(eq(transactions.userId, userId), eq(transactions.importBatchId, batchId)))
+      .returning({ id: transactions.id }),
+    db
+      .delete(importBatches)
+      .where(and(eq(importBatches.userId, userId), eq(importBatches.id, batchId))),
+  ]);
+  return { deleted: deleted.length };
+}
 
-  // Recompute and persist the balance for every affected account.
-  // The balance field is a cached sum — it doesn't auto-update when rows are deleted.
-  const affectedAccountIds = [
-    ...new Set(result.map((r) => r.accountId).filter(Boolean)),
-  ] as number[];
-  for (const accountId of affectedAccountIds) {
-    const sumRow = await db
-      .select({ total: sql<number>`coalesce(sum(amount_cents), 0)` })
-      .from(transactions)
-      .where(and(eq(transactions.userId, userId), eq(transactions.accountId, accountId)));
-    await db
-      .update(accounts)
-      .set({ balanceCents: Number(sumRow[0]?.total ?? 0) })
-      .where(and(eq(accounts.userId, userId), eq(accounts.id, accountId)));
-  }
-
-  // Delete the batch record itself.
-  await db
-    .delete(importBatches)
-    .where(and(eq(importBatches.userId, userId), eq(importBatches.id, batchId)));
-
-  return { deleted: result.length };
+/**
+ * "Start over": every transaction and import batch of `userId`, and their
+ * accounts' cached balances zeroed — one atomic batch. Reaches rows imported
+ * before batch tracking existed, which per-batch undo cannot.
+ */
+export async function resetAllTransactions(userId: number): Promise<{ deleted: number }> {
+  const [deleted] = await db.batch([
+    db
+      .delete(transactions)
+      .where(eq(transactions.userId, userId))
+      .returning({ id: transactions.id }),
+    db.delete(importBatches).where(eq(importBatches.userId, userId)),
+    db.update(accounts).set({ balanceCents: 0 }).where(eq(accounts.userId, userId)),
+  ]);
+  return { deleted: deleted.length };
 }
 
 /** Live transaction count for a batch (useful for confirming the delete). */

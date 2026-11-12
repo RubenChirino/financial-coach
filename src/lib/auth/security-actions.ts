@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db/client";
-import { sessions, users } from "@/db/schema";
+import { users } from "@/db/schema";
 import {
   CryptoError,
   derivePinKek,
@@ -23,6 +23,7 @@ import {
   setSessionCookie,
 } from "./session";
 import { getUser } from "./user";
+import { wipeLocalInstallation } from "./wipe";
 
 const PinDigits = z.string().regex(/^\d{4}$/, "invalidPin");
 
@@ -153,28 +154,7 @@ export async function deleteAllDataAction(formData: FormData): Promise<SecurityA
     return { ok: false, error: "wrongPin" };
   }
 
-  // Cascade delete: `users` has ON DELETE CASCADE set on `sessions`,
-  // `providerCredentials`, and everything else is reachable through
-  // institutions/requisitions/accounts which are independent of users but
-  // will be cleared manually.
-  await db.delete(sessions);
-  await db.delete(users).where(eq(users.id, user.id));
-
-  // Wipe everything else that isn't user-scoped but is still user data.
-  // We import the schema lazily here to keep the action file lean.
-  const schema = await import("@/db/schema");
-  await db.delete(schema.advisorMessages);
-  await db.delete(schema.advisorConversations);
-  await db.delete(schema.insights);
-  await db.delete(schema.goals);
-  await db.delete(schema.recurringSubscriptions);
-  await db.delete(schema.transactions);
-  await db.delete(schema.accounts);
-  await db.delete(schema.requisitions);
-  await db.delete(schema.institutions);
-  await db.delete(schema.categoryRules);
-  await db.delete(schema.categories);
-  await db.delete(schema.auditLog);
+  await wipeLocalInstallation(user.id);
 
   await clearSessionCookie();
   redirect("/onboarding");

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { type Client, createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import { migrate } from "drizzle-orm/libsql/migrator";
+import { applyMigrations } from "@/db/migrator";
 import * as schema from "@/db/schema";
 
 export type TestDb = {
@@ -22,6 +22,7 @@ export async function createTestDb(): Promise<TestDb> {
   const client = createClient({ url: ":memory:" });
   await client.execute("PRAGMA foreign_keys = ON");
   const db = drizzle(client, { schema });
-  await migrate(db, { migrationsFolder: path.resolve(__dirname, "../db/migrations") });
+  // The production runner, so every test run exercises it.
+  await applyMigrations(client, path.resolve(__dirname, "../db/migrations"));
   return { db, client };
 }

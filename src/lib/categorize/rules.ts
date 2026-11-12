@@ -1,6 +1,6 @@
 import "server-only";
 
-import { asc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { categories, categoryRules, transactions } from "@/db/schema";
 import { cleanMerchant } from "./heuristics";
@@ -88,6 +88,43 @@ export function matchRule(input: RuleInput, rules: RuleRow[]): RuleRow | null {
  * lower `priority` number, so `matchRule`'s priority sort makes a personal
  * correction win over a generic default.
  */
+/** User rules sit well below the seeded defaults (lower number = higher priority). */
+export const USER_RULE_PRIORITY = 5;
+
+/**
+ * Learn "always categorise {pattern} as {category}" for one user: one rule per
+ * (user, pattern), re-pointed when the user corrects the same merchant
+ * differently.
+ *
+ * One batch, update first: the UPDATE takes the write lock, so the INSERT's
+ * NOT EXISTS check runs under it and two concurrent upserts serialize instead
+ * of both inserting (there is no unique index to fall back on — existing
+ * databases may already hold duplicates, which a new index would reject).
+ */
+export async function upsertUserRule(
+  userId: number,
+  pattern: string,
+  categoryId: number,
+): Promise<void> {
+  const sameRule = and(
+    eq(categoryRules.userId, userId),
+    eq(categoryRules.matchPattern, pattern),
+    eq(categoryRules.matchType, "contains"),
+  );
+  await db.batch([
+    db.update(categoryRules).set({ categoryId }).where(sameRule),
+    db.run(sql`insert into "category_rules"
+        ("user_id", "created_by", "match_pattern", "match_type", "category_id", "priority")
+      select ${userId}, 'user', ${pattern}, 'contains', ${categoryId}, ${USER_RULE_PRIORITY}
+      where not exists (
+        select 1 from "category_rules"
+        where "category_rules"."user_id" = ${userId}
+          and "category_rules"."match_pattern" = ${pattern}
+          and "category_rules"."match_type" = 'contains'
+      )`),
+  ]);
+}
+
 export async function loadRules(userId: number): Promise<RuleRow[]> {
   const rows = await db
     .select({

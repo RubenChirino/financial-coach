@@ -95,6 +95,8 @@ export function recordSuccess(bucket: string): void {
 /** Test-only: clear everything. */
 export function _resetAll(): void {
   state.clear();
+  windows.clear();
+  calls = 0;
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -116,9 +118,20 @@ interface Window {
   start: number;
   /** Calls counted inside this window. */
   count: number;
+  /** Length of this bucket's window, so pruning knows when it expired. */
+  windowMs: number;
 }
 
 const windows = new Map<string, Window>();
+/** Expired windows are swept every this many calls, so the Map stays bounded. */
+const PRUNE_EVERY = 256;
+let calls = 0;
+
+function pruneExpired(t: number): void {
+  for (const [k, w] of windows) {
+    if (t - w.start >= w.windowMs) windows.delete(k);
+  }
+}
 
 export interface QuotaResult {
   allowed: boolean;
@@ -141,9 +154,11 @@ export interface QuotaResult {
  */
 export function consumeQuota(bucket: string, limit: number, windowMs: number): QuotaResult {
   const t = now();
+  calls = (calls + 1) % PRUNE_EVERY;
+  if (calls === 0) pruneExpired(t);
   const w = windows.get(bucket);
   if (!w || t - w.start >= windowMs) {
-    windows.set(bucket, { start: t, count: 1 });
+    windows.set(bucket, { start: t, count: 1, windowMs });
     return { allowed: true, remaining: limit - 1, resetInMs: windowMs };
   }
   w.count += 1;
@@ -152,22 +167,7 @@ export function consumeQuota(bucket: string, limit: number, windowMs: number): Q
   return { allowed: w.count <= limit, remaining, resetInMs };
 }
 
-/**
- * Periodically prune expired windows. Called opportunistically from
- * `consumeQuota` callers' hot paths via the `if (Math.random() < 0.01)`
- * idiom — keeps the Map from growing unbounded under spam, without paying
- * a cleanup cost on every call.
- *
- * Exposed for tests and for any future cron-driven cleanup.
- */
-export function pruneExpiredWindows(maxAgeMs: number): number {
-  const cutoff = now() - maxAgeMs;
-  let dropped = 0;
-  for (const [k, v] of windows) {
-    if (v.start < cutoff) {
-      windows.delete(k);
-      dropped++;
-    }
-  }
-  return dropped;
+/** Test-only: buckets currently tracked. */
+export function _trackedWindows(): number {
+  return windows.size;
 }

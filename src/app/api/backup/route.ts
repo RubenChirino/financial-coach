@@ -1,6 +1,8 @@
+import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
+import path from "node:path";
 import { type NextRequest, NextResponse } from "next/server";
-import { localDbPath } from "@/db/client";
+import { client, localDbPath } from "@/db/client";
 import { getCurrentSession } from "@/lib/auth/session";
 import { env } from "@/lib/env";
 import { guardCsrf } from "@/lib/security/csrf";
@@ -16,6 +18,11 @@ import { guardCsrf } from "@/lib/security/csrf";
  * Auth: requires a valid unlocked session — the backup contains AES-encrypted
  * columns that still need the user's encryption key to decrypt, but we gate
  * the download anyway.
+ *
+ * Consistency: the database runs in WAL mode, so the main file alone can miss
+ * recent commits that still live in the `-wal` file. `VACUUM INTO` writes a
+ * complete, consistent copy as of one read transaction; it goes next to the
+ * database (the private data directory) and is removed after reading.
  */
 export async function GET(req: NextRequest) {
   // Same-origin gate: prevents a malicious site from triggering a cross-origin
@@ -52,8 +59,13 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const snapshot = path.join(
+    path.dirname(localDbPath),
+    `.backup-${randomBytes(8).toString("hex")}.db`,
+  );
   try {
-    const buf = await fs.readFile(localDbPath);
+    await client.execute({ sql: "VACUUM INTO ?", args: [snapshot] });
+    const buf = await fs.readFile(snapshot);
     const filename = `financial-coach-${new Date().toISOString().slice(0, 10)}.db`;
     return new NextResponse(new Uint8Array(buf), {
       headers: {
@@ -63,7 +75,9 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "backup_failed";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("backup failed", err);
+    return NextResponse.json({ error: "backup_failed" }, { status: 500 });
+  } finally {
+    await fs.rm(snapshot, { force: true });
   }
 }

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { categories, transactions } from "@/db/schema";
 import {
@@ -157,33 +157,43 @@ export interface RecorrectResult {
  *
  * Manual picks (confidence 100) are never touched.
  */
-export async function recorrectCategories(userId: number): Promise<RecorrectResult> {
-  const rules = await loadRules(userId);
-  const rows = await db
-    .select({
-      id: transactions.id,
-      merchantName: transactions.merchantName,
-      rawDescription: transactions.rawDescription,
-      amountCents: transactions.amountCents,
-      currency: transactions.currency,
-      categoryId: transactions.categoryId,
-      confidence: transactions.confidence,
-    })
-    .from(transactions)
-    .where(eq(transactions.userId, userId));
+/** Ids per UPDATE … WHERE id IN (…), well under SQLite's bound-variable limit. */
+const IDS_PER_UPDATE = 500;
 
-  let corrected = 0;
-  let requeued = 0;
+export async function recorrectCategories(userId: number): Promise<RecorrectResult> {
+  const [rules, idBySlug, rows] = await Promise.all([
+    loadRules(userId),
+    loadCategoryIdsBySlug(),
+    db
+      .select({
+        id: transactions.id,
+        merchantName: transactions.merchantName,
+        rawDescription: transactions.rawDescription,
+        amountCents: transactions.amountCents,
+        categoryId: transactions.categoryId,
+        confidence: transactions.confidence,
+      })
+      .from(transactions)
+      .where(eq(transactions.userId, userId)),
+  ]);
+
+  // Decide every row in memory, grouped by outcome, then apply the groups as
+  // set-based updates in one atomic batch.
+  const assign = new Map<string, { categoryId: number; confidence: number; ids: number[] }>();
+  const requeue: number[] = [];
+  const assignTo = (id: number, categoryId: number, confidence: number) => {
+    const key = `${categoryId}:${confidence}`;
+    const group = assign.get(key) ?? { categoryId, confidence, ids: [] };
+    group.ids.push(id);
+    assign.set(key, group);
+  };
 
   for (const tx of rows) {
     if (tx.confidence === 100) continue; // authoritative manual pick
 
     const rule = matchRule(tx, rules);
     if (rule) {
-      if (rule.categoryId !== tx.categoryId) {
-        await assignCategory(tx.id, rule.categoryId, { needsReview: false, confidence: 1 });
-        corrected++;
-      }
+      if (rule.categoryId !== tx.categoryId) assignTo(tx.id, rule.categoryId, RULE_CONFIDENCE);
       continue;
     }
 
@@ -192,29 +202,56 @@ export async function recorrectCategories(userId: number): Promise<RecorrectResu
       tx.amountCents,
     );
     if (kwSlug) {
-      const catId = await categoryIdBySlug(kwSlug);
-      if (catId && catId !== tx.categoryId) {
-        await assignCategory(tx.id, catId, { needsReview: false, confidence: KEYWORD_CONFIDENCE });
-        corrected++;
-      }
+      const catId = idBySlug.get(kwSlug);
+      if (catId && catId !== tx.categoryId) assignTo(tx.id, catId, KEYWORD_CONFIDENCE);
       continue;
     }
 
     // No deterministic match. A confidence-1 row was rule-assigned; with no rule
     // matching now it was a false "comision" fee match → re-queue for the LLM.
-    if (tx.confidence === 1 && tx.categoryId != null) {
-      await db
-        .update(transactions)
-        .set({ categoryId: null, needsReview: true, confidence: null, updatedAt: new Date() })
-        .where(eq(transactions.id, tx.id));
-      requeued++;
-    }
+    if (tx.confidence === 1 && tx.categoryId != null) requeue.push(tx.id);
   }
 
-  return { corrected, requeued };
+  // Every update re-checks the owner and skips rows the user picked by hand
+  // since the read (confidence 100), so a concurrent manual choice wins.
+  const notManual = or(isNull(transactions.confidence), ne(transactions.confidence, 100));
+  const scoped = (ids: number[]) =>
+    and(eq(transactions.userId, userId), inArray(transactions.id, ids), notManual);
+  const now = new Date();
+  const statements = [
+    ...[...assign.values()].flatMap((g) =>
+      chunk(g.ids, IDS_PER_UPDATE).map((ids) =>
+        db
+          .update(transactions)
+          .set({
+            categoryId: g.categoryId,
+            needsReview: false,
+            confidence: g.confidence,
+            updatedAt: now,
+          })
+          .where(scoped(ids)),
+      ),
+    ),
+    ...chunk(requeue, IDS_PER_UPDATE).map((ids) =>
+      db
+        .update(transactions)
+        .set({ categoryId: null, needsReview: true, confidence: null, updatedAt: now })
+        .where(scoped(ids)),
+    ),
+  ];
+  const [first, ...rest] = statements;
+  if (first) await db.batch([first, ...rest]);
+
+  const corrected = [...assign.values()].reduce((n, g) => n + g.ids.length, 0);
+  return { corrected, requeued: requeue.length };
 }
 
-/** Count transactions still needing categorization. */
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 export async function countPendingCategorization(userId: number): Promise<number> {
   const rows = await db
     .select({ c: sql<number>`count(*)` })

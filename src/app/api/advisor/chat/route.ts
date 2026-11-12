@@ -5,9 +5,8 @@ import { users } from "@/db/schema";
 import { buildAdvisorContext } from "@/lib/advisor/context";
 import {
   appendMessage,
-  createConversation,
   getConversationMessages,
-  maybeAutoTitle,
+  startTurn,
   userOwnsConversation,
 } from "@/lib/advisor/conversations";
 import { buildSystemPrompt } from "@/lib/advisor/prompt";
@@ -126,20 +125,16 @@ export async function POST(req: NextRequest): Promise<Response> {
   // Resolve the target conversation. A client-supplied id must belong to this
   // user — otherwise an attacker could append to (and read) someone else's
   // conversation. Reject mismatches rather than silently forking.
-  let conversationId: number;
-  if (body.conversationId != null) {
-    if (!(await userOwnsConversation(session.userId, body.conversationId))) {
-      return new Response("not found", { status: 404 });
-    }
-    conversationId = body.conversationId;
-  } else {
-    conversationId = await createConversation(session.userId, "");
+  if (
+    body.conversationId != null &&
+    !(await userOwnsConversation(session.userId, body.conversationId))
+  ) {
+    return new Response("not found", { status: 404 });
   }
 
-  // Persist the inbound user message before doing any LLM work, so we don't lose
-  // it on a server crash or stream cancellation.
-  await appendMessage(conversationId, "user", lastUserText);
-  await maybeAutoTitle(conversationId, lastUserText);
+  // Persist the inbound user message (and the conversation, when new) before
+  // any LLM work, in one batch, so a crash or a cancelled stream loses nothing.
+  const conversationId = await startTurn(session.userId, body.conversationId ?? null, lastUserText);
 
   // History from DB is the source of truth (the client may be out of sync after
   // refresh). We pass the full history every turn — at typical sizes this fits

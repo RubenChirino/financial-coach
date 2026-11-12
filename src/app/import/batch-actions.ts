@@ -1,11 +1,8 @@
 "use server";
 
-import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db } from "@/db/client";
-import { accounts, importBatches, transactions } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
-import { deleteImportBatch } from "@/lib/import/batches";
+import { deleteImportBatch, resetAllTransactions } from "@/lib/import/batches";
 
 export async function deleteImportBatchAction(
   batchId: number,
@@ -37,19 +34,12 @@ export async function resetAllTransactionsAction(): Promise<{
   if (session.isGuest) return { ok: false, error: "guestReadOnly" };
 
   // Scoped to the current user: a reset must never touch another user's data.
-  const deleted = await db
-    .delete(transactions)
-    .where(eq(transactions.userId, session.userId))
-    .returning({ id: transactions.id });
-  await db.delete(importBatches).where(eq(importBatches.userId, session.userId));
-  // Zero this user's stored account balances — balances are cached on the account
-  // row and won't auto-clear when transactions are removed.
-  await db.update(accounts).set({ balanceCents: 0 }).where(eq(accounts.userId, session.userId));
+  const { deleted } = await resetAllTransactions(session.userId);
 
   revalidatePath("/");
   revalidatePath("/banks");
   revalidatePath("/import");
   revalidatePath("/transactions");
 
-  return { ok: true, deletedTransactions: deleted.length };
+  return { ok: true, deletedTransactions: deleted };
 }
