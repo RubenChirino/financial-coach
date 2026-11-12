@@ -12,6 +12,7 @@ import { createTestDb } from "@/test/db-fixture";
 const fixture = await createTestDb();
 vi.mock("@/db/client", () => ({ db: fixture.db, client: fixture.client }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }));
+vi.mock("@/lib/i18n/locale", () => ({ getLocale: async () => "en" }));
 
 let currentUserId = 0;
 vi.mock("@/lib/auth/session", () => {
@@ -65,7 +66,7 @@ interface Ids {
   goalId: number;
   ruleId: number;
   conversationId: number;
-  insightId: number;
+  insightKey: string;
   subscriptionId: number;
 }
 let a: Ids;
@@ -164,17 +165,6 @@ async function seedUserA(): Promise<Ids> {
   await d
     .insert(schema.advisorMessages)
     .values({ conversationId: conv!.id, role: "user", content: "hello" });
-  const [insight] = await d
-    .insert(schema.insights)
-    .values({
-      userId: USER_A,
-      kind: "needs_review",
-      title: "t",
-      body: "b",
-      actionLabel: "l",
-      actionHref: "/",
-    })
-    .returning();
   const [sub] = await d
     .insert(schema.recurringSubscriptions)
     .values({
@@ -196,7 +186,8 @@ async function seedUserA(): Promise<Ids> {
     goalId: goal!.id,
     ruleId: rule!.id,
     conversationId: conv!.id,
-    insightId: insight!.id,
+    // A's goal: the key user B would try to dismiss.
+    insightKey: `goal_near:${goal!.id}`,
     subscriptionId: sub!.id,
   };
 }
@@ -217,7 +208,8 @@ async function snapshotUserA() {
       .from(schema.advisorConversations)
       .where(byUser(schema.advisorConversations)),
     messages: await d.select().from(schema.advisorMessages),
-    insights: await d.select().from(schema.insights).where(byUser(schema.insights)),
+    // Every user's: B's attempt must not write a dismissal for anyone.
+    dismissals: await d.select().from(schema.insightDismissals),
     subscriptions: await d
       .select()
       .from(schema.recurringSubscriptions)
@@ -259,7 +251,7 @@ const attacks: [string, () => Promise<unknown>][] = [
   ["deleteGoalAction", () => deleteGoalAction(a.goalId)],
   ["deleteUserRuleAction", () => deleteUserRuleAction(a.ruleId)],
   ["deleteConversationAction", () => deleteConversationAction(a.conversationId)],
-  ["dismissInsightAction", () => dismissInsightAction(a.insightId)],
+  ["dismissInsightAction", () => dismissInsightAction(a.insightKey)],
   ["setSubscriptionActiveAction", () => setSubscriptionActiveAction(a.subscriptionId, false)],
   ["deleteBankConnectionAction", () => deleteBankConnectionAction(a.requisitionId)],
 ];
@@ -267,7 +259,7 @@ const attacks: [string, () => Promise<unknown>][] = [
 describe("cross-user isolation of id-taking server actions", () => {
   beforeEach(async () => {
     await fixture.client.executeMultiple(`
-      DELETE FROM advisor_messages; DELETE FROM advisor_conversations; DELETE FROM insights;
+      DELETE FROM advisor_messages; DELETE FROM advisor_conversations; DELETE FROM insight_dismissals;
       DELETE FROM recurring_subscriptions; DELETE FROM category_rules; DELETE FROM goals;
       DELETE FROM transactions; DELETE FROM import_batches; DELETE FROM accounts;
       DELETE FROM requisitions; DELETE FROM institutions; DELETE FROM categories; DELETE FROM users;

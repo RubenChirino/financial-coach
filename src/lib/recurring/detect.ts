@@ -1,6 +1,7 @@
 import "server-only";
 
-import { and, eq, gte, isNotNull } from "drizzle-orm";
+import { and, eq, gte, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { db } from "@/db/client";
 import { recurringSubscriptions, transactions } from "@/db/schema";
 
@@ -26,11 +27,15 @@ import { recurringSubscriptions, transactions } from "@/db/schema";
  * inflows (e.g. payroll). The forecast layer reads the sign to bucket each
  * row into income vs spending.
  *
- * Persistence is idempotent — the function delete-and-reinserts under a
- * single transaction so the table reflects the latest pass.
+ * Persistence reconciles by series key (see `seriesKeyFor`): a series found
+ * again keeps its row and id, with its derived fields updated; the user's own
+ * pause/resume (`user_status`) is never overwritten; a series no longer found
+ * is deleted unless the user set a status on it. One batch per run.
  */
 
 export interface DetectedSubscription {
+  /** Direction + normalized merchant; identifies the series across runs. */
+  seriesKey: string;
   merchantName: string;
   averageAmountCents: number;
   frequencyDays: number;
@@ -67,6 +72,16 @@ function normalize(s: string): string {
     .replace(/\b(s\.?l\.?|s\.?a\.?|inc\.?|ltd\.?|sas|gmbh)\b/g, "")
     .replace(/\d{4,}/g, "")
     .trim();
+}
+
+/**
+ * The series key of a merchant name and an amount's direction: `-` for money
+ * out, `+` for money in, then the normalized name. Null when nothing is left
+ * after normalizing.
+ */
+export function seriesKeyFor(merchant: string, amountCents: number): string | null {
+  const base = normalize(merchant);
+  return base ? `${amountCents >= 0 ? "+" : "-"}${base}` : null;
 }
 
 function median(nums: number[]): number {
@@ -128,7 +143,7 @@ export function evaluateMerchant(
   merchantDisplayName: string,
   txs: CandidateTx[],
   now: Date = new Date(),
-): DetectedSubscription | null {
+): Omit<DetectedSubscription, "seriesKey"> | null {
   if (txs.length < MIN_OCCURRENCES) return null;
   const sorted = [...txs].sort((a, b) => a.date.getTime() - b.date.getTime());
 
@@ -183,11 +198,8 @@ interface DetectOptions {
 /**
  * Run detection over the DB and persist results. Returns the detected list.
  *
- * Idempotent — uses a delete-then-insert under a single `db.transaction` so
- * the table reflects the latest pass; subscriptions that no longer meet the
- * heuristics are removed entirely (rather than left in an inconsistent state).
- * If the user has manually toggled `isActive` in the future we'll need to
- * preserve that — for now there's no UI for it.
+ * Idempotent: rows are reconciled by series key (`reconcile` below), so ids
+ * are stable across runs and the user's pause/resume survives them.
  *
  * `lookbackDays` defaults to 270 (~9 months), not the cadence span itself.
  * `MIN_OCCURRENCES` is evaluated only on transactions inside this window, so a
@@ -233,9 +245,8 @@ export async function detectRecurringSubscriptions(
   for (const r of rows) {
     if (r.amountCents === 0) continue;
     const display = (r.merchantName ?? r.rawDescription).trim();
-    const baseKey = normalize(display);
-    if (!baseKey) continue;
-    const key = `${r.amountCents >= 0 ? "+" : "-"}${baseKey}`;
+    const key = seriesKeyFor(display, r.amountCents);
+    if (!key) continue;
     const existing = groups.get(key);
     const tx: CandidateTx = {
       date: r.bookingDate,
@@ -254,30 +265,101 @@ export async function detectRecurringSubscriptions(
   }
 
   const detected: DetectedSubscription[] = [];
-  for (const [, g] of groups) {
+  for (const [seriesKey, g] of groups) {
     const result = evaluateMerchant(g.display, g.txs, now);
-    if (result) detected.push(result);
+    if (result) detected.push({ seriesKey, ...result });
   }
 
-  // Persist — clear THIS USER's rows and reinsert their fresh snapshot.
-  // Scoped to `userId` so a pass for one user never wipes another's
-  // subscriptions. Sequenced rather than wrapped in a transaction; libSQL's
-  // HTTP-mode client treats individual statements as autocommitting, and the
-  // delete-then-insert window is short.
-  await db.delete(recurringSubscriptions).where(eq(recurringSubscriptions.userId, userId));
-  if (detected.length > 0) {
-    await db.insert(recurringSubscriptions).values(
-      detected.map((d) => ({
+  await reconcile(userId, detected);
+  return detected;
+}
+
+/**
+ * Bring the user's rows in line with `detected`, in one batch:
+ *  1. rows from before series keys get theirs (keeping their id) when their
+ *     series was found again;
+ *  2. every detected series is upserted on `(user_id, series_key)`; the
+ *     effective `is_active` is the user's status when set, else detection's;
+ *  3. rows whose series was not found are deleted, unless the user set a
+ *     status on them.
+ */
+async function reconcile(userId: number, detected: DetectedSubscription[]): Promise<void> {
+  const keys = new Set(detected.map((d) => d.seriesKey));
+  const existing = await db
+    .select({
+      id: recurringSubscriptions.id,
+      seriesKey: recurringSubscriptions.seriesKey,
+      merchantName: recurringSubscriptions.merchantName,
+      averageAmountCents: recurringSubscriptions.averageAmountCents,
+    })
+    .from(recurringSubscriptions)
+    .where(eq(recurringSubscriptions.userId, userId));
+
+  // 1. Stored convention: positive average = money out, so negate for the key.
+  const taken = new Set(existing.flatMap((r) => (r.seriesKey ? [r.seriesKey] : [])));
+  const adoptKey: BatchItem<"sqlite">[] = [];
+  for (const r of existing) {
+    if (r.seriesKey) continue;
+    const key = seriesKeyFor(r.merchantName, -r.averageAmountCents);
+    if (!key || !keys.has(key) || taken.has(key)) continue;
+    taken.add(key);
+    adoptKey.push(
+      db
+        .update(recurringSubscriptions)
+        .set({ seriesKey: key })
+        .where(
+          and(
+            eq(recurringSubscriptions.userId, userId),
+            eq(recurringSubscriptions.id, r.id),
+            isNull(recurringSubscriptions.seriesKey),
+          ),
+        ),
+    );
+  }
+
+  // 2.
+  const upserts = detected.map((d) =>
+    db
+      .insert(recurringSubscriptions)
+      .values({
         userId,
+        seriesKey: d.seriesKey,
         merchantName: d.merchantName,
         averageAmountCents: d.averageAmountCents,
         frequencyDays: d.frequencyDays,
         lastSeenAt: d.lastSeenAt,
         categoryId: d.categoryId,
         isActive: d.isActive,
-      })),
-    );
-  }
+      })
+      .onConflictDoUpdate({
+        target: [recurringSubscriptions.userId, recurringSubscriptions.seriesKey],
+        set: {
+          merchantName: d.merchantName,
+          averageAmountCents: d.averageAmountCents,
+          frequencyDays: d.frequencyDays,
+          lastSeenAt: d.lastSeenAt,
+          categoryId: d.categoryId,
+          isActive: sql`case when "recurring_subscriptions"."user_status" is null then excluded."is_active" else "recurring_subscriptions"."user_status" = 'active' end`,
+        },
+      }),
+  );
 
-  return detected;
+  // 3.
+  const vanished = db
+    .delete(recurringSubscriptions)
+    .where(
+      and(
+        eq(recurringSubscriptions.userId, userId),
+        isNull(recurringSubscriptions.userStatus),
+        keys.size > 0
+          ? or(
+              isNull(recurringSubscriptions.seriesKey),
+              notInArray(recurringSubscriptions.seriesKey, [...keys]),
+            )
+          : undefined,
+      ),
+    );
+
+  const [first, ...rest] = [...adoptKey, ...upserts];
+  await db.batch(first ? [first, ...rest, vanished] : [vanished]);
 }

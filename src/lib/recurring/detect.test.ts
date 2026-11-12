@@ -3,10 +3,16 @@ import { createTestDb } from "@/test/db-fixture";
 
 const fixture = await createTestDb();
 vi.mock("@/db/client", () => ({ db: fixture.db, client: fixture.client }));
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+vi.mock("@/lib/auth/session", () => ({
+  getCurrentSession: async () => ({ userId: 1, isGuest: false, encryptionKey: Buffer.alloc(32) }),
+}));
 
 const { accounts, categories, institutions, recurringSubscriptions, requisitions, transactions } =
   await import("@/db/schema");
 const { detectRecurringSubscriptions, evaluateMerchant } = await import("./detect");
+const { setSubscriptionActiveAction } = await import("./actions");
+const { eq } = await import("drizzle-orm");
 
 const NOW = new Date("2026-04-15T12:00:00.000Z");
 const USER = 1;
@@ -252,5 +258,104 @@ describe("detectRecurringSubscriptions (DB)", () => {
     const out = await detectRecurringSubscriptions({ userId: USER, now: NOW });
     expect(out).toHaveLength(1);
     expect(out[0]?.merchantName.toLowerCase()).toContain("gymplus");
+  });
+
+  describe("identity across runs", () => {
+    let accountId = 0;
+    let n = 0;
+    const charge = (date: Date, merchant: string, amount = -1_199) => ({
+      userId: USER,
+      accountId,
+      gocardlessTransactionId: `id-${n++}`,
+      bookingDate: date,
+      amountCents: amount,
+      currency: "EUR",
+      merchantName: merchant,
+      rawDescription: merchant,
+      categoryId: null,
+      needsReview: false,
+    });
+    const monthly = (merchant: string, amount?: number) =>
+      [90, 60, 30, 2].map((d) => charge(daysAgo(d), merchant, amount));
+    const subs = () => fixture.db.select().from(recurringSubscriptions);
+
+    beforeEach(async () => {
+      ({ accountId } = await seedSkeleton());
+    });
+
+    it("keeps the row's id and the user's pause when the series is found again", async () => {
+      await fixture.db.insert(transactions).values(monthly("Netflix"));
+      await detectRecurringSubscriptions({ userId: USER, now: NOW });
+      const [first] = await subs();
+      expect(first).toMatchObject({ seriesKey: "-netflix", isActive: true, userStatus: null });
+
+      await setSubscriptionActiveAction(first!.id, false);
+      // A new charge arrives and detection runs again (every ingest does).
+      await fixture.db.insert(transactions).values(charge(daysAgo(0), "Netflix", -1_299));
+      await detectRecurringSubscriptions({ userId: USER, now: NOW });
+
+      const rows = await subs();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        id: first!.id,
+        isActive: false,
+        userStatus: "inactive",
+        averageAmountCents: 1_219,
+      });
+      expect(rows[0]!.lastSeenAt.getTime()).toBe(daysAgo(0).getTime());
+    });
+
+    it("drops a series that is no longer found, unless the user set its status", async () => {
+      await fixture.db
+        .insert(transactions)
+        .values([...monthly("Netflix"), ...monthly("Spotify", -999)]);
+      await detectRecurringSubscriptions({ userId: USER, now: NOW });
+      const spotify = (await subs()).find((r) => r.seriesKey === "-spotify");
+      await setSubscriptionActiveAction(spotify!.id, true);
+
+      await fixture.client.execute("DELETE FROM transactions");
+      await detectRecurringSubscriptions({ userId: USER, now: NOW });
+      expect((await subs()).map((r) => r.seriesKey)).toEqual(["-spotify"]);
+    });
+
+    it("gives rows from before series keys their key, keeping their id", async () => {
+      const [legacy] = await fixture.db
+        .insert(recurringSubscriptions)
+        .values({
+          userId: USER,
+          merchantName: "Netflix",
+          averageAmountCents: 1_199,
+          frequencyDays: 30,
+          lastSeenAt: daysAgo(30),
+          isActive: true,
+        })
+        .returning();
+      // A stale legacy row whose series is gone, and an income series.
+      await fixture.db.insert(recurringSubscriptions).values({
+        userId: USER,
+        merchantName: "Old Gym",
+        averageAmountCents: 3_000,
+        frequencyDays: 30,
+        lastSeenAt: daysAgo(200),
+        isActive: false,
+      });
+      await fixture.db
+        .insert(transactions)
+        .values([...monthly("Netflix"), ...monthly("Acme Payroll", 250_000)]);
+
+      await detectRecurringSubscriptions({ userId: USER, now: NOW });
+      const rows = await subs();
+      expect(rows.map((r) => [r.seriesKey, r.averageAmountCents]).sort()).toEqual([
+        ["+acme payroll", -250_000],
+        ["-netflix", 1_199],
+      ]);
+      expect(rows.find((r) => r.seriesKey === "-netflix")?.id).toBe(legacy!.id);
+      expect(
+        await fixture.db
+          .select()
+          .from(recurringSubscriptions)
+          .where(eq(recurringSubscriptions.merchantName, "Old Gym")),
+      ).toEqual([]);
+    });
   });
 });

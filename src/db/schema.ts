@@ -450,19 +450,40 @@ export const categoryRules = sqliteTable(
   ],
 );
 
-export const recurringSubscriptions = sqliteTable("recurring_subscriptions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  merchantName: text("merchant_name").notNull(),
-  averageAmountCents: integer("average_amount_cents", { mode: "number" }).notNull(),
-  frequencyDays: integer("frequency_days").notNull(),
-  lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
-  categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
-  createdAt: timestamp("created_at"),
-});
+export const recurringSubscriptions = sqliteTable(
+  "recurring_subscriptions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    merchantName: text("merchant_name").notNull(),
+    averageAmountCents: integer("average_amount_cents", { mode: "number" }).notNull(),
+    frequencyDays: integer("frequency_days").notNull(),
+    lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
+    categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
+    /**
+     * Effective state the app reads: `user_status` when the user set one,
+     * otherwise what detection concluded.
+     */
+    isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    createdAt: timestamp("created_at"),
+    /**
+     * The detector's grouping key — direction + normalized merchant
+     * (`-netflix`, `+acme payroll`). Identifies the series across detection
+     * runs, so a re-run updates the row (same id) instead of replacing it.
+     * NULL only for rows from before this column, until the next run.
+     */
+    seriesKey: text("series_key"),
+    /**
+     * What the user said with the pause/resume toggle ("active" | "inactive");
+     * NULL when they never touched it. Detection never writes it, and never
+     * deletes a row that has it.
+     */
+    userStatus: text("user_status", { enum: ["active", "inactive"] }),
+  },
+  (t) => [uniqueIndex("recurring_subscriptions_user_series_uniq").on(t.userId, t.seriesKey)],
+);
 
 /**
  * Persisted city label for a detected travel ("trip").
@@ -592,6 +613,26 @@ export const insights = sqliteTable(
     index("insights_dismissed_idx").on(t.dismissedAt),
     index("insights_user_idx").on(t.userId),
   ],
+);
+
+/**
+ * Insights the user dismissed, by the key each rule computes (for example
+ * `overspend:<categoryId>:<YYYY-MM>`). Insights themselves are not stored:
+ * they are computed on read, minus the keys dismissed in the last 30 days.
+ * A key that changes (a new month, a new price) is a new insight and shows.
+ * The `insights` table above is no longer written.
+ */
+export const insightDismissals = sqliteTable(
+  "insight_dismissals",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    insightKey: text("insight_key").notNull(),
+    dismissedAt: timestamp("dismissed_at"),
+  },
+  (t) => [uniqueIndex("insight_dismissals_user_key_uniq").on(t.userId, t.insightKey)],
 );
 
 /**

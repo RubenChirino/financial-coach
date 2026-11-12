@@ -379,8 +379,9 @@ The table families:
 - **Taxonomy & money rules** — `categories` (shared, system-seeded),
   `category_rules` (built-in rules have `user_id IS NULL`; a user's learned rules
   carry their id), `budgets` (per-user).
-- **Derived intelligence** — `recurring_subscriptions`, `insights`,
-  `investor_profiles`, `goals`, plus the Travels caches (`travel_city_labels`,
+- **Derived intelligence** — `recurring_subscriptions`, `insight_dismissals`
+  (the `insights` table is legacy and no longer written), `investor_profiles`,
+  `goals`, plus the Travels caches (`travel_city_labels`,
   `city_countries`).
 - **AI** — `advisor_conversations`, `advisor_messages`.
 - **Ops** — `audit_log`.
@@ -704,7 +705,11 @@ decision.
   — groups transactions by normalized merchant, snaps inter-charge gaps to known
   cadences (weekly … yearly), and accepts a group only when amount variance is
   low. Inflows (payroll) use a tighter variance bar than outflows. Sign convention
-  in the stored row lets the forecast bucket each as income vs. spending.
+  in the stored row lets the forecast bucket each as income vs. spending. Each
+  series has a `series_key` (direction + normalized merchant), unique per user:
+  a re-run updates the same row (same id), the user's pause/resume
+  (`user_status`) always wins over detection, and a series no longer found is
+  removed only if the user never set a status on it.
   `getUpcomingRenewals` projects each active sub's next charge (`lastSeenAt +
   frequencyDays`, rolled forward to the future) for a renewal calendar, and a
   `recurring_increase` insight rule flags a charge that jumped ≥15% above its
@@ -730,11 +735,14 @@ decision.
   totals at frequent merchants) + a **median** of variable residuals. Median, not
   mean, so one moving-week or holiday doesn't poison future months. Each layer is
   separately explainable in the UI.
-- **Insights** ([`insights/engine.ts`](src/lib/insights/engine.ts)) — a
-  rule-based, **idempotent** engine: it deletes non-dismissed insights and
-  re-derives them from current state (dismissed ones survive). Overspend, low
-  balance, needs-review, on-track, goal-near. No LLM; titles/bodies are
-  pre-rendered in the user's locale so the client needs no translation context.
+- **Insights** ([`insights/engine.ts`](src/lib/insights/engine.ts)) — rules
+  computed **on read**, never stored: overspend, low balance, needs-review,
+  on-track, goal-near, price increase. Each insight has a key naming what it is
+  about (`overspend:<categoryId>:<YYYY-MM>`, `recurring_increase:<id>:<cents>`, …);
+  dismissing stores the key in `insight_dismissals` and hides it for 30 days, so
+  a new month or a new price is a new insight. Dashboard, bell and email digest
+  all read computed − dismissed. No LLM; text lives in `messages/*.json` and is
+  rendered in the user's locale on the server.
 - **Opportunities** ([`opportunities/opportunities.ts`](src/lib/opportunities/opportunities.ts))
   — five generators (subscription overlap, top overspend, goal projection,
   savings runway, emergency-fund gap), each producing a concrete euro impact from
@@ -766,8 +774,9 @@ token — Vercel Cron sends it automatically — and return `503` when no secret
 configured, so the surface is closed by default.
 
 - `cron/sync` runs the no-key-needed recompute for every non-guest user
-  ([`cron/jobs.ts`](src/lib/cron/jobs.ts)): refresh insights, re-detect
-  transfers, snapshot balances. Each user is isolated in its own try/catch so one
+  ([`cron/jobs.ts`](src/lib/cron/jobs.ts)): re-detect recurring subscriptions
+  and transfers, snapshot balances (insights need nothing: they are computed on
+  read). Each user is isolated in its own try/catch so one
   failure never aborts the batch. (Pulling *new* bank transactions headlessly is
   deliberately out of scope — it's provider-specific and touches the sensitive
   key-handling path; an in-app sync still does that.)
@@ -777,8 +786,8 @@ configured, so the surface is closed by default.
 > **Decision — the email digest is the one outbound channel, so it's doubly
 > gated.** Email is the only feature that sends user-derived content off the box.
 > It fires only when *both* a per-user `digest_email_opt_in` (off by default) and
-> a `RESEND_API_KEY` are present, and it reuses already-localized insight rows so
-> no extra data is shaped for it. Delivery uses Resend's HTTPS API via `fetch` —
+> a `RESEND_API_KEY` are present, and it sends the same insights the dashboard
+> shows, rendered in the user's language, so no extra data is shaped for it. Delivery uses Resend's HTTPS API via `fetch` —
 > no SDK dependency added. Web push (which needs VAPID signing and a heavier
 > library) is intentionally deferred.
 

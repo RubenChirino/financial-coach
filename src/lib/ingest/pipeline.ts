@@ -339,9 +339,10 @@ export interface DerivedDataResult {
  * Each step is a function of committed rows, so a failure is logged and left
  * for the next ingest or cron run to repair; it never fails the ingest.
  *
- * Recurring detection runs only when rows were inserted: it rebuilds the
- * user's subscription rows, which until it reconciles by key (P1.1) also
- * resets manual on/off toggles, so it must not run on every sync.
+ * Recurring detection runs when rows were inserted, and on the daily job (so
+ * data from before automatic detection is picked up, and a series that
+ * stopped turns inactive). It reconciles by series key, so ids and the
+ * user's pause/resume survive every run.
  */
 export async function refreshDerivedData(
   userId: number,
@@ -358,7 +359,7 @@ export async function refreshDerivedData(
     }
   };
 
-  if (opts.newRows) {
+  if (opts.newRows || opts.source === "cron") {
     const detected = await step("recurring", () => detectRecurringSubscriptions({ userId }));
     out.recurring = detected ? detected.length : null;
   }

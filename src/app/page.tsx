@@ -33,7 +33,7 @@ import {
 import { env } from "@/lib/env";
 import { formatAmount } from "@/lib/format";
 import { getLocale } from "@/lib/i18n/locale";
-import { listActiveInsights, runInsightEngine } from "@/lib/insights/engine";
+import { listActiveInsights } from "@/lib/insights/engine";
 import { getActiveSubscriptionsTotals } from "@/lib/recurring/list";
 import { listTransactions } from "@/lib/transactions/list";
 
@@ -95,10 +95,6 @@ export default async function DashboardPage({
   ]);
   const intlLocale = locale === "es" ? "es-ES" : "en-US";
 
-  // The insight engine writes rows — skip it for read-only guests so viewing the
-  // dashboard never mutates the shared demo data.
-  if (!session.isGuest) await runInsightEngine(session.userId, locale);
-
   const [
     accountsTotal,
     thisMonth,
@@ -121,7 +117,7 @@ export default async function DashboardPage({
     getActiveSubscriptionsTotals(session.userId),
     getMonthlyFlowHistory(session.userId, 6, locale),
     listAccountsWithInstitutions(session.userId),
-    listActiveInsights(session.userId),
+    listActiveInsights(session.userId, locale),
     getNetWorthSeries(session.userId, { days: 180 }),
   ]);
 

@@ -952,5 +952,37 @@
     "goalFreedom": "Independencia financiera",
     "goalOther": "Otra cosa",
     "disclaimer": "Estas sugerencias son orientación educativa, no asesoramiento de inversión. Nunca recomendamos acciones, fondos ni productos financieros específicos. Para decisiones sobre productos concretos consulta a un asesor financiero regulado."
+  },
+  "insights": {
+    "needs_review": {
+      "title": "{count, plural, one {# movimiento sin revisar} other {# movimientos sin revisar}}",
+      "body": "Algunos movimientos importados aún no tienen categoría. Clasificarlos mejora los análisis.",
+      "action": "Revisar ahora"
+    },
+    "overspend": {
+      "title": "Presupuesto de {name} superado",
+      "body": "Has gastado un {pct}% más de lo presupuestado en {name} este mes.",
+      "action": "Ver presupuestos"
+    },
+    "on_track": {
+      "title": "¡Vas bien este mes!",
+      "body": "Llevas {saved} ahorrados este mes. Sigue así.",
+      "action": "Ver objetivos"
+    },
+    "low_balance": {
+      "title": "Saldo bajo en {name}",
+      "body": "El saldo de {name} es {balance}. Considera hacer una transferencia.",
+      "action": "Ver cuentas"
+    },
+    "goal_near": {
+      "title": "{emoji} ¡Casi alcanzas \"{title}\"!",
+      "body": "Llevas el {pct}% del objetivo. Un poco más y lo habrás conseguido.",
+      "action": "Ver objetivo"
+    },
+    "recurring_increase": {
+      "title": "{merchant} subió de precio",
+      "body": "El último cargo de {merchant} fue {latest}, un {pct}% más que su media de {average}.",
+      "action": "Ver suscripciones"
+    }
   }
 }

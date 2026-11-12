@@ -2,8 +2,7 @@ import "server-only";
 
 import { and, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { recurringSubscriptions, transactions } from "@/db/schema";
-import { detectRecurringSubscriptions } from "@/lib/recurring/detect";
+import { transactions } from "@/db/schema";
 import { listRecurringSubscriptions, monthlyEquivalentCents } from "@/lib/recurring/list";
 
 /**
@@ -323,22 +322,6 @@ export async function getSpendingForecast(opts: {
   const { userId } = opts;
   const horizon = Math.max(1, Math.min(opts.horizonMonths ?? DEFAULT_HORIZON_MONTHS, 6));
   const accountId = opts.accountId;
-
-  // One-shot hydration: if the recurring table is empty for THIS user (e.g.
-  // they imported transactions before the auto-detect-on-import wiring landed),
-  // run detection once so the forecast surfaces fixed income / subscriptions
-  // immediately. Subsequent calls skip this because the table is populated.
-  const subCount = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(recurringSubscriptions)
-    .where(eq(recurringSubscriptions.userId, userId));
-  if (Number(subCount[0]?.n ?? 0) === 0) {
-    try {
-      await detectRecurringSubscriptions({ userId });
-    } catch (err) {
-      console.warn("on-demand recurring detection failed (non-fatal)", err);
-    }
-  }
 
   const [history, subscriptions, currency] = await Promise.all([
     getMonthlyHistory(userId, TRAILING_WINDOW_MONTHS, accountId),

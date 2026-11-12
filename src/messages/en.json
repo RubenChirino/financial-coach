@@ -952,5 +952,37 @@
     "goalFreedom": "Financial independence",
     "goalOther": "Something else",
     "disclaimer": "These suggestions are educational planning prompts, not investment advice. We never recommend specific stocks, funds, or financial products. For decisions on individual products, consult a regulated financial advisor."
+  },
+  "insights": {
+    "needs_review": {
+      "title": "{count, plural, one {# transaction needs} other {# transactions need}} review",
+      "body": "Some imported transactions are uncategorised. Categorising them improves your budget analysis.",
+      "action": "Review now"
+    },
+    "overspend": {
+      "title": "{name} budget exceeded",
+      "body": "You've spent {pct}% over your {name} budget this month.",
+      "action": "View budgets"
+    },
+    "on_track": {
+      "title": "You're on track this month!",
+      "body": "You've saved {saved} so far this month. Keep it up!",
+      "action": "View goals"
+    },
+    "low_balance": {
+      "title": "Low balance in {name}",
+      "body": "Your {name} balance is {balance}. Consider transferring funds.",
+      "action": "View accounts"
+    },
+    "goal_near": {
+      "title": "{emoji} Almost there — \"{title}\"!",
+      "body": "You're {pct}% of the way to your goal. One more push!",
+      "action": "View goal"
+    },
+    "recurring_increase": {
+      "title": "{merchant} got more expensive",
+      "body": "Your latest {merchant} charge was {latest} — {pct}% above its {average} average.",
+      "action": "View subscriptions"
+    }
   }
 }

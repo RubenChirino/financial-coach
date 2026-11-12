@@ -5,7 +5,6 @@ import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { env } from "@/lib/env";
 import { refreshDerivedData } from "@/lib/ingest/pipeline";
-import { runInsightEngine } from "@/lib/insights/engine";
 
 /**
  * Authorize a scheduled request. Vercel Cron sends the project's `CRON_SECRET`
@@ -29,7 +28,7 @@ export function isCronAuthorized(req: Request): boolean {
 
 export interface RecomputeSummary {
   users: number;
-  insights: number;
+  recurring: number;
   transfers: number;
   snapshots: number;
   errors: number;
@@ -39,9 +38,9 @@ export interface RecomputeSummary {
  * The per-user "keep everything fresh" pass, run on a schedule so the data the
  * user sees is current even while the app is closed. Operates only on data the
  * app already has (no bank-API calls, so no per-user encryption key needed):
- *   - refresh the rule-based insights,
  *   - the ingestion pipeline's derived-data step (`refreshDerivedData`):
- *     internal transfers and today's balance snapshot. It is the same function
+ *     recurring subscriptions, internal transfers and today's balance
+ *     snapshot. Insights need nothing here: they are computed on read. It is the same function
  *     every ingest runs, so a step that failed after an ingest is repaired here.
  *
  * Each user is isolated in its own try/catch so one failure never aborts the
@@ -50,16 +49,14 @@ export interface RecomputeSummary {
  * NOTE: pulling NEW bank transactions headlessly (deriving each user's OAuth
  * key + calling the provider) is intentionally out of scope here — it's
  * provider-specific and touches the sensitive sync path. Users still get fresh
- * insights/snapshots; a manual or in-app sync pulls new bank data.
+ * subscriptions/snapshots; a manual or in-app sync pulls new bank data.
  */
 export async function recomputeAllUsers(): Promise<RecomputeSummary> {
-  const rows = await db
-    .select({ id: users.id, language: users.language, isGuest: users.isGuest })
-    .from(users);
+  const rows = await db.select({ id: users.id, isGuest: users.isGuest }).from(users);
 
   const summary: RecomputeSummary = {
     users: 0,
-    insights: 0,
+    recurring: 0,
     transfers: 0,
     snapshots: 0,
     errors: 0,
@@ -69,9 +66,8 @@ export async function recomputeAllUsers(): Promise<RecomputeSummary> {
     if (u.isGuest) continue;
     summary.users += 1;
     try {
-      await runInsightEngine(u.id, u.language);
-      summary.insights += 1;
       const derived = await refreshDerivedData(u.id, { newRows: false, source: "cron" });
+      summary.recurring += derived.recurring ?? 0;
       summary.transfers += derived.transfers;
       summary.snapshots += derived.snapshots;
       if (derived.failed.length > 0) summary.errors += 1;

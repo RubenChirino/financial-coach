@@ -53,12 +53,8 @@ export default async function AdvisorPage({
   );
 
   if (activeTab === "digest") {
-    const activeInsights = await listActiveInsights(session.userId);
-    // Severity-sorted: warning first, then info, then positive.
-    const severityRank: Record<string, number> = { warning: 0, info: 1, positive: 2 };
-    const topInsight = [...activeInsights].sort(
-      (a, b) => (severityRank[a.severity] ?? 9) - (severityRank[b.severity] ?? 9),
-    )[0];
+    // Already sorted warnings first.
+    const [topInsight] = await listActiveInsights(session.userId, locale);
 
     const digest = await buildDigest(
       session.userId,
@@ -117,7 +113,7 @@ export default async function AdvisorPage({
           <DigestFeed
             digest={digest}
             todayLabel={todayLabel}
-            topInsightId={topInsight?.id ?? null}
+            topInsightKey={topInsight?.key ?? null}
             strings={{
               eyebrow: tDigest("eyebrow"),
               brief: tDigest("brief"),

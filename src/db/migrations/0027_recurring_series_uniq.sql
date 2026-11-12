@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS `recurring_subscriptions_user_series_uniq` ON `recurring_subscriptions` (`user_id`,`series_key`);
