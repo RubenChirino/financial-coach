@@ -38,6 +38,14 @@ export const users = sqliteTable(
     // salt + APP_SECRET feed it (so loss of APP_SECRET, in OAuth mode, is the
     // only thing standing between a compromised DB and plaintext).
     encryptionSalt: text("encryption_salt").notNull(),
+    /**
+     * The user's data key (DEK), wrapped by a key-encryption key derived from
+     * the PIN (PIN mode) or APP_SECRET (OAuth mode): `v1:` + base64(iv || tag
+     * || ciphertext), AES-256-GCM with associated data `fc:dek:v1:<userId>`.
+     * NULL = legacy user whose data key is still the derived one; it gets
+     * wrapped on the next unlock / OAuth request. See `lib/auth/keys.ts`.
+     */
+    wrappedDek: text("wrapped_dek"),
     // OAuth identity (populated only when AUTH_MODE=oauth and the user came
     // through Google/Microsoft/GitHub). `email` is the lookup key, but it is
     // NOT sufficient on its own: matching on email alone means anyone who can

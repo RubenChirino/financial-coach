@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `wrapped_dek` text;

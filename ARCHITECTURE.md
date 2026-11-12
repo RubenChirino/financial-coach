@@ -81,7 +81,7 @@ from **one codebase**, switched by the `AUTH_MODE` environment variable.
 | Users            | Exactly one                            | Many (one row per OAuth identity)                |
 | Authentication   | 4-digit PIN, custom DB-backed sessions | Auth.js v5, Google / Microsoft / GitHub          |
 | Database         | SQLite file on disk (`data/*.db`)      | libSQL / Turso (hosted SQLite over HTTP)         |
-| At-rest key      | `scrypt(PIN ∷ APP_SECRET, salt)`       | `scrypt("oauth" ∷ APP_SECRET, salt)`             |
+| At-rest key      | Random DEK, wrapped by `scrypt(PIN ∷ APP_SECRET, salt)` | Random DEK, wrapped by `HKDF(APP_SECRET, salt)` |
 | Default LLM      | Ollama (local, free, private)          | Gemini (Ollama is unreachable from serverless)   |
 | Network exposure | `127.0.0.1` only                       | Public HTTPS                                      |
 | Cloud consent    | Explicit one-time modal                | Implicit (already on a cloud service)            |
@@ -456,17 +456,29 @@ architectural shape of it.
 - **Cipher:** AES-256-GCM (authenticated — tampering is detected on decrypt).
 - **KDF:** `scrypt` with `N = 2^16`, deliberately expensive to make brute force
   costly.
-- **Key derivation:**
-  - PIN mode: `key = scrypt(PIN ∷ APP_SECRET, perUserSalt)`. Both a thing the user
-    *knows* (PIN) and a thing on the *server* (`APP_SECRET`, in `.env`, never in
-    the DB) are required. Steal the database alone → you have ciphertext and
-    nothing else.
-  - OAuth mode: `key = scrypt("oauth" ∷ APP_SECRET, perUserSalt)`. There's no
-    user-held secret in a hosted flow, so the key rests on `APP_SECRET` + salt.
-    The `oauth::` domain-separation prefix guarantees the same secret and salt
-    derive a *different* key than PIN mode would. This is the documented, weaker
-    tradeoff of hosted mode: a full server compromise (DB **and** `APP_SECRET`)
-    decrypts OAuth users' data. PIN mode remains strictly stronger.
+- **Envelope encryption** ([`src/lib/auth/keys.ts`](src/lib/auth/keys.ts)): each
+  user's columns are encrypted with one random 32-byte data key (DEK). The DEK is
+  stored only wrapped, in `users.wrapped_dek` (`v1:` + AES-256-GCM, associated
+  data `fc:dek:v1:<userId>` so a wrapped key can't be moved to another user),
+  under a key-encryption key (KEK):
+  - PIN mode: `KEK = scrypt("kek::v1::" ∷ PIN ∷ APP_SECRET, perUserSalt)`. Both a
+    thing the user *knows* (PIN) and a thing on the *server* (`APP_SECRET`, in
+    `.env`, never in the DB) are required. Steal the database alone → you have
+    ciphertext and nothing else.
+  - OAuth mode and guests: `KEK = HKDF-SHA256(APP_SECRET, perUserSalt,
+    "financial-coach::kek::oauth::v1")`. There's no user-held secret in a hosted
+    flow, so the key rests on `APP_SECRET` + salt; `APP_SECRET` has ≥ 32
+    characters of entropy, so a fast KDF loses nothing and no request pays for
+    scrypt. This is the documented, weaker tradeoff of hosted mode: a full
+    server compromise (DB **and** `APP_SECRET`) decrypts OAuth users' data. PIN
+    mode remains strictly stronger.
+  - Changing the PIN re-wraps the DEK; no ciphertext is rewritten and bank
+    links keep working.
+  - Users from before envelope encryption (`wrapped_dek IS NULL`) keep their
+    derived key (`scrypt(PIN ∷ APP_SECRET, salt)` / `scrypt("oauth" ∷
+    APP_SECRET, salt)`) as their DEK; it is wrapped on their next unlock or
+    OAuth request. Once a key is stored, an unwrap failure is an error — there
+    is no fallback to the derived key.
 
 > **Decision — encrypt columns, not the whole file.** Whole-database encryption
 > (e.g. SQLCipher) protects everything but needs the key resident for *all*
@@ -483,7 +495,7 @@ Persisted in the `sessions` table ([`src/lib/auth/session.ts`](src/lib/auth/sess
 
 - The cookie holds a 256-bit random token; the DB stores only its **SHA-256
   hash**, so DB theft doesn't yield a usable cookie.
-- The per-session encryption key is **wrapped** with an `APP_SECRET`-derived key
+- The session's data key (the user's DEK) is **wrapped** with an `APP_SECRET`-derived key
   before storage — unwrapping needs `APP_SECRET`. Rotate `APP_SECRET` and all
   sessions die (fail-safe).
 - 15-minute inactivity timeout; stale rows are deleted on access.

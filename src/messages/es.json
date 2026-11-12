@@ -598,7 +598,6 @@
     "confirmPinLabel": "Confirmar PIN nuevo",
     "changePinSubmit": "Cambiar PIN",
     "changePinSuccess": "PIN actualizado",
-    "changePinWarning": "Tras cambiar el PIN, las conexiones bancarias pueden necesitar volver a autorizarse en la próxima sincronización.",
     "dangerZone": "Zona peligrosa",
     "deleteAllTitle": "Eliminar todos los datos",
     "deleteAllDescription": "Borra cada transacción, vínculo bancario, objetivo e insight almacenado en este dispositivo. Esto no se puede deshacer.",

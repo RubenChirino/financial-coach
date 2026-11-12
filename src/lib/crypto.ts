@@ -1,6 +1,7 @@
 import {
   createCipheriv,
   createDecipheriv,
+  hkdfSync,
   randomBytes,
   scryptSync,
   timingSafeEqual,
@@ -77,9 +78,10 @@ export function decrypt(ciphertext: string, key: Buffer): string {
 }
 
 /**
- * Derive the at-rest encryption key from a PIN plus the APP_SECRET seed and
- * the user's stored encryption salt. Both the PIN (what the user knows) and
- * the salt (server-side secret) are required — neither alone unlocks the data.
+ * LEGACY data-key derivation (PIN mode), kept for users whose `wrapped_dek`
+ * is still NULL: for them the data key is defined as this value, and it is
+ * wrapped on their next unlock (see `lib/auth/keys.ts`). New users get a
+ * random data key instead.
  */
 export function deriveEncryptionKey(
   pin: string,
@@ -90,6 +92,8 @@ export function deriveEncryptionKey(
 }
 
 /**
+ * LEGACY data-key derivation (OAuth mode); see {@link deriveEncryptionKey}.
+ *
  * OAuth-mode counterpart of {@link deriveEncryptionKey}. With OAuth there's no
  * user-known secret to mix in, so the key derives from `APP_SECRET` and the
  * per-user `encryptionSalt` alone. The `oauth::` prefix gives domain
@@ -103,4 +107,78 @@ export function deriveEncryptionKey(
  */
 export function deriveOAuthEncryptionKey(appSecret: string, encryptionSalt: string): Buffer {
   return deriveKey(`oauth::${appSecret}`, encryptionSalt);
+}
+
+// ---------------------------------------------------------------------------
+// Envelope encryption.
+//
+// Each user has a random 32-byte data key (DEK) that encrypts their columns
+// with `encrypt`/`decrypt` above (the ciphertext format is unchanged). A
+// key-encryption key (KEK) derived from the PIN (or, in OAuth mode, from
+// APP_SECRET) only wraps the DEK, so changing the PIN re-wraps 32 bytes and
+// leaves every ciphertext readable.
+// ---------------------------------------------------------------------------
+
+const DEK_PREFIX = "v1:";
+const OAUTH_KEK_INFO = "financial-coach::kek::oauth::v1";
+
+/** A fresh random data key. */
+export function generateDataKey(): Buffer {
+  return randomBytes(KEY_LEN);
+}
+
+/**
+ * PIN-mode KEK: scrypt (same parameters as everywhere else) over
+ * `kek::v1::<pin>::<APP_SECRET>`, salted with the user's encryption salt.
+ * The `kek::v1::` prefix keeps it distinct from the legacy data key, which
+ * uses the same PIN, secret and salt.
+ */
+export function derivePinKek(pin: string, appSecret: string, encryptionSalt: string): Buffer {
+  return deriveKey(`kek::v1::${pin}::${appSecret}`, encryptionSalt);
+}
+
+/**
+ * OAuth-mode KEK: HKDF-SHA256 over APP_SECRET with the user's encryption salt.
+ * APP_SECRET is at least 32 characters of entropy, so a slow KDF adds nothing
+ * here; HKDF removes the per-request scrypt the legacy derivation cost.
+ */
+export function deriveOAuthKek(appSecret: string, encryptionSalt: string): Buffer {
+  if (!appSecret) throw new CryptoError("secret must be non-empty");
+  if (!encryptionSalt) throw new CryptoError("salt must be non-empty");
+  return Buffer.from(hkdfSync("sha256", appSecret, encryptionSalt, OAUTH_KEK_INFO, KEY_LEN));
+}
+
+/** Associated data: a wrapped key only unwraps for the user it was made for. */
+function dataKeyAad(userId: number): Buffer {
+  return Buffer.from(`fc:dek:v1:${userId}`, "utf8");
+}
+
+/** Wrap a data key: `v1:` + base64(iv || tag || ciphertext), AES-256-GCM, AAD bound to `userId`. */
+export function wrapDataKey(dek: Buffer, kek: Buffer, userId: number): string {
+  if (dek.length !== KEY_LEN) throw new CryptoError(`data key must be ${KEY_LEN} bytes`);
+  if (kek.length !== KEY_LEN) throw new CryptoError(`key must be ${KEY_LEN} bytes`);
+  const iv = randomBytes(IV_LEN);
+  const cipher = createCipheriv(ALGO, kek, iv);
+  cipher.setAAD(dataKeyAad(userId));
+  const enc = Buffer.concat([cipher.update(dek), cipher.final()]);
+  return DEK_PREFIX + Buffer.concat([iv, cipher.getAuthTag(), enc]).toString("base64");
+}
+
+/**
+ * Unwrap a data key. Throws `CryptoError` on a wrong KEK, a key wrapped for
+ * another user, an unknown version, or any tampering — never returns a guess.
+ */
+export function unwrapDataKey(wrapped: string, kek: Buffer, userId: number): Buffer {
+  if (kek.length !== KEY_LEN) throw new CryptoError(`key must be ${KEY_LEN} bytes`);
+  if (!wrapped.startsWith(DEK_PREFIX)) throw new CryptoError("unknown data key version");
+  const buf = Buffer.from(wrapped.slice(DEK_PREFIX.length), "base64");
+  if (buf.length !== IV_LEN + TAG_LEN + KEY_LEN) throw new CryptoError("malformed data key");
+  const decipher = createDecipheriv(ALGO, kek, buf.subarray(0, IV_LEN));
+  decipher.setAAD(dataKeyAad(userId));
+  decipher.setAuthTag(buf.subarray(IV_LEN, IV_LEN + TAG_LEN));
+  try {
+    return Buffer.concat([decipher.update(buf.subarray(IV_LEN + TAG_LEN)), decipher.final()]);
+  } catch {
+    throw new CryptoError("data key unwrap failed (bad key, wrong user or tampered)");
+  }
 }

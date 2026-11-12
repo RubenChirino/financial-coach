@@ -183,7 +183,6 @@ export default async function SettingsPage() {
                 confirmPinLabel: t("confirmPinLabel"),
                 changePinSubmit: t("changePinSubmit"),
                 changePinSuccess: t("changePinSuccess"),
-                changePinWarning: t("changePinWarning"),
                 dangerZone: t("dangerZone"),
                 deleteAllTitle: t("deleteAllTitle"),
                 deleteAllDescription: t("deleteAllDescription"),

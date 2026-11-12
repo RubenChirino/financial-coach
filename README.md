@@ -24,7 +24,7 @@ Designed for Spanish banks first, English fully supported. Works as an installab
 
 ## Features
 
-- **PIN-gated, encrypted vault (local mode).** AES-256-GCM + scrypt. Your PIN + `APP_SECRET` together derive the at-rest key. Sessions persist across dev restarts (libSQL-backed, SHA-256-hashed cookie tokens, PIN-derived keys wrapped at rest).
+- **PIN-gated, encrypted vault (local mode).** AES-256-GCM + scrypt. A random data key encrypts your data; your PIN + `APP_SECRET` together unlock it, so changing the PIN never touches the data. Sessions persist across dev restarts (libSQL-backed, SHA-256-hashed cookie tokens, data keys wrapped at rest).
 - **OAuth sign-in (hosted mode).** Auth.js v5 with Google, Microsoft (Entra), and GitHub. Multi-user, one account per OAuth identity.
 - **libSQL / Turso backend.** Same Drizzle schema runs against a local SQLite file or a hosted Turso replica — switch via `DATABASE_URL`.
 - **Bank aggregation via GoCardless PSD2.** Spanish banks first-class; most of Europe supported. Read-only access — the app never requests payment scopes. **Demo mode** lets you explore the app with synthetic data — no API keys needed.

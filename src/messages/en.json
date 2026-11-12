@@ -598,7 +598,6 @@
     "confirmPinLabel": "Confirm new PIN",
     "changePinSubmit": "Change PIN",
     "changePinSuccess": "PIN updated",
-    "changePinWarning": "After changing your PIN, previously linked bank connections may need to be re-authorized the next time you sync.",
     "dangerZone": "Danger zone",
     "deleteAllTitle": "Delete all data",
     "deleteAllDescription": "Erase every transaction, bank link, goal, and insight stored on this device. This cannot be undone.",

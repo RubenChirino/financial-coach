@@ -12,7 +12,6 @@ interface SecurityLabels {
   confirmPinLabel: string;
   changePinSubmit: string;
   changePinSuccess: string;
-  changePinWarning: string;
   dangerZone: string;
   deleteAllTitle: string;
   deleteAllDescription: string;
@@ -97,18 +96,6 @@ function ChangePinForm({ labels }: { labels: SecurityLabels }) {
         <PinField name="newPin" label={labels.newPinLabel} autoComplete="new-password" />
         <PinField name="confirmPin" label={labels.confirmPinLabel} autoComplete="new-password" />
       </div>
-
-      <p
-        className="flex items-start gap-2 rounded-lg p-3 text-[12px]"
-        style={{
-          background: "var(--warning-soft)",
-          color: "var(--warning)",
-          border: "1px solid color-mix(in srgb, var(--warning) 25%, transparent)",
-        }}
-      >
-        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <span>{labels.changePinWarning}</span>
-      </p>
 
       <div className="flex items-center gap-3">
         <button
