@@ -1,5 +1,6 @@
 import { convertArrayToReadableStream, MockLanguageModelV4 } from "ai/test";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { createTestDb } from "@/test/db-fixture";
 
 /**
@@ -38,6 +39,7 @@ interface Captured {
   text: string;
   maxOutputTokens?: number;
   providerOptions?: unknown;
+  reasoning?: string;
 }
 const captured: Captured[] = [];
 /** What the mock model answers, given the prompt text it received. */
@@ -64,9 +66,9 @@ function mockModel(provider: string, modelId: string) {
   return new MockLanguageModelV4({
     provider,
     modelId,
-    doGenerate: async ({ prompt, maxOutputTokens, providerOptions }) => {
+    doGenerate: async ({ prompt, maxOutputTokens, providerOptions, reasoning }) => {
       const text = promptText(prompt);
-      captured.push({ provider, modelId, text, maxOutputTokens, providerOptions });
+      captured.push({ provider, modelId, text, maxOutputTokens, providerOptions, reasoning });
       return {
         content: [{ type: "text", text: reply(text) }],
         finishReason: { unified: "stop", raw: undefined },
@@ -74,13 +76,14 @@ function mockModel(provider: string, modelId: string) {
         warnings: [],
       };
     },
-    doStream: async ({ prompt, maxOutputTokens, providerOptions }) => {
+    doStream: async ({ prompt, maxOutputTokens, providerOptions, reasoning }) => {
       captured.push({
         provider,
         modelId,
         text: promptText(prompt),
         maxOutputTokens,
         providerOptions,
+        reasoning,
       });
       return {
         stream: convertArrayToReadableStream([
@@ -110,7 +113,8 @@ const schema = await import("@/db/schema");
 const { eq } = await import("drizzle-orm");
 const eqUser = (userId: number) => eq(schema.transactions.userId, userId);
 const eqRuleUser = (userId: number) => eq(schema.categoryRules.userId, userId);
-const { CloudConsentRequired, LlmRateLimited, resolveModelForUser } = await import("./gateway");
+const { ANTHROPIC_THINKING_HEADROOM, CloudConsentRequired, LlmRateLimited, resolveModelForUser } =
+  await import("./gateway");
 const { categorizePendingBatch } = await import("@/lib/categorize");
 const { parseCsvWithAi } = await import("@/lib/import/ai-mapper");
 const { generateCity } = await import("@/lib/travels/city");
@@ -438,6 +442,32 @@ describe("gateway output cap", () => {
       ["ollama", 24, { ollama: { options: { num_predict: 24 } } }],
       ["ollama", 1500, { ollama: { options: { num_predict: 1500 } } }],
       ["openai", 24, undefined],
+    ]);
+  });
+  it("on Anthropic, adds thinking headroom to every cap and turns thinking off for extraction", async () => {
+    reply = () => "Lisbon";
+    const city = await resolveModelForUser(USERS.cloudConsented, "travel-city");
+    await city.generateText({ prompt: "one", maxOutputTokens: 24 });
+    await (await resolveModelForUser(USERS.cloudConsented, "chat"))
+      .streamText({
+        instructions: "s",
+        messages: [{ role: "user", content: "hi" }],
+        maxOutputTokens: 1500,
+      })
+      .consumeStream();
+    reply = () => JSON.stringify({ results: [] });
+    const categorize = await resolveModelForUser(USERS.cloudConsented, "categorize");
+    await categorize.generateStructured({
+      prompt: "two",
+      schema: z.object({ results: z.array(z.never()) }),
+    });
+
+    expect(captured.map((c) => [c.provider, c.maxOutputTokens, c.reasoning])).toEqual([
+      ["anthropic", 24 + ANTHROPIC_THINKING_HEADROOM, "none"],
+      // Chat keeps the provider's default thinking.
+      ["anthropic", 1500 + ANTHROPIC_THINKING_HEADROOM, undefined],
+      // No cap set: the provider's own limit applies.
+      ["anthropic", undefined, "none"],
     ]);
   });
 });

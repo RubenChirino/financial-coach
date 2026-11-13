@@ -111,20 +111,67 @@ export interface StreamCall {
 }
 
 /**
- * Settings a provider needs in its own shape. Ollama's `/api/chat` has no
- * top-level output limit: `ollama-ai-provider-v2` forwards `maxOutputTokens`
- * as `max_output_tokens`, which Ollama ignores, so the cap would silently not
- * apply. Ollama reads it as the `num_predict` model option.
+ * Purposes that extract or classify: the answer is short and fully specified
+ * by the prompt, so the model gets no thinking time. Chat keeps the
+ * provider's default.
  */
-function providerSettings(info: ProviderInfo, maxOutputTokens: number | undefined) {
-  if (info.provider !== "ollama" || maxOutputTokens === undefined) return {};
-  return { providerOptions: { ollama: { options: { num_predict: maxOutputTokens } } } };
+const EXTRACTION: ReadonlySet<LlmPurpose> = new Set([
+  "categorize",
+  "csv-mapping",
+  "travel-city",
+  "travel-places",
+]);
+
+/**
+ * Tokens added to a call's output cap on Anthropic. Current Claude models
+ * think before answering, and that thinking counts toward `max_tokens`; the
+ * caps at the call sites size the visible answer, so without headroom a
+ * short cap (24 for a city name) would be spent on thinking and the answer
+ * would come back empty. Only generated tokens are billed.
+ */
+export const ANTHROPIC_THINKING_HEADROOM = 2048;
+
+/**
+ * Settings a provider needs in its own shape.
+ *
+ * - Ollama's `/api/chat` has no top-level output limit:
+ *   `ollama-ai-provider-v2` forwards `maxOutputTokens` as
+ *   `max_output_tokens`, which Ollama ignores, so the cap would silently not
+ *   apply. Ollama reads it as the `num_predict` model option.
+ * - Anthropic: extraction purposes ask for `reasoning: "none"`, which the
+ *   provider maps per model (thinking off where the model allows it, else the
+ *   lowest effort), and every explicit cap gets thinking headroom.
+ */
+function providerSettings(
+  info: ProviderInfo,
+  purpose: LlmPurpose,
+  maxOutputTokens: number | undefined,
+) {
+  switch (info.provider) {
+    case "ollama":
+      if (maxOutputTokens === undefined) return {};
+      return { providerOptions: { ollama: { options: { num_predict: maxOutputTokens } } } };
+    case "anthropic":
+      return {
+        ...(EXTRACTION.has(purpose) && { reasoning: "none" as const }),
+        ...(maxOutputTokens !== undefined && {
+          maxOutputTokens: maxOutputTokens + ANTHROPIC_THINKING_HEADROOM,
+        }),
+      };
+    default:
+      return {};
+  }
 }
 
 // A non-generic wrapper so the return type is the concrete default overload
 // (`ReturnType<typeof streamText>` would be the union of all three).
-function startStream(model: LanguageModel, info: ProviderInfo, call: StreamCall) {
-  return streamText({ model, ...call, ...providerSettings(info, call.maxOutputTokens) });
+function startStream(
+  model: LanguageModel,
+  info: ProviderInfo,
+  purpose: LlmPurpose,
+  call: StreamCall,
+) {
+  return streamText({ model, ...call, ...providerSettings(info, purpose, call.maxOutputTokens) });
 }
 export type LlmStream = ReturnType<typeof startStream>;
 
@@ -202,7 +249,7 @@ export async function resolveModelForUser(userId: number, purpose: LlmPurpose): 
       const { text } = await generateText({
         model,
         ...call,
-        ...providerSettings(info, call.maxOutputTokens),
+        ...providerSettings(info, purpose, call.maxOutputTokens),
       });
       return text;
     },
@@ -211,14 +258,14 @@ export async function resolveModelForUser(userId: number, purpose: LlmPurpose): 
       const { output } = await generateText({
         model,
         ...call,
-        ...providerSettings(info, call.maxOutputTokens),
+        ...providerSettings(info, purpose, call.maxOutputTokens),
         output: Output.object({ schema }),
       });
       return output as T;
     },
     streamText(call) {
       spend();
-      return startStream(model, info, call);
+      return startStream(model, info, purpose, call);
     },
   };
 }

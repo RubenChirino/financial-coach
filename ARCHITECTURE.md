@@ -255,7 +255,18 @@ with an `Output.object` schema (the gateway's `generateStructured`), never the
 deprecated `generateObject` or hand-sliced JSON. Concrete adapters —
 `@ai-sdk/anthropic`, `@ai-sdk/openai`, `@ai-sdk/google`, and
 `ollama-ai-provider-v2` — are selected behind a single resolver in
-[`src/lib/llm/provider.ts`](src/lib/llm/provider.ts).
+[`src/lib/llm/provider.ts`](src/lib/llm/provider.ts), and every call goes
+through [`src/lib/llm/gateway.ts`](src/lib/llm/gateway.ts) (consent, quotas,
+per-provider settings).
+
+The Anthropic presets are the current Claude models, `claude-opus-5-5` first
+(also the `ANTHROPIC_MODEL` default). These models think before answering and
+that thinking counts toward `max_tokens`, so on Anthropic the gateway adds
+`ANTHROPIC_THINKING_HEADROOM` to every output cap and asks the extraction
+purposes (categorize, CSV mapping, travels) for `reasoning: "none"`; the
+provider maps that per model. The provider also drops `temperature`, which
+these models reject, and uses native structured output rather than forced
+tool use.
 
 > **Decision — an SDK abstraction vs. calling each vendor's REST API directly.**
 > Four providers with four request/response shapes, four streaming protocols, and
@@ -268,7 +279,7 @@ deprecated `generateObject` or hand-sliced JSON. Concrete adapters —
 > daemon. That one resolver is where "local-first or cloud" stops being a
 > deployment concern and becomes a runtime detail.
 
-### 4.6 UI — Tailwind v4, shadcn/ui, Radix, Lucide, Recharts, Framer Motion
+### 4.6 UI — Tailwind v4, shadcn/ui, Radix, Lucide
 
 - **Tailwind CSS v4** for styling, driven by a design-token system ported from the
   "Coin" design handoff (`@theme inline` exposes brand tokens as utilities).
@@ -276,9 +287,9 @@ deprecated `generateObject` or hand-sliced JSON. Concrete adapters —
   built on **Radix UI** primitives. You own the code, so you can theme and audit
   it; Radix supplies accessible, unstyled behavior (focus traps, ARIA, keyboard
   nav) that is genuinely hard to get right by hand.
-- **Lucide** icons, **Recharts** plus a few hand-rolled pure-SVG charts
-  (`src/components/charts`) that render on the server with zero client JS.
-- **Framer Motion** for the small, restrained animations the design calls for.
+- **Lucide** icons. Charts are hand-rolled SVG (`src/components/charts`) that
+  render on the server with zero client JS; there is no charting library.
+- Animations are CSS transitions; there is no animation library.
 
 > **Decision — shadcn/ui (copy-in) vs. a packaged component library (MUI, Chakra).**
 > A packaged library is faster to start but owns your markup and fights you on
@@ -295,7 +306,6 @@ deprecated `generateObject` or hand-sliced JSON. Concrete adapters —
 | i18n                 | `next-intl` v4                   | ICU plurals, cookie-driven locale, first-class App Router/RSC support     |
 | Theming              | `next-themes`                    | SSR-safe dark mode with no flash-of-wrong-theme (nonce-bound boot script) |
 | Client state         | `zustand` v5                     | Tiny pub-sub store for privacy-blur + display currency; no provider tree  |
-| Forms + validation   | `react-hook-form` + `zod`        | Uncontrolled-input performance; `zod` schemas shared by forms *and* env   |
 | Schema validation    | `zod`                            | One validator for env, server-action inputs, and API bodies              |
 | Spreadsheets         | SheetJS (`xlsx`, CDN 0.20.x)     | Server-side .xls/.xlsx import without shipping a parser to the client     |
 | Lint + format        | **Biome**                        | One fast Rust tool replacing ESLint + Prettier; near-zero config drift    |

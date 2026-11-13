@@ -29,7 +29,7 @@ Designed for Spanish banks first, English fully supported. Works as an installab
 - **libSQL / Turso backend.** Same Drizzle schema runs against a local SQLite file or a hosted Turso replica — switch via `DATABASE_URL`.
 - **Bank aggregation via GoCardless PSD2.** Spanish banks first-class; most of Europe supported. Read-only access — the app never requests payment scopes. **Demo mode** lets you explore the app with synthetic data — no API keys needed.
 - **TrueLayer connector.** Alternate Open Banking provider with better Live coverage for some banks (Santander ES, BBVA, Revolut, Monzo). Credentials stored AES-256-GCM in your local DB.
-- **CSV + XLSX import.** Drop a bank statement into the import flow — XLSX parsed server-side via SheetJS, CSV via streaming parser. Account-aware deduping, initial-balance detection.
+- **CSV + XLSX import.** Drop a bank statement into the import flow — XLSX converted server-side via SheetJS, then parsed like any CSV. Account-aware deduping, initial-balance detection.
 - **Transactions + categories.** Rule-based matcher runs first (fast, deterministic); LLM fallback categorizes the rest with a confidence score and a "needs review" queue. Full merchant editor, keyboard-driven category picker.
 - **Bento dashboard.** Net worth, monthly income/expenses, sparkline, top categories donut, recent activity — all auto-recomputed on sync.
 - **Predictions.** A dedicated forecast page that projects next months' cash flow from transparent, explainable layers — fixed income, recurring outflows, habitual spend, and a median of the variable residual (median, not mean, so one holiday month doesn't poison the projection). No black-box ML; every number is auditable.
@@ -108,7 +108,7 @@ Platform one-click options (after `pnpm install`):
 
 ## System requirements
 
-- Node.js **20 LTS or newer** (24 recommended if you run Ollama locally)
+- Node.js **22 or newer** (`engines` in `package.json`)
 - pnpm 9+
 - ~500 MB disk for the app and its dependencies
 - RAM:

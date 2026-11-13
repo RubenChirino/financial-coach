@@ -20,13 +20,9 @@ export interface ProviderInfo {
 /** Per-provider model presets shown in the settings selector. */
 export const PROVIDER_MODELS: Record<LlmProvider, string[]> = {
   ollama: ["qwen2.5:14b-instruct-q4_K_M", "llama3.2:3b", "llama3.1:8b", "mistral:7b", "gemma3:12b"],
-  anthropic: [
-    "claude-sonnet-4-5",
-    "claude-haiku-4-5",
-    "claude-opus-4-5",
-    "claude-3-5-sonnet-20241022",
-    "claude-3-5-haiku-20241022",
-  ],
+  // Current generation, default first. Fable 5.2 is the most capable and
+  // costs about twice Opus; Haiku 5.5 is the cheapest.
+  anthropic: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-2"],
   openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
   google: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash"],
 };
