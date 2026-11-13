@@ -1,21 +1,29 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db/client";
-import { sessions, users } from "@/db/schema";
-import { deriveEncryptionKey, generateSalt, hashPin, verifyPin } from "@/lib/crypto";
+import { users } from "@/db/schema";
+import {
+  CryptoError,
+  derivePinKek,
+  generateSalt,
+  hashPin,
+  verifyPin,
+  wrapDataKey,
+} from "@/lib/crypto";
 import { env } from "@/lib/env";
+import { pinKeySource, readDataKey } from "./keys";
 import {
   clearSessionCookie,
-  createSession,
-  destroyAllSessions,
   getCurrentSession,
+  replaceSessionsIfPinHash,
   setSessionCookie,
 } from "./session";
 import { getUser } from "./user";
+import { wipeLocalInstallation } from "./wipe";
 
 const PinDigits = z.string().regex(/^\d{4}$/, "invalidPin");
 
@@ -25,28 +33,18 @@ export interface SecurityActionResult {
 }
 
 /**
- * Change the PIN.
+ * Change the PIN without touching any ciphertext (envelope encryption, see
+ * `./keys.ts`): the data key stays the same and is only re-wrapped under the
+ * new PIN's KEK, so bank links and every encrypted column stay readable.
  *
  * Flow:
  *   1. Verify the current PIN against the stored hash.
- *   2. Generate a fresh pin salt + hash for the new PIN.
- *   3. Generate a fresh encryption salt — the new encryption key is derived
- *      from (new PIN + APP_SECRET + new salt), so we DON'T need to re-encrypt
- *      existing ciphertext columns. Wait: we DO need to, because old ciphertext
- *      is wrapped with the old key. To keep the scope tight we instead keep the
- *      encryption salt the same — only PIN hash changes — so the derived key
- *      changes as well. That breaks decryption of existing bank tokens.
- *
- *   Correct design: re-wrap all existing encrypted columns. But we don't
- *   currently have a "list all ciphertext" helper and transactional re-wrap is
- *   costly. As a pragmatic v1, PIN change is only safe when no bank tokens
- *   exist yet (or the user accepts that linked banks must be re-linked).
- *
- *   We keep the encryptionSalt intact so the derived KEY changes with the PIN,
- *   then destroy all other sessions so no cached key survives. The UI warns
- *   that bank connections may need re-linking — in practice GoCardless tokens
- *   stored encrypted will become unreadable (`CryptoError`), and the relevant
- *   code already treats unreadable requisitions as "needs reconnect".
+ *   2. Unwrap the data key with the current PIN's KEK (a legacy user's data
+ *      key is the one derived from the current PIN).
+ *   3. One batch: set the new PIN hash, salt and wrapped key — guarded by the
+ *      old PIN hash — then replace this user's sessions with a new one. The
+ *      session statements are guarded by the new hash, so if a concurrent
+ *      change won, nothing in the batch applies.
  */
 export async function changePinAction(formData: FormData): Promise<SecurityActionResult> {
   const session = await getCurrentSession();
@@ -82,22 +80,36 @@ export async function changePinAction(formData: FormData): Promise<SecurityActio
     return { ok: false, error: "wrongPin" };
   }
 
+  let dataKey: Buffer;
+  try {
+    dataKey = readDataKey(pinKeySource(user, currentPin));
+  } catch (err) {
+    if (!(err instanceof CryptoError)) throw err;
+    console.error("data key unavailable for user", user.id, err.message);
+    return { ok: false, error: "keyUnavailable" };
+  }
+
   const newPinSalt = generateSalt();
   const newPinHash = hashPin(newPin, newPinSalt);
+  const wrappedDek = wrapDataKey(
+    dataKey,
+    derivePinKek(newPin, env().APP_SECRET, user.encryptionSalt),
+    user.id,
+  );
+  const next = replaceSessionsIfPinHash(user.id, dataKey, newPinHash);
+  const [changed] = await db.batch([
+    db
+      .update(users)
+      .set({ pinHash: newPinHash, pinSalt: newPinSalt, wrappedDek, updatedAt: new Date() })
+      .where(and(eq(users.id, user.id), eq(users.pinHash, user.pinHash)))
+      .returning({ id: users.id }),
+    next.revoke,
+    next.insert,
+  ]);
+  // The PIN changed between verification and the batch: nothing applied.
+  if (changed.length === 0) return { ok: false, error: "wrongPin" };
 
-  await db
-    .update(users)
-    .set({ pinHash: newPinHash, pinSalt: newPinSalt, updatedAt: new Date() })
-    .where(eq(users.id, user.id));
-
-  // Invalidate all existing sessions — they all hold keys wrapped under the
-  // old PIN-derived key. Then issue a fresh one so the user stays logged in.
-  await destroyAllSessions();
-
-  const { APP_SECRET } = env();
-  const newKey = deriveEncryptionKey(newPin, APP_SECRET, user.encryptionSalt);
-  const token = await createSession(user.id, newKey);
-  await setSessionCookie(token);
+  await setSessionCookie(next.token);
 
   revalidatePath("/settings");
   return { ok: true };
@@ -142,28 +154,7 @@ export async function deleteAllDataAction(formData: FormData): Promise<SecurityA
     return { ok: false, error: "wrongPin" };
   }
 
-  // Cascade delete: `users` has ON DELETE CASCADE set on `sessions`,
-  // `providerCredentials`, and everything else is reachable through
-  // institutions/requisitions/accounts which are independent of users but
-  // will be cleared manually.
-  await db.delete(sessions);
-  await db.delete(users).where(eq(users.id, user.id));
-
-  // Wipe everything else that isn't user-scoped but is still user data.
-  // We import the schema lazily here to keep the action file lean.
-  const schema = await import("@/db/schema");
-  await db.delete(schema.advisorMessages);
-  await db.delete(schema.advisorConversations);
-  await db.delete(schema.insights);
-  await db.delete(schema.goals);
-  await db.delete(schema.recurringSubscriptions);
-  await db.delete(schema.transactions);
-  await db.delete(schema.accounts);
-  await db.delete(schema.requisitions);
-  await db.delete(schema.institutions);
-  await db.delete(schema.categoryRules);
-  await db.delete(schema.categories);
-  await db.delete(schema.auditLog);
+  await wipeLocalInstallation(user.id);
 
   await clearSessionCookie();
   redirect("/onboarding");

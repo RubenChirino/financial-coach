@@ -20,6 +20,8 @@ export function toCents(amount: string): number {
 
 export interface NormalizedTransaction {
   externalId: string;
+  /** True when the bank sent no transaction id and `externalId` is a content hash. */
+  externalIdDerived: boolean;
   bookingDate: Date;
   valueDate: Date | null;
   amountCents: number;
@@ -36,8 +38,8 @@ export interface NormalizedTransaction {
  * - For outflows we prefer the `creditorName` (who we paid); for inflows we
  *   prefer the `debtorName` (who paid us).
  * - `rawDescription` is built from the remittance-information fields; it's the
- *   only place raw text lives and is shown to the user but never sent to
- *   remote LLMs (see `redactTransaction`).
+ *   only place raw text lives. It is shown to the user, and reaches a model
+ *   prompt only through `redact()` (the `Redacted` type enforces it).
  *
  * Returns `null` if the transaction lacks a booking date or amount — those
  * are unusable for our accounting model.
@@ -65,13 +67,14 @@ export function normalizeTransaction(
     tx.proprietaryBankTransactionCode ||
     "(no description)";
 
+  const providerId = tx.transactionId ?? tx.internalTransactionId;
   const externalId =
-    tx.transactionId ??
-    tx.internalTransactionId ??
+    providerId ??
     `${accountHint}:${tx.bookingDate}:${tx.transactionAmount.amount}:${rawDescription.slice(0, 32)}`;
 
   return {
     externalId,
+    externalIdDerived: providerId == null,
     bookingDate: new Date(`${tx.bookingDate}T00:00:00Z`),
     valueDate: tx.valueDate ? new Date(`${tx.valueDate}T00:00:00Z`) : null,
     amountCents,

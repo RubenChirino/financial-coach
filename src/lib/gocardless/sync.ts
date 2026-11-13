@@ -1,9 +1,17 @@
 import "server-only";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { accounts, institutions, requisitions, transactions } from "@/db/schema";
-import { encrypt } from "@/lib/crypto";
+import { accounts, requisitions } from "@/db/schema";
+import { type LinkResult, linkProviderAccounts, normalizeAccountNumber } from "@/lib/accounts/link";
+import { decrypt, encrypt } from "@/lib/crypto";
+import { upsertInstitution as upsertInstitutionRow } from "@/lib/ingest/institutions";
+import {
+  type AccountIngest,
+  type IngestRow,
+  ingestTransactions,
+  syncWindowStart,
+} from "@/lib/ingest/pipeline";
 import type { GoCardlessClient } from "./client";
 import { normalizeTransaction, pickPrimaryBalance, toCents } from "./normalize";
 import type { Institution, Requisition } from "./types";
@@ -28,32 +36,12 @@ function statusFromApi(
 }
 
 export async function upsertInstitution(inst: Institution): Promise<number> {
-  const existing = await db
-    .select({ id: institutions.id })
-    .from(institutions)
-    .where(eq(institutions.gocardlessId, inst.id))
-    .limit(1);
-
-  if (existing[0]) {
-    await db
-      .update(institutions)
-      .set({ name: inst.name, logoUrl: inst.logo, country: inst.countries[0] ?? "ES" })
-      .where(eq(institutions.id, existing[0].id));
-    return existing[0].id;
-  }
-
-  const inserted = await db
-    .insert(institutions)
-    .values({
-      gocardlessId: inst.id,
-      name: inst.name,
-      logoUrl: inst.logo,
-      country: inst.countries[0] ?? "ES",
-    })
-    .returning({ id: institutions.id });
-  const id = inserted[0]?.id;
-  if (!id) throw new Error("failed to insert institution");
-  return id;
+  return upsertInstitutionRow({
+    providerInstitutionId: inst.id,
+    name: inst.name,
+    logoUrl: inst.logo,
+    country: inst.countries[0] ?? "ES",
+  });
 }
 
 export async function createRequisition(
@@ -66,7 +54,7 @@ export async function createRequisition(
     encryptionKey: Buffer;
     language: "ES" | "EN";
   },
-): Promise<{ requisitionRowId: number; link: string; gocardlessRequisitionId: string }> {
+): Promise<{ requisitionRowId: number; link: string; providerRequisitionId: string }> {
   const institutionRowId = await upsertInstitution(opts.institution);
 
   const req = await client.createRequisition({
@@ -84,7 +72,7 @@ export async function createRequisition(
     .values({
       userId: opts.userId,
       institutionId: institutionRowId,
-      gocardlessRequisitionId: encryptedId,
+      providerRequisitionId: encryptedId,
       status: statusFromApi(req.status),
       reference: opts.reference,
       link: req.link,
@@ -94,24 +82,26 @@ export async function createRequisition(
 
   const requisitionRowId = inserted[0]?.id;
   if (!requisitionRowId) throw new Error("failed to insert requisition");
-  return { requisitionRowId, link: req.link, gocardlessRequisitionId: req.id };
+  return { requisitionRowId, link: req.link, providerRequisitionId: req.id };
 }
 
 /**
  * After the user finishes consent at their bank, GoCardless lists the
- * approved account IDs on the requisition. We persist one account row per
- * GoCardless account, storing the GC account id encrypted.
+ * approved account ids on the requisition. Each one is linked through
+ * `linkProviderAccounts`: a new account, an existing account continued
+ * (re-link), or a question for the user. Safe to call again for the same
+ * requisition (the callback page can be reloaded).
  */
 export async function linkRequisitionAccounts(
   client: GoCardlessClient,
   opts: {
     userId: number;
     requisitionRowId: number;
-    gocardlessRequisitionId: string;
+    providerRequisitionId: string;
     encryptionKey: Buffer;
   },
-): Promise<{ accountRowIds: number[] }> {
-  const req = await client.getRequisition(opts.gocardlessRequisitionId);
+): Promise<LinkResult> {
+  const req = await client.getRequisition(opts.providerRequisitionId);
   const status = statusFromApi(req.status);
 
   await db
@@ -119,126 +109,106 @@ export async function linkRequisitionAccounts(
     .set({ status })
     .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
 
-  if (status !== "linked") return { accountRowIds: [] };
+  if (status !== "linked") return { accountIds: [], created: 0, adopted: 0, pendingChoices: 0 };
 
-  const rowIds: number[] = [];
-  for (const accId of req.accounts) {
-    const [details, balances] = await Promise.all([
-      client.getAccountDetails(accId),
-      client.getAccountBalances(accId).catch(() => ({ balances: [] })),
-    ]);
-
-    const encryptedAccId = encrypt(accId, opts.encryptionKey);
-    const iban = details.account.iban ?? null;
-    const ibanLast4 = iban ? iban.replace(/\s/g, "").slice(-4) : null;
-    const primary = pickPrimaryBalance(balances.balances);
-    const balanceCents = primary ? toCents(primary.balanceAmount.amount) : 0;
-    const currency = primary?.balanceAmount.currency ?? details.account.currency ?? "EUR";
-
-    const inserted = await db
-      .insert(accounts)
-      .values({
-        userId: opts.userId,
-        requisitionId: opts.requisitionRowId,
-        gocardlessAccountId: encryptedAccId,
-        ibanLast4,
+  return linkProviderAccounts({
+    userId: opts.userId,
+    requisitionId: opts.requisitionRowId,
+    encryptionKey: opts.encryptionKey,
+    providerAccountIds: req.accounts,
+    describe: async (accId) => {
+      const [details, balances] = await Promise.all([
+        client.getAccountDetails(accId),
+        client.getAccountBalances(accId).catch(() => ({ balances: [] })),
+      ]);
+      const iban = normalizeAccountNumber(details.account.iban);
+      const primary = pickPrimaryBalance(balances.balances);
+      return {
+        providerAccountId: accId,
+        accountNumber: iban,
+        ibanLast4: iban ? iban.slice(-4) : null,
         name: details.account.name ?? details.account.product ?? "Cuenta",
         ownerName: details.account.ownerName ?? null,
-        balanceCents,
-        currency,
-      })
-      .returning({ id: accounts.id });
-    const id = inserted[0]?.id;
-    if (id) rowIds.push(id);
-  }
-  return { accountRowIds: rowIds };
+        balanceCents: primary ? toCents(primary.balanceAmount.amount) : 0,
+        currency: primary?.balanceAmount.currency ?? details.account.currency ?? "EUR",
+      };
+    },
+  });
 }
 
-export interface SyncAccountResult {
+/** Fetch and normalize one account's booked transactions since `since`. */
+export async function fetchGoCardlessAccount(
+  client: GoCardlessClient,
+  opts: { providerAccountId: string; since: Date },
+): Promise<IngestRow[]> {
+  const dateFrom = opts.since.toISOString().slice(0, 10);
+  const txs = await client.getAccountTransactions(opts.providerAccountId, { dateFrom });
+  return txs.transactions.booked
+    .map((t) => normalizeTransaction(t, opts.providerAccountId))
+    .filter((t): t is NonNullable<typeof t> => t !== null);
+}
+
+export interface SyncResult {
   inserted: number;
   skipped: number;
-  insertedIds: number[];
+  accounts: number;
+  /** Accounts whose fetch failed; their cursor did not move. */
+  failed: number;
+  ruleMatched: number;
 }
 
 /**
- * Pull recent transactions for an account and upsert them into the DB.
- * Dedup is driven by the unique index on `transactions.gocardless_transaction_id`;
- * we rely on `ON CONFLICT DO NOTHING` rather than pre-reading the set of
- * existing IDs. Returns counts for UX feedback.
+ * Sync every linked GoCardless account of the user: fetch each account from
+ * its own cursor (see `syncWindowStart`), then ingest them all through the
+ * pipeline in one run. An account whose fetch fails is left out, so its
+ * `last_synced_at` stays put and the next sync covers the gap.
  */
-export async function syncAccountTransactions(
+export async function syncGoCardlessAccounts(
   client: GoCardlessClient,
-  opts: {
-    userId: number;
-    accountRowId: number;
-    gocardlessAccountId: string;
-    sinceDays?: number;
-  },
-): Promise<SyncAccountResult> {
-  const sinceDays = opts.sinceDays ?? 90;
-  const dateFrom = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
-  const txs = await client.getAccountTransactions(opts.gocardlessAccountId, { dateFrom });
-
-  const normalized = txs.transactions.booked
-    .map((t) => normalizeTransaction(t, opts.gocardlessAccountId))
-    .filter((t): t is NonNullable<typeof t> => t !== null);
-
-  if (normalized.length === 0) {
-    await db
-      .update(accounts)
-      .set({ lastSyncedAt: new Date() })
-      .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
-    return { inserted: 0, skipped: 0, insertedIds: [] };
-  }
-
-  const existing = await db
-    .select({ id: transactions.gocardlessTransactionId })
-    .from(transactions)
+  opts: { userId: number; encryptionKey: Buffer },
+): Promise<SyncResult> {
+  const rows = await db
+    .select({
+      accountRowId: accounts.id,
+      cipher: accounts.providerAccountId,
+      lastSyncedAt: accounts.lastSyncedAt,
+    })
+    .from(accounts)
+    .innerJoin(requisitions, eq(accounts.requisitionId, requisitions.id))
     .where(
       and(
-        eq(transactions.userId, opts.userId),
-        eq(transactions.accountId, opts.accountRowId),
-        inArray(
-          transactions.gocardlessTransactionId,
-          normalized.map((t) => t.externalId),
-        ),
+        eq(requisitions.userId, opts.userId),
+        eq(requisitions.status, "linked"),
+        eq(requisitions.provider, "gocardless"),
       ),
     );
-  const existingIds = new Set(existing.map((r) => r.id));
-  const fresh = normalized.filter((t) => !existingIds.has(t.externalId));
 
-  const insertedIds: number[] = [];
-  if (fresh.length > 0) {
-    const rows = await db
-      .insert(transactions)
-      .values(
-        fresh.map((t) => ({
-          userId: opts.userId,
-          accountId: opts.accountRowId,
-          gocardlessTransactionId: t.externalId,
-          bookingDate: t.bookingDate,
-          valueDate: t.valueDate,
-          amountCents: t.amountCents,
-          currency: t.currency,
-          merchantName: t.merchantName,
-          rawDescription: t.rawDescription,
-          needsReview: true,
-        })),
-      )
-      .returning({ id: transactions.id });
-    for (const r of rows) insertedIds.push(r.id);
+  const parts: AccountIngest[] = [];
+  let failed = 0;
+  for (const r of rows) {
+    try {
+      const providerAccountId = decrypt(r.cipher, opts.encryptionKey);
+      const since = syncWindowStart(r.lastSyncedAt);
+      parts.push({
+        accountId: r.accountRowId,
+        rows: await fetchGoCardlessAccount(client, { providerAccountId, since }),
+      });
+    } catch (err) {
+      failed++;
+      console.warn("gocardless fetch failed", r.accountRowId, err);
+    }
   }
 
-  await db
-    .update(accounts)
-    .set({ lastSyncedAt: new Date() })
-    .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
-
+  const res = await ingestTransactions({
+    userId: opts.userId,
+    source: "gocardless",
+    accounts: parts,
+  });
   return {
-    inserted: fresh.length,
-    skipped: normalized.length - fresh.length,
-    insertedIds,
+    inserted: res.inserted,
+    skipped: res.duplicates,
+    accounts: rows.length,
+    failed,
+    ruleMatched: res.ruleMatched + res.keywordMatched,
   };
 }

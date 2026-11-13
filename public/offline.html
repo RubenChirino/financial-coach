@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Financial Coach — offline</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #111111;
+        --muted: #6b7280;
+        --accent: #108060;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #111111;
+          --fg: #f5f5f5;
+          --muted: #9ca3af;
+        }
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      main {
+        max-width: 420px;
+        text-align: center;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 8px;
+      }
+      p {
+        margin: 0 0 6px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      a {
+        display: inline-block;
+        margin-top: 16px;
+        color: var(--accent);
+        font-weight: 600;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>You're offline</h1>
+      <p>Financial Coach needs a connection to load your data.</p>
+      <p lang="es">Sin conexión: Financial Coach necesita conexión para cargar tus datos.</p>
+      <a href="/">Try again / Reintentar</a>
+    </main>
+  </body>
+</html>

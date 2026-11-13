@@ -37,8 +37,9 @@ supports also works):
 
 - **Ollama:** `qwen2.5:14b-instruct-q4_K_M` (default), `llama3.1:8b`,
   `llama3.2:3b`, `mistral:7b`, `gemma3:12b`
-- **Anthropic:** `claude-sonnet-4-5`, `claude-haiku-4-5`, `claude-opus-4-5`,
-  `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`
+- **Anthropic:** `claude-opus-5-5` (default), `claude-sonnet-5-5`,
+  `claude-haiku-5-5` (cheapest), `claude-fable-5-2` (most capable, about twice
+  the price of Opus)
 - **OpenAI:** `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-3.5-turbo`
 - **Google:** `gemini-3.6-flash` (default), `gemini-3.5-flash`,
   `gemini-3.5-flash-lite`, `gemini-2.5-flash`
@@ -71,8 +72,13 @@ Get a key at [console.anthropic.com](https://console.anthropic.com).
 ```bash
 LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-sonnet-4-6
+ANTHROPIC_MODEL=claude-opus-5-5
 ```
+
+These models think before they answer, and that thinking is billed as output.
+The app turns it off (or to the lowest effort, where a model can't turn it
+off) for categorization, CSV mapping and travel labels, and leaves the model's
+default for the advisor chat.
 
 ## OpenAI
 

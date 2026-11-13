@@ -1,20 +1,22 @@
 import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { db } from "@/db/client";
 import { sessions, users } from "@/db/schema";
 import {
   CryptoError,
   decrypt,
   deriveKey,
-  deriveOAuthEncryptionKey,
   encrypt,
+  generateDataKey,
   generateSalt,
 } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { INACTIVITY_MS, SESSION_COOKIE } from "./constants";
+import { oauthKeySource, resolveDataKey } from "./keys";
 
 export { INACTIVITY_MS, SESSION_COOKIE };
 
@@ -33,9 +35,9 @@ export { INACTIVITY_MS, SESSION_COOKIE };
  * cryptographically-random token. Security posture:
  *   - The raw token is stored hashed (SHA-256) so DB theft alone doesn't
  *     yield a usable cookie.
- *   - The PIN-derived encryption key is wrapped with an APP_SECRET-derived
- *     key, so unwrapping requires knowledge of APP_SECRET (which lives in
- *     `.env`, outside the DB).
+ *   - The session's data key (the user's DEK, see `./keys.ts`) is wrapped
+ *     with an APP_SECRET-derived key, so unwrapping requires knowledge of
+ *     APP_SECRET (which lives in `.env`, outside the DB).
  *   - Inactivity expiry still applies (INACTIVITY_MS); stale rows are
  *     deleted on access and can be pruned on sign-out.
  *
@@ -114,19 +116,48 @@ function unwrapEncryptionKey(wrapped: string): Buffer | null {
   }
 }
 
-export async function createSession(userId: number, encryptionKey: Buffer): Promise<string> {
+function newSession(userId: number, encryptionKey: Buffer) {
   const token = randomBytes(32).toString("hex");
-  const tokenHash = hashToken(token);
-  const nowDate = new Date();
-  await db.insert(sessions).values({
-    tokenHash,
-    userId,
-    wrappedKey: wrapEncryptionKey(encryptionKey),
-    createdAt: nowDate,
-    lastActivityAt: nowDate,
-  });
+  const at = new Date();
+  return {
+    token,
+    values: {
+      tokenHash: hashToken(token),
+      userId,
+      wrappedKey: wrapEncryptionKey(encryptionKey),
+      createdAt: at,
+      lastActivityAt: at,
+    },
+  };
+}
+
+export async function createSession(userId: number, encryptionKey: Buffer): Promise<string> {
+  const { token, values } = newSession(userId, encryptionKey);
+  await db.insert(sessions).values(values);
   return token;
 }
+
+/**
+ * Two statements that replace every session of `userId` with one new
+ * session, each taking effect only while `users.pin_hash = pinHash`. Batched
+ * after the guarded update that sets that hash, they apply exactly when the
+ * update did, so a PIN change that lost a race changes nothing at all.
+ */
+export function replaceSessionsIfPinHash(userId: number, encryptionKey: Buffer, pinHash: string) {
+  const { token, values } = newSession(userId, encryptionKey);
+  const pinIsCurrent = sql`exists (select 1 from "users" where "users"."id" = ${userId} and "users"."pin_hash" = ${pinHash})`;
+  const at = values.createdAt.getTime();
+  return {
+    token,
+    revoke: db.delete(sessions).where(and(eq(sessions.userId, userId), pinIsCurrent)),
+    insert: db.run(
+      sql`insert into "sessions" ("token_hash", "user_id", "wrapped_key", "created_at", "last_activity_at") select ${values.tokenHash}, ${userId}, ${values.wrappedKey}, ${at}, ${at} where ${pinIsCurrent}`,
+    ),
+  };
+}
+
+/** `last_activity_at` is rewritten only when older than this. */
+export const ACTIVITY_WRITE_EVERY_MS = 60_000;
 
 export async function getSessionByToken(token: string | undefined): Promise<SessionData | null> {
   if (!token) return null;
@@ -149,17 +180,23 @@ export async function getSessionByToken(token: string | undefined): Promise<Sess
     return null;
   }
 
-  const nowDate = new Date();
-  await db
-    .update(sessions)
-    .set({ lastActivityAt: nowDate })
-    .where(eq(sessions.tokenHash, tokenHash));
+  // Slide the inactivity window — but write only when the stored value is
+  // more than a minute old: the expiry is 15 minutes, so a minute of slack
+  // changes nothing, and most requests skip a write.
+  let activityAt = lastActivity;
+  if (now() - lastActivity > ACTIVITY_WRITE_EVERY_MS) {
+    activityAt = now();
+    await db
+      .update(sessions)
+      .set({ lastActivityAt: new Date(activityAt) })
+      .where(eq(sessions.tokenHash, tokenHash));
+  }
 
   return {
     userId: row.userId,
     encryptionKey,
     createdAt: row.createdAt.getTime(),
-    lastActivityAt: nowDate.getTime(),
+    lastActivityAt: activityAt,
   };
 }
 
@@ -220,7 +257,11 @@ export async function enterGuestMode(): Promise<void> {
     .returning({ id: users.id });
   const userId = inserted[0]!.id;
 
-  const key = deriveOAuthEncryptionKey(env().APP_SECRET, encryptionSalt);
+  // A guest gets a random data key, wrapped under the OAuth KEK.
+  const key = await resolveDataKey({
+    ...oauthKeySource({ id: userId, encryptionSalt, wrappedDek: null }),
+    initialKey: generateDataKey,
+  });
   const token = await createSession(userId, key);
   await setEphemeralSessionCookie(token);
 }
@@ -235,7 +276,15 @@ async function purgeStaleGuests(): Promise<void> {
   }
 }
 
-export async function getCurrentSession(): Promise<SessionData | null> {
+/**
+ * The session for the current request, resolved once per server render:
+ * React's `cache()` memoizes it for the request (the page, the shell and every
+ * helper they call share one lookup). Outside a render — route handlers,
+ * tests — it simply runs each time. No request reads the session after
+ * changing it (sign-in, lock and guest mode redirect), so a memo never hands
+ * back a stale one.
+ */
+export const getCurrentSession = cache(async (): Promise<SessionData | null> => {
   // OAuth mode: defer to Auth.js's JWT session. The userId travels on the
   // token; we derive the encryption key on-demand from APP_SECRET + the
   // user's stored encryptionSalt (no PIN, no DB session row).
@@ -252,19 +301,21 @@ export async function getCurrentSession(): Promise<SessionData | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   return getSessionByToken(token);
-}
+});
 
 /**
  * OAuth-mode equivalent of `getSessionByToken`. Reads Auth.js's JWT-decoded
- * session, fetches the user's `encryptionSalt` from the DB, derives the
- * per-user AES key, and returns a `SessionData` shaped identically to the
- * PIN-mode path so downstream callers (server actions, API routes, pages)
- * don't need to branch.
+ * session, loads the user's salt and wrapped data key, unwraps it under the
+ * OAuth KEK (HKDF over APP_SECRET — no per-request scrypt), and returns a
+ * `SessionData` shaped identically to the PIN-mode path so downstream callers
+ * (server actions, API routes, pages) don't need to branch. A legacy user's
+ * key is wrapped on their first request (see `./keys.ts`).
  *
  * Returns null when:
  *   - no Auth.js session cookie / unauthenticated
  *   - the JWT carries no `userId` (shouldn't happen if signIn callback ran)
  *   - the referenced user row was deleted between JWT issue and now
+ *   - the stored data key does not unwrap (fail closed: no fallback key)
  */
 async function getOAuthSession(): Promise<SessionData | null> {
   // Lazy import: the oauth-config module triggers Auth.js initialization and
@@ -276,15 +327,21 @@ async function getOAuthSession(): Promise<SessionData | null> {
   if (typeof userId !== "number") return null;
 
   const row = await db
-    .select({ encryptionSalt: users.encryptionSalt })
+    .select({ encryptionSalt: users.encryptionSalt, wrappedDek: users.wrappedDek })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
   const userRow = row[0];
   if (!userRow) return null;
 
-  const { APP_SECRET } = env();
-  const encryptionKey = deriveOAuthEncryptionKey(APP_SECRET, userRow.encryptionSalt);
+  let encryptionKey: Buffer;
+  try {
+    encryptionKey = await resolveDataKey(oauthKeySource({ id: userId, ...userRow }));
+  } catch (err) {
+    if (!(err instanceof CryptoError)) throw err;
+    console.error("data key unavailable for user", userId, err.message);
+    return null;
+  }
   const now = Date.now();
   return {
     userId,

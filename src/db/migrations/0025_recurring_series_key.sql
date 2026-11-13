@@ -1,0 +1,1 @@
+ALTER TABLE `recurring_subscriptions` ADD `series_key` text;

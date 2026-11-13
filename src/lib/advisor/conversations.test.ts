@@ -11,7 +11,7 @@ const {
   deleteConversation,
   getConversationMessages,
   listConversations,
-  maybeAutoTitle,
+  startTurn,
   userOwnsConversation,
 } = await import("./conversations");
 
@@ -76,25 +76,49 @@ describe("advisor/conversations", () => {
     expect(list[1]?.messageCount).toBe(0);
   });
 
-  it("maybeAutoTitle picks the first sentence and is idempotent", async () => {
-    const id = await createConversation(USER);
-    await maybeAutoTitle(id, "How can I save more on groceries? I spend too much.");
-    const rows = await fixture.db.select().from(advisorConversations);
-    expect(rows[0]?.title).toBe("How can I save more on groceries?");
-
-    // Calling again must NOT overwrite once a title exists.
-    await maybeAutoTitle(id, "Totally different question now.");
-    const after = await fixture.db.select().from(advisorConversations);
-    expect(after[0]?.title).toBe("How can I save more on groceries?");
+  it("startTurn on a new conversation creates it, titled, with the user's message", async () => {
+    const id = await startTurn(USER, null, "How can I save more on groceries? I spend too much.");
+    const convs = await fixture.db.select().from(advisorConversations);
+    expect(convs).toHaveLength(1);
+    expect(convs[0]).toMatchObject({
+      id,
+      userId: USER,
+      title: "How can I save more on groceries?",
+    });
+    const msgs = await fixture.db.select().from(advisorMessages);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatchObject({
+      conversationId: id,
+      role: "user",
+      content: "How can I save more on groceries? I spend too much.",
+    });
   });
 
-  it("maybeAutoTitle truncates very long titles to 60 chars with ellipsis", async () => {
-    const id = await createConversation(USER);
-    const long = "a".repeat(200);
-    await maybeAutoTitle(id, long);
+  it("startTurn keeps an existing title and only fills an empty one", async () => {
+    const titled = await createConversation(USER, "Groceries");
+    expect(await startTurn(USER, titled, "Totally different question now.")).toBe(titled);
+    const untitled = await createConversation(USER);
+    await startTurn(USER, untitled, "a".repeat(200));
     const rows = await fixture.db.select().from(advisorConversations);
-    expect(rows[0]?.title.length).toBeLessThanOrEqual(60);
-    expect(rows[0]?.title.endsWith("…")).toBe(true);
+    const byId = new Map(rows.map((r) => [r.id, r.title]));
+    expect(byId.get(titled)).toBe("Groceries");
+    expect(byId.get(untitled)?.length).toBeLessThanOrEqual(60);
+    expect(byId.get(untitled)?.endsWith("…")).toBe(true);
+    expect(await fixture.db.select().from(advisorMessages)).toHaveLength(2);
+  });
+
+  it("startTurn is all-or-nothing: a failed message insert leaves no conversation", async () => {
+    // Make the second statement of the batch fail inside the database.
+    await fixture.client.execute(
+      "CREATE TRIGGER fail_msg BEFORE INSERT ON advisor_messages BEGIN SELECT RAISE(ABORT, 'boom'); END",
+    );
+    try {
+      await expect(startTurn(USER, null, "hello")).rejects.toThrow(/boom/);
+    } finally {
+      await fixture.client.execute("DROP TRIGGER fail_msg");
+    }
+    expect(await fixture.db.select().from(advisorConversations)).toHaveLength(0);
+    expect(await fixture.db.select().from(advisorMessages)).toHaveLength(0);
   });
 
   it("deleteConversation cascades to its messages", async () => {

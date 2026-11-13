@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { transactions } from "@/db/schema";
 
@@ -130,21 +130,18 @@ export async function detectTransfers(opts: DetectOptions): Promise<number> {
 
   const pairs = matchTransfers(rows);
 
-  // Reset auto links in the window, then set fresh ones. Manual rows are
-  // excluded by `autoScope`, so this never clobbers a user decision.
-  await db.update(transactions).set({ transferGroupId: null }).where(autoScope);
-
-  for (const p of pairs) {
-    const gid = randomUUID();
-    await db
-      .update(transactions)
-      .set({ transferGroupId: gid })
-      .where(and(eq(transactions.userId, userId), eq(transactions.id, p.outId)));
-    await db
-      .update(transactions)
-      .set({ transferGroupId: gid })
-      .where(and(eq(transactions.userId, userId), eq(transactions.id, p.inId)));
-  }
+  // Reset auto links in the window, then set fresh ones — one atomic batch,
+  // so readers never see the window half re-tagged. Every statement keeps the
+  // auto scope, so a manual decision made since the read is never clobbered.
+  await db.batch([
+    db.update(transactions).set({ transferGroupId: null }).where(autoScope),
+    ...pairs.map((p) =>
+      db
+        .update(transactions)
+        .set({ transferGroupId: randomUUID() })
+        .where(and(autoScope, inArray(transactions.id, [p.outId, p.inId]))),
+    ),
+  ]);
 
   return pairs.length;
 }

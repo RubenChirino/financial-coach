@@ -32,7 +32,8 @@ export async function runRecurringDetectionAction(): Promise<ActionResult> {
 /**
  * Manually toggle a subscription's active state. Useful when the detector
  * misclassifies a one-off as recurring, or when the user cancels a service
- * but the detector hasn't picked up the gap yet.
+ * but the detector hasn't picked up the gap yet. Stored as `user_status`,
+ * which detection never overwrites.
  */
 export async function setSubscriptionActiveAction(
   id: number,
@@ -42,7 +43,7 @@ export async function setSubscriptionActiveAction(
   if (!session) return { ok: false, error: "unauthenticated" };
   await db
     .update(recurringSubscriptions)
-    .set({ isActive })
+    .set({ isActive, userStatus: isActive ? "active" : "inactive" })
     .where(
       and(eq(recurringSubscriptions.id, id), eq(recurringSubscriptions.userId, session.userId)),
     );

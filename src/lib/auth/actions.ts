@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
-import { deriveEncryptionKey, generateSalt, hashPin, verifyPin } from "@/lib/crypto";
+import { CryptoError, generateDataKey, generateSalt, hashPin, verifyPin } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { isLocale, type Locale } from "@/lib/i18n/config";
 import { setLocale } from "@/lib/i18n/locale";
@@ -17,6 +17,7 @@ import {
   recordSuccess,
 } from "@/lib/security/rate-limit";
 import { SESSION_COOKIE } from "./constants";
+import { pinKeySource, resolveDataKey } from "./keys";
 import {
   clearSessionCookie,
   createSession,
@@ -73,7 +74,6 @@ export async function setupPinAction(formData: FormData): Promise<ActionResult> 
   const pinSalt = generateSalt();
   const encryptionSalt = generateSalt();
   const pinHash = hashPin(pin, pinSalt);
-  const { APP_SECRET } = env();
 
   const inserted = await db
     .insert(users)
@@ -91,7 +91,11 @@ export async function setupPinAction(formData: FormData): Promise<ActionResult> 
   const userId = inserted[0]?.id;
   if (!userId) return { ok: false, error: "insertFailed" };
 
-  const encryptionKey = deriveEncryptionKey(pin, APP_SECRET, encryptionSalt);
+  // A new user gets a random data key, wrapped under their PIN's KEK.
+  const encryptionKey = await resolveDataKey({
+    ...pinKeySource({ id: userId, encryptionSalt, wrappedDek: null }, pin),
+    initialKey: generateDataKey,
+  });
   const token = await createSession(userId, encryptionKey);
   await setSessionCookie(token);
   await setLocale(language);
@@ -139,8 +143,16 @@ export async function unlockWithPinAction(formData: FormData): Promise<ActionRes
 
   recordSuccess(PIN_UNLOCK_BUCKET);
 
-  const { APP_SECRET } = env();
-  const encryptionKey = deriveEncryptionKey(pin, APP_SECRET, user.encryptionSalt);
+  // The PIN is proven; now unwrap the data key (wrapping it first for a
+  // legacy user). A stored key that does not unwrap fails closed.
+  let encryptionKey: Buffer;
+  try {
+    encryptionKey = await resolveDataKey(pinKeySource(user, pin));
+  } catch (err) {
+    if (!(err instanceof CryptoError)) throw err;
+    console.error("data key unavailable for user", user.id, err.message);
+    return { ok: false, error: "keyUnavailable" };
+  }
   const token = await createSession(user.id, encryptionKey);
   await setSessionCookie(token);
 

@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import {
   ArrowLeftRight,
   Landmark,
@@ -19,14 +18,15 @@ import type { ReactNode } from "react";
 import { LanguageToggle } from "@/components/language-toggle";
 import { AccountAvatar } from "@/components/shell/account-avatar";
 import { NavLink } from "@/components/shell/nav-link";
+import { ShellTitle } from "@/components/shell/shell-title";
 import { SidebarShell } from "@/components/shell/sidebar-shell";
 import { TopbarActions } from "@/components/shell/topbar-actions";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { db } from "@/db/client";
-import { users } from "@/db/schema";
 import { hasFinancialData } from "@/lib/accounts/has-data";
 import { getCurrentSession } from "@/lib/auth/session";
+import { getUser } from "@/lib/auth/user";
 import { getLocale } from "@/lib/i18n/locale";
+import { getVisibleInsights } from "@/lib/insights/visible";
 
 interface NavEntry {
   href: string;
@@ -56,12 +56,6 @@ const ACCOUNT: readonly NavEntry[] = [
 
 interface AppShellProps {
   children: ReactNode;
-  /** Page title shown in the topbar (defaults to app name). */
-  title?: string;
-  /** Optional sub-line under the title (e.g. a greeting or current scope). */
-  subtitle?: string;
-  /** Unread insights badge on the AI Coach entry. Wired in 7h. */
-  coachUnread?: number;
 }
 
 /**
@@ -72,10 +66,12 @@ interface AppShellProps {
  *     52px icon-only when collapsed. State is persisted to localStorage.
  *   - < md: sidebar collapses to a bottom-nav-style rail on small screens.
  *
- * Server-rendered; interactive children (`NavLink`, `TopbarActions`,
- * `ThemeToggle`, `LanguageToggle`, `LockButton`) are client components.
+ * Server-rendered once per request by the `(app)` layout; interactive children
+ * (`NavLink`, `TopbarActions`, `ShellTitle`, `ThemeToggle`, `LanguageToggle`)
+ * are client components. The layout persists across client navigations, so
+ * anything page-specific (the topbar heading) is derived on the client.
  */
-export async function AppShell({ children, title, subtitle, coachUnread = 0 }: AppShellProps) {
+export async function AppShell({ children }: AppShellProps) {
   const [tNav, tApp, tShell, locale] = await Promise.all([
     getTranslations("nav"),
     getTranslations("app"),
@@ -83,14 +79,9 @@ export async function AppShell({ children, title, subtitle, coachUnread = 0 }: A
     getLocale(),
   ]);
 
-  const resolvedTitle = title ?? tApp("name");
-  const resolvedSubtitle = subtitle ?? tApp("tagline");
-
   // Account chip: guest, OAuth (with provider avatar/name), or local.
-  const session = await getCurrentSession();
-  const account = session
-    ? await db.query.users.findFirst({ where: eq(users.id, session.userId) })
-    : null;
+  const [session, user] = await Promise.all([getCurrentSession(), getUser()]);
+  const account = session ? user : null;
   const isGuest = !!session?.isGuest;
   const accountName = isGuest
     ? tShell("guestLabel")
@@ -100,7 +91,15 @@ export async function AppShell({ children, title, subtitle, coachUnread = 0 }: A
 
   // Gates the topbar's currency toggle and search: neither can do anything
   // until there is an account or a transaction behind them.
-  const hasData = session ? await hasFinancialData(session.userId) : false;
+  // The bell's first list comes with the page instead of a request after
+  // hydration; the dashboard computes the same list in the same render, so
+  // `getVisibleInsights` (request-memoized) runs the engine once for both.
+  const [hasData, insights] = session
+    ? await Promise.all([
+        hasFinancialData(session.userId),
+        getVisibleInsights(session.userId, locale),
+      ])
+    : [false, []];
 
   const mainNav = MAIN.map(({ href, tKey, Icon, matchPrefix }) => (
     <NavLink
@@ -109,7 +108,6 @@ export async function AppShell({ children, title, subtitle, coachUnread = 0 }: A
       label={tNav(tKey)}
       icon={<Icon className="h-[17px] w-[17px]" strokeWidth={2} />}
       matchPrefix={matchPrefix}
-      badge={tKey === "advisor" ? coachUnread : undefined}
     />
   ));
 
@@ -163,12 +161,7 @@ export async function AppShell({ children, title, subtitle, coachUnread = 0 }: A
               <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />
             </div>
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">{resolvedTitle}</div>
-              {resolvedSubtitle ? (
-                <div className="truncate text-[11px] text-[color:var(--text-tertiary)]">
-                  {resolvedSubtitle}
-                </div>
-              ) : null}
+              <ShellTitle hasData={hasData} compact />
             </div>
           </div>
           <div className="shrink-0">
@@ -179,16 +172,9 @@ export async function AppShell({ children, title, subtitle, coachUnread = 0 }: A
         {/* Desktop topbar */}
         <header className="sticky top-0 z-10 hidden h-16 items-center gap-5 border-b border-[color:var(--border-default)] bg-[color:var(--surface-card)] px-8 md:flex">
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[20px] font-semibold leading-tight tracking-tight">
-              {resolvedTitle}
-            </div>
-            {resolvedSubtitle ? (
-              <div className="truncate text-[12px] text-[color:var(--text-tertiary)]">
-                {resolvedSubtitle}
-              </div>
-            ) : null}
+            <ShellTitle hasData={hasData} />
           </div>
-          <TopbarActions hasData={hasData} />
+          <TopbarActions hasData={hasData} initialInsights={insights} />
         </header>
 
         {/* Page body */}

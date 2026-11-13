@@ -1,9 +1,7 @@
 import path from "node:path";
-import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  plugins: [react()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -11,8 +9,8 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "happy-dom",
-    setupFiles: ["./src/test/setup.ts"],
+    // Server code only: no test renders components, so no DOM is needed.
+    environment: "node",
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     coverage: {
       reporter: ["text", "html"],

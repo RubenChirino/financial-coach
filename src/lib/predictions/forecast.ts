@@ -2,9 +2,11 @@ import "server-only";
 
 import { and, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { recurringSubscriptions, transactions } from "@/db/schema";
-import { detectRecurringSubscriptions } from "@/lib/recurring/detect";
+import { transactions } from "@/db/schema";
+import { monthRange } from "@/lib/dates";
+import { normalizeMerchant } from "@/lib/merchant";
 import { listRecurringSubscriptions, monthlyEquivalentCents } from "@/lib/recurring/list";
+import { mean, median, stdDev } from "@/lib/stats";
 
 /**
  * Forecasting strategy
@@ -119,16 +121,6 @@ const MAX_LOOKBACK_MONTHS = 12;
 const HABITUAL_MIN_MONTHS = 2;
 const HABITUAL_MIN_MONTHLY_CENTS = 3000; // €30 floor — drop noise
 const HABITUAL_MAX_COV = 0.6;
-
-function monthRange(offsetFromCurrent: number): { start: Date; end: Date; label: string } {
-  const now = new Date();
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth() + offsetFromCurrent;
-  const start = new Date(Date.UTC(y, m, 1));
-  const end = new Date(Date.UTC(y, m + 1, 1));
-  const label = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, "0")}`;
-  return { start, end, label };
-}
 
 function buildAccountFilter(accountId: number | undefined) {
   return accountId != null ? eq(transactions.accountId, accountId) : undefined;
@@ -280,37 +272,6 @@ async function detectHabitualParties(
 }
 
 /**
- * Same merchant-key normalization as the recurring detector — kept in sync so
- * the "exclude merchants already counted as recurring" hand-off works.
- */
-function normalizeMerchant(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/\b(s\.?l\.?|s\.?a\.?|inc\.?|ltd\.?|sas|gmbh)\b/g, "")
-    .replace(/\d{4,}/g, "")
-    .trim();
-}
-
-function median(nums: number[]): number {
-  const sorted = [...nums].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
-}
-
-function mean(nums: number[]): number {
-  if (nums.length === 0) return 0;
-  return nums.reduce((s, n) => s + n, 0) / nums.length;
-}
-
-function stdDev(nums: number[]): number {
-  if (nums.length < 2) return 0;
-  const m = mean(nums);
-  const variance = nums.reduce((s, n) => s + (n - m) ** 2, 0) / nums.length;
-  return Math.sqrt(variance);
-}
-
-/**
  * Build a multi-month forecast. Both inputs and projections are returned so
  * the caller can explain the math to the user. Pass `accountId` to scope all
  * stats to a single account; omit to forecast across the whole household.
@@ -323,22 +284,6 @@ export async function getSpendingForecast(opts: {
   const { userId } = opts;
   const horizon = Math.max(1, Math.min(opts.horizonMonths ?? DEFAULT_HORIZON_MONTHS, 6));
   const accountId = opts.accountId;
-
-  // One-shot hydration: if the recurring table is empty for THIS user (e.g.
-  // they imported transactions before the auto-detect-on-import wiring landed),
-  // run detection once so the forecast surfaces fixed income / subscriptions
-  // immediately. Subsequent calls skip this because the table is populated.
-  const subCount = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(recurringSubscriptions)
-    .where(eq(recurringSubscriptions.userId, userId));
-  if (Number(subCount[0]?.n ?? 0) === 0) {
-    try {
-      await detectRecurringSubscriptions({ userId });
-    } catch (err) {
-      console.warn("on-demand recurring detection failed (non-fatal)", err);
-    }
-  }
 
   const [history, subscriptions, currency] = await Promise.all([
     getMonthlyHistory(userId, TRAILING_WINDOW_MONTHS, accountId),

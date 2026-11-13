@@ -17,6 +17,25 @@ function StatusIcon({ status }: { status: CategorizeStatus }) {
   return <TriangleAlert className="h-5 w-5 text-amber-500" />;
 }
 
+/** Why some rows were left for later when the LLM step did not run. */
+function SkippedNote() {
+  const t = useTranslations("transactions");
+  const skipped = useCategorizeStore((s) => s.skipped);
+  const reason = useCategorizeStore((s) => s.llmSkipped);
+  if (skipped === 0 || !reason) return null;
+  const key =
+    reason === "cloudConsentRequired"
+      ? "catSkippedConsent"
+      : reason === "unavailable"
+        ? "catSkippedUnavailable"
+        : "catSkippedRateLimited";
+  return (
+    <span className="mt-1 block text-[color:var(--text-tertiary)]">
+      {t(key, { count: skipped })}
+    </span>
+  );
+}
+
 /**
  * Floating, page-persistent progress card for the background categorization run.
  *
@@ -106,6 +125,7 @@ export function CategorizeProgress() {
                 {t("catDoneDetail", { count })}
                 {corrected > 0 ? ` · ${t("catDoneCorrected", { count: corrected })}` : ""}
                 {errors > 0 ? ` · ${t("catDoneErrors", { count: errors })}` : ""}
+                <SkippedNote />
               </p>
             ) : (
               <p className="mt-1 text-[12px] text-[color:var(--text-secondary)]">{errorText}</p>

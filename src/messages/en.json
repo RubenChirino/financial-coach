@@ -57,6 +57,9 @@
     "importTransactionsGuest": "Import or add transactions",
     "loading": "Loading…",
     "notAvailable": "Not available",
+    "pageErrorBody": "Something went wrong on our side. Your data is safe — try again.",
+    "pageErrorTitle": "This page could not load",
+    "retry": "Try again",
     "save": "Save",
     "success": "Done"
   },
@@ -202,6 +205,9 @@
     "catDoneDetail": "{count, plural, =0 {Nothing new to categorize} one {# transaction categorized} other {# transactions categorized}}",
     "catDoneCorrected": "{count, plural, one {# fixed} other {# fixed}}",
     "catDoneErrors": "{count, plural, one {# left for next run} other {# left for next run}}",
+    "catSkippedConsent": "{count, plural, one {# left uncategorized} other {# left uncategorized}}: approve cloud AI in Settings → AI Coach to sort the rest.",
+    "catSkippedRateLimited": "{count, plural, one {# left for the next run} other {# left for the next run}}: the AI limit was reached, try again in a minute.",
+    "catSkippedUnavailable": "{count, plural, one {# left for the next run} other {# left for the next run}}: the AI model did not answer, so rules and keywords sorted the rest.",
     "catErrorTitle": "Categorization stopped",
     "catClose": "Dismiss",
     "guestNudge": "Sign in to save changes — guest mode is read-only.",
@@ -437,6 +443,8 @@
     "historyDeleteError": "Could not delete. Please try again.",
     "historyDeleting": "Deleting…",
     "historyDuplicate": "{n} duplicates skipped",
+    "historyRunning": "Importing…",
+    "historyInterrupted": "Interrupted — delete it, or import the same file again to add the missing rows",
     "historyEmpty": "No imports yet.",
     "historyInserted": "{n} imported",
     "historyPasted": "Pasted data",
@@ -594,7 +602,6 @@
     "confirmPinLabel": "Confirm new PIN",
     "changePinSubmit": "Change PIN",
     "changePinSuccess": "PIN updated",
-    "changePinWarning": "After changing your PIN, previously linked bank connections may need to be re-authorized the next time you sync.",
     "dangerZone": "Danger zone",
     "deleteAllTitle": "Delete all data",
     "deleteAllDescription": "Erase every transaction, bank link, goal, and insight stored on this device. This cannot be undone.",
@@ -727,7 +734,9 @@
       "tryAgain": "Back",
       "done": "Continue",
       "toastTitle": "Bank linked successfully",
-      "toastDescription": "{accounts, plural, one {# account} other {# accounts}} connected · {inserted, plural, one {# transaction} other {# transactions}} imported"
+      "toastDescription": "{accounts, plural, one {# account} other {# accounts}} connected · {inserted, plural, one {# transaction} other {# transactions}} imported",
+      "needsChoice": "{count, plural, one {# account needs} other {# accounts need}} your confirmation before syncing.",
+      "reviewAccounts": "Review accounts"
     },
     "providers": {
       "gocardless": "GoCardless",
@@ -788,7 +797,17 @@
     "deleteAccountTitle": "Delete account",
     "deleteAccountBody": "Permanently delete \"{name}\" and all of its transactions? This cannot be undone.",
     "deleteAccountDone": "Account deleted",
-    "deleteAccountError": "Couldn't delete account"
+    "deleteAccountError": "Couldn't delete account",
+    "relink": {
+      "title": "Confirm reconnected accounts",
+      "hint": "These accounts came with a new connection to a bank you had linked before. Say whether each one continues an account you already have, so its history isn't counted twice. They won't sync until you answer.",
+      "question": "Is {account} at {bank} an account you already have?",
+      "sameAs": "Same as {account}",
+      "newAccount": "It's a new account",
+      "resolved": "Account linked",
+      "imported": "{count, plural, one {# transaction} other {# transactions}} imported",
+      "failed": "Couldn't link the account"
+    }
   },
   "goals": {
     "title": "Goals",
@@ -937,5 +956,37 @@
     "goalFreedom": "Financial independence",
     "goalOther": "Something else",
     "disclaimer": "These suggestions are educational planning prompts, not investment advice. We never recommend specific stocks, funds, or financial products. For decisions on individual products, consult a regulated financial advisor."
+  },
+  "insights": {
+    "needs_review": {
+      "title": "{count, plural, one {# transaction needs} other {# transactions need}} review",
+      "body": "Some imported transactions are uncategorised. Categorising them improves your budget analysis.",
+      "action": "Review now"
+    },
+    "overspend": {
+      "title": "{name} budget exceeded",
+      "body": "You've spent {pct}% over your {name} budget this month.",
+      "action": "View budgets"
+    },
+    "on_track": {
+      "title": "You're on track this month!",
+      "body": "You've saved {saved} so far this month. Keep it up!",
+      "action": "View goals"
+    },
+    "low_balance": {
+      "title": "Low balance in {name}",
+      "body": "Your {name} balance is {balance}. Consider transferring funds.",
+      "action": "View accounts"
+    },
+    "goal_near": {
+      "title": "{emoji} Almost there — \"{title}\"!",
+      "body": "You're {pct}% of the way to your goal. One more push!",
+      "action": "View goal"
+    },
+    "recurring_increase": {
+      "title": "{merchant} got more expensive",
+      "body": "Your latest {merchant} charge was {latest} — {pct}% above its {average} average.",
+      "action": "View subscriptions"
+    }
   }
 }

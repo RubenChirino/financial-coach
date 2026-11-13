@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./load-env";
 import fs from "node:fs";
 import path from "node:path";
 import { createClient } from "@libsql/client";
@@ -67,7 +67,12 @@ async function main() {
 
   const [inst] = await db
     .insert(institutions)
-    .values({ gocardlessId: "DEV_SANDBOX", name: "Dev Sandbox", country: "ES", logoUrl: null })
+    .values({
+      providerInstitutionId: "DEV_SANDBOX",
+      name: "Dev Sandbox",
+      country: "ES",
+      logoUrl: null,
+    })
     .onConflictDoNothing()
     .returning();
   if (!inst) throw new Error("failed to insert institution");
@@ -77,7 +82,7 @@ async function main() {
     .values({
       userId,
       institutionId: inst.id,
-      gocardlessRequisitionId: "dev-req-ciphertext-placeholder",
+      providerRequisitionId: "dev-req-ciphertext-placeholder",
       status: "linked",
       reference: "dev-seed",
     })
@@ -89,7 +94,7 @@ async function main() {
     .values({
       userId,
       requisitionId: req.id,
-      gocardlessAccountId: "dev-acc-ciphertext-placeholder",
+      providerAccountId: "dev-acc-ciphertext-placeholder",
       ibanLast4: "0000",
       name: "Cuenta corriente",
       ownerName: "Dev User",
@@ -106,7 +111,7 @@ async function main() {
     txs.push({
       userId,
       accountId: acc.id,
-      gocardlessTransactionId: `dev-${now}-${i}`,
+      externalId: `dev-${now}-${i}`,
       bookingDate: new Date(now - i * 6 * 60 * 60 * 1000),
       amountCents: Math.round(m.amount()),
       currency: "EUR",

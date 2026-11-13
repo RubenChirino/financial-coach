@@ -49,7 +49,7 @@ export function DigestFeed({
   emptyTitle,
   emptyBody,
   emptyAction,
-  topInsightId,
+  topInsightKey,
 }: {
   digest: DigestPayload;
   todayLabel: string;
@@ -58,7 +58,7 @@ export function DigestFeed({
   emptyBody: string;
   emptyAction: string;
   /** ID of the highest-severity active insight — target of "Mark resolved". */
-  topInsightId: number | null;
+  topInsightKey: string | null;
 }) {
   if (digest.isEmpty) {
     return (
@@ -131,7 +131,7 @@ export function DigestFeed({
               </Link>
             </Button>
             <MarkResolvedButton
-              topInsightId={topInsightId}
+              topInsightKey={topInsightKey}
               label={strings.markResolved}
               resolvedLabel={strings.markResolvedDone}
               noneLabel={strings.markResolvedNone}

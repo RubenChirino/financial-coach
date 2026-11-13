@@ -81,7 +81,7 @@ from **one codebase**, switched by the `AUTH_MODE` environment variable.
 | Users            | Exactly one                            | Many (one row per OAuth identity)                |
 | Authentication   | 4-digit PIN, custom DB-backed sessions | Auth.js v5, Google / Microsoft / GitHub          |
 | Database         | SQLite file on disk (`data/*.db`)      | libSQL / Turso (hosted SQLite over HTTP)         |
-| At-rest key      | `scrypt(PIN ∷ APP_SECRET, salt)`       | `scrypt("oauth" ∷ APP_SECRET, salt)`             |
+| At-rest key      | Random DEK, wrapped by `scrypt(PIN ∷ APP_SECRET, salt)` | Random DEK, wrapped by `HKDF(APP_SECRET, salt)` |
 | Default LLM      | Ollama (local, free, private)          | Gemini (Ollama is unreachable from serverless)   |
 | Network exposure | `127.0.0.1` only                       | Public HTTPS                                      |
 | Cloud consent    | Explicit one-time modal                | Implicit (already on a cloud service)            |
@@ -250,10 +250,23 @@ can read and audit.
 ### 4.5 The LLM layer — Vercel AI SDK + a provider seam
 
 The [Vercel AI SDK](https://sdk.vercel.ai) (`ai` v7) gives one `streamText` /
-`generateObject` interface across providers. Concrete adapters —
+`generateText` interface across providers; structured answers use `generateText`
+with an `Output.object` schema (the gateway's `generateStructured`), never the
+deprecated `generateObject` or hand-sliced JSON. Concrete adapters —
 `@ai-sdk/anthropic`, `@ai-sdk/openai`, `@ai-sdk/google`, and
 `ollama-ai-provider-v2` — are selected behind a single resolver in
-[`src/lib/llm/provider.ts`](src/lib/llm/provider.ts).
+[`src/lib/llm/provider.ts`](src/lib/llm/provider.ts), and every call goes
+through [`src/lib/llm/gateway.ts`](src/lib/llm/gateway.ts) (consent, quotas,
+per-provider settings).
+
+The Anthropic presets are the current Claude models, `claude-opus-5-5` first
+(also the `ANTHROPIC_MODEL` default). These models think before answering and
+that thinking counts toward `max_tokens`, so on Anthropic the gateway adds
+`ANTHROPIC_THINKING_HEADROOM` to every output cap and asks the extraction
+purposes (categorize, CSV mapping, travels) for `reasoning: "none"`; the
+provider maps that per model. The provider also drops `temperature`, which
+these models reject, and uses native structured output rather than forced
+tool use.
 
 > **Decision — an SDK abstraction vs. calling each vendor's REST API directly.**
 > Four providers with four request/response shapes, four streaming protocols, and
@@ -266,7 +279,7 @@ The [Vercel AI SDK](https://sdk.vercel.ai) (`ai` v7) gives one `streamText` /
 > daemon. That one resolver is where "local-first or cloud" stops being a
 > deployment concern and becomes a runtime detail.
 
-### 4.6 UI — Tailwind v4, shadcn/ui, Radix, Lucide, Recharts, Framer Motion
+### 4.6 UI — Tailwind v4, shadcn/ui, Radix, Lucide
 
 - **Tailwind CSS v4** for styling, driven by a design-token system ported from the
   "Coin" design handoff (`@theme inline` exposes brand tokens as utilities).
@@ -274,9 +287,9 @@ The [Vercel AI SDK](https://sdk.vercel.ai) (`ai` v7) gives one `streamText` /
   built on **Radix UI** primitives. You own the code, so you can theme and audit
   it; Radix supplies accessible, unstyled behavior (focus traps, ARIA, keyboard
   nav) that is genuinely hard to get right by hand.
-- **Lucide** icons, **Recharts** plus a few hand-rolled pure-SVG charts
-  (`src/components/charts`) that render on the server with zero client JS.
-- **Framer Motion** for the small, restrained animations the design calls for.
+- **Lucide** icons. Charts are hand-rolled SVG (`src/components/charts`) that
+  render on the server with zero client JS; there is no charting library.
+- Animations are CSS transitions; there is no animation library.
 
 > **Decision — shadcn/ui (copy-in) vs. a packaged component library (MUI, Chakra).**
 > A packaged library is faster to start but owns your markup and fights you on
@@ -293,12 +306,10 @@ The [Vercel AI SDK](https://sdk.vercel.ai) (`ai` v7) gives one `streamText` /
 | i18n                 | `next-intl` v4                   | ICU plurals, cookie-driven locale, first-class App Router/RSC support     |
 | Theming              | `next-themes`                    | SSR-safe dark mode with no flash-of-wrong-theme (nonce-bound boot script) |
 | Client state         | `zustand` v5                     | Tiny pub-sub store for privacy-blur + display currency; no provider tree  |
-| Forms + validation   | `react-hook-form` + `zod`        | Uncontrolled-input performance; `zod` schemas shared by forms *and* env   |
 | Schema validation    | `zod`                            | One validator for env, server-action inputs, and API bodies              |
-| Spreadsheets         | `exceljs` + SheetJS (`xlsx`)     | Server-side XLSX export and import without shipping a parser to the client|
+| Spreadsheets         | SheetJS (`xlsx`, CDN 0.20.x)     | Server-side .xls/.xlsx import without shipping a parser to the client     |
 | Lint + format        | **Biome**                        | One fast Rust tool replacing ESLint + Prettier; near-zero config drift    |
-| Tests                | **Vitest** + Testing Library     | Vite-native speed; `happy-dom` for component tests                        |
-| E2E                  | **Playwright**                   | Cross-browser flows for the auth + sync paths                             |
+| Tests                | **Vitest** (node environment)    | Vite-native speed; data-layer tests on a real in-memory SQLite            |
 | Secret scanning      | **gitleaks**                     | Pre-commit hook + CI; a finance repo must never leak a key                |
 
 ---
@@ -312,14 +323,28 @@ Three representative flows show how the pieces compose.
 1. The browser requests `/` (the dashboard).
 2. [`src/proxy.ts`](src/proxy.ts) runs first: it checks for a session cookie
    (PIN-mode `fc_session` or an Auth.js cookie). No session and not a public path
-   → redirect to `/lock`. It also mints a per-request CSP nonce, exposes it via
-   the `x-nonce` header (so the root layout can read it through `headers()` and
-   feed it to scripts that need to be allowed) and writes the matching
-   `Content-Security-Policy` response header.
+   → redirect to `/lock`. It also mints a per-request CSP nonce and puts it on
+   the **request** it forwards — as `x-nonce` (the root layout reads it through
+   `headers()` for the theme script) and inside a `Content-Security-Policy`
+   request header (Next reads the nonce from there to stamp its own scripts) —
+   and writes the matching `Content-Security-Policy` response header. Headers
+   set only on the response would reach the browser but not the render.
 3. The dashboard page is an **async server component**. It calls
-   `getCurrentSession()` once, then fires its data queries *in parallel*
-   (`Promise.all`) — month summaries, account tiles, top categories, the digest.
-   Each query is scoped by `userId`.
+   `getCurrentSession()`, then fires its data queries *in parallel*
+   (`Promise.all`) — month summaries, account tiles, top categories, insights.
+   Each query is scoped by `userId`. `getCurrentSession()` and `getUser()` are
+   wrapped in React's `cache()`, so the page, the shell and every helper share
+   one session lookup and one user row per render; the session's
+   `last_activity_at` is rewritten only when more than a minute old, so most
+   renders do no write at all. Queries are shaped for one round trip each:
+   the six months of the flow chart (and the two month KPIs, which are its
+   last two points) come from one `GROUP BY month` query, the coach's
+   per-month categories likewise, and per-user lookups have indexes
+   (migration `0030`). The shell (sidebar, topbar, the bell's first list of
+   insights) is rendered once by the `(app)` route-group layout rather than by
+   each page; it persists across client navigation, so the topbar heading is
+   derived from the pathname on the client. The bell's insights and the
+   dashboard's come from one request-memoized call.
 4. The server renders HTML and streams it. The client receives a painted page;
    only the genuinely interactive bits (the privacy toggle, charts that need
    hover) hydrate as client components.
@@ -354,10 +379,17 @@ See [`src/app/api/advisor/chat/route.ts`](src/app/api/advisor/chat/route.ts):
    consented, return 403; the UI shows a one-time modal and retries.
 5. **Context** — `buildAdvisorContext()` assembles a small, **redacted** JSON
    snapshot (rounded aggregates, redacted merchant names — never rows). See
-   [§8.2](#82-the-context-the-only-thing-the-model-sees).
-6. **Persist-then-stream** — the user's message is saved *before* the model call
-   (so a crash mid-stream doesn't lose it); `streamText` streams the reply; the
-   assistant message is persisted in `onFinish`.
+   [§8.2](#82-the-context-the-only-thing-the-model-sees). It is built *while*
+   the turn is persisted (step 6), not after it.
+6. **Persist-then-stream** — the user's message is saved *before* the model call,
+   in one batch with the conversation and its title (so a crash mid-stream
+   doesn't lose it); `streamText` streams the reply; the assistant message is
+   persisted in `onEnd`.
+7. **Bounded, cache-friendly calls** — the system prompt holds nothing
+   per-request (the snapshot is dated by day), so consecutive turns share a
+   prefix a provider's prompt cache can serve; history is the last 20 messages;
+   replies are capped at 1,500 tokens; and the request's abort signal stops the
+   generation when the client goes away.
 
 ---
 
@@ -379,8 +411,9 @@ The table families:
 - **Taxonomy & money rules** — `categories` (shared, system-seeded),
   `category_rules` (built-in rules have `user_id IS NULL`; a user's learned rules
   carry their id), `budgets` (per-user).
-- **Derived intelligence** — `recurring_subscriptions`, `insights`,
-  `investor_profiles`, `goals`, plus the Travels caches (`travel_city_labels`,
+- **Derived intelligence** — `recurring_subscriptions`, `insight_dismissals`
+  (the `insights` table is legacy and no longer written), `investor_profiles`,
+  `goals`, plus the Travels caches (`travel_city_labels`,
   `city_countries`).
 - **AI** — `advisor_conversations`, `advisor_messages`.
 - **Ops** — `audit_log`.
@@ -428,18 +461,70 @@ the key — yields nothing. (See [§7.1](#71-encryption-at-rest).)
 ### 6.3 Migrations: a custom runner
 
 Migrations are generated by `drizzle-kit` but **applied by a hand-written runner**
-([`scripts/migrate.ts`](scripts/migrate.ts)), invoked via `pnpm db:migrate` and in
-the Vercel build.
+([`src/db/migrator.ts`](src/db/migrator.ts)), driven by
+[`scripts/migrate.ts`](scripts/migrate.ts) (`pnpm db:migrate`, and the Vercel
+build) and by the test fixture — so every test run exercises the same runner
+production uses.
 
 > **Decision — a custom migrator vs. `drizzle-orm/libsql/migrator`.** The built-in
 > migrator emitted Postgres-flavored DDL for its bookkeeping table and batched
 > multi-statement requests that Turso's strict HTTP parser rejects. Rather than
 > fight the abstraction, the runner reads the same `_journal.json`, splits each
-> file on drizzle's own `--> statement-breakpoint` marker, applies statements one
-> at a time, and records the *same* SHA-256 hash drizzle uses — so a DB previously
-> migrated by the official tool stays compatible. When a dependency's abstraction
-> doesn't fit, owning the 100 lines underneath it is often cheaper than working
-> around it forever.
+> file on drizzle's own `--> statement-breakpoint` marker, and records the *same*
+> SHA-256 hash drizzle uses — so a DB previously migrated by the official tool
+> stays compatible. When a dependency's abstraction doesn't fit, owning the 100
+> lines underneath it is often cheaper than working around it forever.
+
+**Each migration is atomic.** Its statements and its `__drizzle_migrations` row
+go in one `client.batch(…, "write")` — a single transaction on local SQLite and
+on Turso alike. A crash or a failing statement leaves no half-applied
+migration; the next run starts it again from the top. (Before this, statements
+ran one at a time, so a multi-statement migration could stop half-way and then
+fail forever on "duplicate column".) New migrations are still written to be
+additive and re-entrant (`IF NOT EXISTS`, `OR IGNORE`) as a second line of
+defense.
+
+### 6.4 Transaction semantics
+
+Rules every write path follows:
+
+- **T1 — one logical write, one batch.** A write that spans several statements
+  is a single `db.batch([...])`: atomic, and one round trip on both local
+  SQLite and Turso. Statements in a batch run in order on one connection, so a
+  later one can use `last_insert_rowid()` or a subquery over an earlier one's
+  effect instead of a read in between.
+- **T2 — no network inside a transaction.** No LLM or bank call ever holds a
+  lock. An interactive `db.transaction()` is used only when a statement needs a
+  value an earlier one returned and SQL cannot express it.
+- **T3 — derive, then replace.** Derived data (recurring, transfers,
+  recategorization) is computed from a read, then applied in one batch whose
+  statements re-check what the read assumed (owner, "not a manual pick"), so a
+  user decision made in between wins and a lost race converges on the next run.
+- **T4 — constraints decide uniqueness** where an index exists. Where one
+  cannot be added safely (`category_rules` — existing databases may hold
+  duplicates), the batch puts its UPDATE first: drizzle batches are deferred
+  transactions, so the first write takes the lock and the following
+  `INSERT … WHERE NOT EXISTS` runs under it.
+- **T5 — every connection waits.** libSQL keeps a pool and a transaction
+  borrows its own connection, so a per-connection `PRAGMA` reaches only one of
+  them. The busy timeout is set through `createClient({ timeout })`, which
+  applies it to every pooled connection; foreign keys are on by default on
+  each; WAL is a property of the file and is set once.
+
+| Operation | Atomic unit |
+|---|---|
+| Migration (statements + bookkeeping row) | one batch |
+| Ingest chunk / finalize | one `INSERT` / one batch |
+| Re-link adoption, PIN change | one batch each |
+| Undo an import (balances, rows, batch record), reset all | one batch each |
+| Recurring reconcile, transfer tagging, recategorization | one batch each |
+| Learned-rule upsert | one batch (update, then insert-if-absent) |
+| Chat turn start (conversation, user message, title) | one batch |
+| Delete all data (local mode) | one batch |
+
+The backup endpoint reads through the same rules: `VACUUM INTO` a temp file
+next to the database writes a consistent copy as of one read transaction,
+including commits still in the WAL that a plain copy of the main file misses.
 
 ---
 
@@ -456,17 +541,29 @@ architectural shape of it.
 - **Cipher:** AES-256-GCM (authenticated — tampering is detected on decrypt).
 - **KDF:** `scrypt` with `N = 2^16`, deliberately expensive to make brute force
   costly.
-- **Key derivation:**
-  - PIN mode: `key = scrypt(PIN ∷ APP_SECRET, perUserSalt)`. Both a thing the user
-    *knows* (PIN) and a thing on the *server* (`APP_SECRET`, in `.env`, never in
-    the DB) are required. Steal the database alone → you have ciphertext and
-    nothing else.
-  - OAuth mode: `key = scrypt("oauth" ∷ APP_SECRET, perUserSalt)`. There's no
-    user-held secret in a hosted flow, so the key rests on `APP_SECRET` + salt.
-    The `oauth::` domain-separation prefix guarantees the same secret and salt
-    derive a *different* key than PIN mode would. This is the documented, weaker
-    tradeoff of hosted mode: a full server compromise (DB **and** `APP_SECRET`)
-    decrypts OAuth users' data. PIN mode remains strictly stronger.
+- **Envelope encryption** ([`src/lib/auth/keys.ts`](src/lib/auth/keys.ts)): each
+  user's columns are encrypted with one random 32-byte data key (DEK). The DEK is
+  stored only wrapped, in `users.wrapped_dek` (`v1:` + AES-256-GCM, associated
+  data `fc:dek:v1:<userId>` so a wrapped key can't be moved to another user),
+  under a key-encryption key (KEK):
+  - PIN mode: `KEK = scrypt("kek::v1::" ∷ PIN ∷ APP_SECRET, perUserSalt)`. Both a
+    thing the user *knows* (PIN) and a thing on the *server* (`APP_SECRET`, in
+    `.env`, never in the DB) are required. Steal the database alone → you have
+    ciphertext and nothing else.
+  - OAuth mode and guests: `KEK = HKDF-SHA256(APP_SECRET, perUserSalt,
+    "financial-coach::kek::oauth::v1")`. There's no user-held secret in a hosted
+    flow, so the key rests on `APP_SECRET` + salt; `APP_SECRET` has ≥ 32
+    characters of entropy, so a fast KDF loses nothing and no request pays for
+    scrypt. This is the documented, weaker tradeoff of hosted mode: a full
+    server compromise (DB **and** `APP_SECRET`) decrypts OAuth users' data. PIN
+    mode remains strictly stronger.
+  - Changing the PIN re-wraps the DEK; no ciphertext is rewritten and bank
+    links keep working.
+  - Users from before envelope encryption (`wrapped_dek IS NULL`) keep their
+    derived key (`scrypt(PIN ∷ APP_SECRET, salt)` / `scrypt("oauth" ∷
+    APP_SECRET, salt)`) as their DEK; it is wrapped on their next unlock or
+    OAuth request. Once a key is stored, an unwrap failure is an error — there
+    is no fallback to the derived key.
 
 > **Decision — encrypt columns, not the whole file.** Whole-database encryption
 > (e.g. SQLCipher) protects everything but needs the key resident for *all*
@@ -483,7 +580,7 @@ Persisted in the `sessions` table ([`src/lib/auth/session.ts`](src/lib/auth/sess
 
 - The cookie holds a 256-bit random token; the DB stores only its **SHA-256
   hash**, so DB theft doesn't yield a usable cookie.
-- The per-session encryption key is **wrapped** with an `APP_SECRET`-derived key
+- The session's data key (the user's DEK) is **wrapped** with an `APP_SECRET`-derived key
   before storage — unwrapping needs `APP_SECRET`. Rotate `APP_SECRET` and all
   sessions die (fail-safe).
 - 15-minute inactivity timeout; stale rows are deleted on access.
@@ -588,8 +685,9 @@ principles and grounds them in your real numbers is a feature.
 
 A "provider" is any source of accounts + transactions. The discriminator is
 `requisitions.provider`; downstream tables (`institutions`, `accounts`,
-`transactions`) are provider-agnostic and just hang off a requisition.
-[`src/lib/providers/types.ts`](src/lib/providers/types.ts) defines the contract.
+`transactions`) are provider-agnostic and just hang off a requisition. The
+contract is the ingestion pipeline's input ([§9.2](#92-sync-and-dedup)):
+a provider fetches and normalizes rows, and `ingestTransactions` does the rest.
 Three providers implement it:
 
 - **GoCardless Bank Account Data** (PSD2/Nordigen) — the primary, broad-coverage
@@ -612,12 +710,23 @@ Three providers implement it:
 
 ### 9.2 Sync and dedup
 
-Sync pulls **booked** transactions (pending ones can change or vanish), normalizes
-them, and upserts keyed by the provider's stable transaction id with fallbacks
-(see each provider's `normalize.ts`). Re-running sync is therefore idempotent.
-Right after a sync, the cheap deterministic categorizer (rules only, no LLM) runs
-so new rows aren't uncategorized for long, and the recurring-subscription detector
-refreshes.
+Sync pulls **booked** transactions (pending ones can change or vanish) from
+`last_synced_at − 10 days` (90 days on the first sync), normalizes them, and hands
+them to the ingest pipeline ([`src/lib/ingest/pipeline.ts`](src/lib/ingest/pipeline.ts)),
+the only code that inserts transactions, for every source. A transaction is
+identified by `(account_id, external_id)`; rows are categorized by rules and
+keywords before insert, and re-running a sync inserts nothing.
+
+**Re-linking a bank.** Consents expire and the user links the bank again. Neither
+provider promises the same account id under a new consent, so
+[`src/lib/accounts/link.ts`](src/lib/accounts/link.ts) decides, per account:
+the same provider account id, or the same account number (a per-user blind
+index, `accounts.iban_hash`) matching exactly one existing account at that bank,
+continues the existing account — its history, budgets and sync cursor kept;
+when nothing proves it either way, the user is asked ("same as X" or "new
+account") before anything is linked or synced; otherwise it is a new account. A
+continued account's overlap with the old consent is matched by booking date and
+amount, since transaction ids can change with the consent too.
 
 ### 9.3 CSV / XLSX import as a first-class provider
 
@@ -629,6 +738,12 @@ browser; an AI-assisted column mapper handles unfamiliar bank export formats; an
 every import is grouped under an `import_batches` row so a bad upload can be
 deleted as a unit.
 
+A mapping the LLM inferred is remembered per user in `import_mappings`, keyed by
+a hash of the file's header row (metadata lines above it vary between exports;
+the header row does not). The next export from that bank is parsed with the
+stored mapping and no model call. Forcing AI detection bypasses the memo and
+replaces it — the way to fix a mapping that was wrong.
+
 ---
 
 ## 10. The categorization pipeline
@@ -637,21 +752,37 @@ Categorizing a transaction is a cost/accuracy ladder
 ([`src/lib/categorize/index.ts`](src/lib/categorize/index.ts)). For each pending
 row, in order:
 
-1. **Deterministic rules** (`category_rules`) — fast, free, exact. Confidence 1.0.
+1. **Deterministic rules** (`category_rules`) — fast, free, exact.
 2. **Well-known-merchant keywords** — a curated heuristic for the long tail of
    common merchants. Free.
-3. **LLM fallback** — only for what the first two miss, with PII redacted, capped
-   per run, and flagged `needsReview` when the model's confidence is low.
+3. **LLM fallback** — only for what the first two miss, with PII redacted, and
+   flagged `needsReview` when the model's confidence is below 0.7.
+
+Ingest runs steps 1–2 in memory, so rows land categorized. The background run
+(`categorizePendingBatch`) applies the rule and keyword matches as one batch,
+then groups the rest **by merchant** and asks the model about up to 25
+merchants in one structured call. Each answer is applied as one batch: every
+row of each merchant, plus — for an answer at confidence ≥ 0.85 — a rule with
+`created_by = 'ai'` (priority 50: below the user's own rules, above the
+built-in ones), so that merchant is never sent to the model again. A
+low-confidence answer stays flagged for the user rather than being re-asked:
+the same question gets the same answer.
+
+Each row records **how** it was categorized in `category_source` (`rule`,
+`keyword`, `llm`, `user`). That replaced reading provenance from sentinel
+confidences (100 = user, 95 = keyword, 1 = rule); migration `0032` backfilled it
+from them — an old LLM answer that happened to round to exactly 95 or 1 is
+indistinguishable from a keyword or rule match, which is why the column exists.
 
 > **Decision — cheapest reliable signal first.** Hitting an LLM for "MERCADONA →
 > Groceries" would be slow, costly, and *less* reliable than a rule. So the LLM is
-> the last resort, not the first reach. Confidence is encoded so the system stays
-> honest: rules/keywords are authoritative, LLM guesses below threshold go to a
-> review queue, and **only a user's manual pick ever reaches confidence 100** — a
-> sentinel the re-correction pass (`recorrectCategories`) refuses to overwrite.
-> The batch path is cursor-based so the background "categorize everything" loop
-> always terminates even if the LLM is offline (failed rows fall behind the cursor
-> and are retried next run, never stalling it).
+> the last resort, not the first reach, and it is asked about each merchant
+> once: per merchant, not per row, and then never again once a confident answer
+> became a rule. A user's pick (`category_source = 'user'`) is never overwritten
+> by an automatic pass. The batch path is cursor-based so the background loop
+> always terminates, and **the first failed model call ends the LLM step**: the
+> run reports `unavailable` and continues with rules and keywords only, so an
+> unreachable provider costs one call, not one per row.
 
 > **Decision — learn from corrections, scoped per user.** A manual re-categorize
 > doesn't just fix one row. The user can promote it to a reusable rule
@@ -681,7 +812,11 @@ decision.
   — groups transactions by normalized merchant, snaps inter-charge gaps to known
   cadences (weekly … yearly), and accepts a group only when amount variance is
   low. Inflows (payroll) use a tighter variance bar than outflows. Sign convention
-  in the stored row lets the forecast bucket each as income vs. spending.
+  in the stored row lets the forecast bucket each as income vs. spending. Each
+  series has a `series_key` (direction + normalized merchant), unique per user:
+  a re-run updates the same row (same id), the user's pause/resume
+  (`user_status`) always wins over detection, and a series no longer found is
+  removed only if the user never set a status on it.
   `getUpcomingRenewals` projects each active sub's next charge (`lastSeenAt +
   frequencyDays`, rolled forward to the future) for a renewal calendar, and a
   `recurring_increase` insight rule flags a charge that jumped ≥15% above its
@@ -707,11 +842,14 @@ decision.
   totals at frequent merchants) + a **median** of variable residuals. Median, not
   mean, so one moving-week or holiday doesn't poison future months. Each layer is
   separately explainable in the UI.
-- **Insights** ([`insights/engine.ts`](src/lib/insights/engine.ts)) — a
-  rule-based, **idempotent** engine: it deletes non-dismissed insights and
-  re-derives them from current state (dismissed ones survive). Overspend, low
-  balance, needs-review, on-track, goal-near. No LLM; titles/bodies are
-  pre-rendered in the user's locale so the client needs no translation context.
+- **Insights** ([`insights/engine.ts`](src/lib/insights/engine.ts)) — rules
+  computed **on read**, never stored: overspend, low balance, needs-review,
+  on-track, goal-near, price increase. Each insight has a key naming what it is
+  about (`overspend:<categoryId>:<YYYY-MM>`, `recurring_increase:<id>:<cents>`, …);
+  dismissing stores the key in `insight_dismissals` and hides it for 30 days, so
+  a new month or a new price is a new insight. Dashboard, bell and email digest
+  all read computed − dismissed. No LLM; text lives in `messages/*.json` and is
+  rendered in the user's locale on the server.
 - **Opportunities** ([`opportunities/opportunities.ts`](src/lib/opportunities/opportunities.ts))
   — five generators (subscription overlap, top overspend, goal projection,
   savings runway, emergency-fund gap), each producing a concrete euro impact from
@@ -743,8 +881,9 @@ token — Vercel Cron sends it automatically — and return `503` when no secret
 configured, so the surface is closed by default.
 
 - `cron/sync` runs the no-key-needed recompute for every non-guest user
-  ([`cron/jobs.ts`](src/lib/cron/jobs.ts)): refresh insights, re-detect
-  transfers, snapshot balances. Each user is isolated in its own try/catch so one
+  ([`cron/jobs.ts`](src/lib/cron/jobs.ts)): re-detect recurring subscriptions
+  and transfers, snapshot balances (insights need nothing: they are computed on
+  read). Each user is isolated in its own try/catch so one
   failure never aborts the batch. (Pulling *new* bank transactions headlessly is
   deliberately out of scope — it's provider-specific and touches the sensitive
   key-handling path; an in-app sync still does that.)
@@ -754,8 +893,8 @@ configured, so the surface is closed by default.
 > **Decision — the email digest is the one outbound channel, so it's doubly
 > gated.** Email is the only feature that sends user-derived content off the box.
 > It fires only when *both* a per-user `digest_email_opt_in` (off by default) and
-> a `RESEND_API_KEY` are present, and it reuses already-localized insight rows so
-> no extra data is shaped for it. Delivery uses Resend's HTTPS API via `fetch` —
+> a `RESEND_API_KEY` are present, and it sends the same insights the dashboard
+> shows, rendered in the user's language, so no extra data is shaped for it. Delivery uses Resend's HTTPS API via `fetch` —
 > no SDK dependency added. Web push (which needs VAPID signing and a heavier
 > library) is intentionally deferred.
 
@@ -785,13 +924,17 @@ Most state is server state (the DB) reflected through RSC. The little genuinely
 `zustand` stores ([`src/lib/privacy`](src/lib/privacy),
 [`src/lib/currency`](src/lib/currency)), persisted to `localStorage`. No context
 provider tree, no prop-drilling; a component subscribes to exactly the slice it
-needs. `@tanstack/react-query` is available for the few client-fetched bits.
+needs. The few client-fetched bits call server actions directly.
 
 ### 12.3 i18n, theming, PWA
 
 - **i18n** — `next-intl` with full ES/EN parity (enforced socially via the PR
   checklist), ICU plurals, and a cookie-driven locale resolved in
-  [`src/lib/i18n`](src/lib/i18n). Spanish is the default locale.
+  [`src/lib/i18n`](src/lib/i18n). Spanish is the default locale. Server
+  components translate on the server; the client provider receives only the
+  namespaces client components read ([`client-messages.ts`](src/lib/i18n/client-messages.ts),
+  about half the catalog), and a test fails when a client component uses one
+  that is not listed.
 - **Theming** — `next-themes` with the anti-FOUC boot script bound to the CSP
   nonce, so the strict policy doesn't flash the wrong theme.
 - **PWA** — a manifest + service worker make it installable on iOS/Android, with
@@ -807,8 +950,10 @@ The testing strategy is a pyramid weighted toward the layers where bugs *hurt*:
   redaction, categorization rules/heuristics, recurring detection, travel location
   parsing, CSV parsing, the advisor context/prompt, currency math. These are
   fast, deterministic, and where a regression would corrupt data or leak PII.
-- **Component tests** (Testing Library + `happy-dom`) cover interactive UI.
-- **E2E (Playwright)** covers the critical end-to-end flows.
+- Tests run in Vitest's node environment (no DOM): server code, the proxy
+  (on real `NextRequest` objects) and the service worker's policy.
+- **End-to-end** flows are checked in a browser against a production build on a
+  scratch database; there is no automated browser suite yet.
 - A shared in-memory DB fixture ([`src/test/db-fixture.ts`](src/test/db-fixture.ts))
   lets data-layer tests run against a real (ephemeral) SQLite instance.
 
@@ -876,9 +1021,11 @@ src/
 ├── proxy.ts                  # Next 16 middleware: auth gate + per-request CSP nonce
 ├── app/                      # App Router: pages (RSC), layouts, API route handlers
 │   ├── api/                  #   streaming chat, auth, backup, export, exchange-rate, health, cron/*
-│   ├── (pages)/              #   dashboard, transactions, categories, subscriptions,
-│   │                         #   advisor, goals, predictions, opportunities, travels,
-│   │                         #   import, banks, settings, onboarding, lock
+│   ├── (app)/                #   signed-in pages under one shell (layout.tsx), plus
+│   │                         #   loading.tsx and error.tsx: dashboard, transactions,
+│   │                         #   categories, subscriptions, advisor, goals, predictions,
+│   │                         #   opportunities, travels, import, banks, settings
+│   ├── lock/  onboarding/    #   the two pages outside the shell
 │   └── layout.tsx            #   root: theme + intl providers, PWA register
 ├── components/               # UI. ui/ = shadcn primitives; the rest are feature components
 │   ├── ui/  charts/  dashboard/  advisor/  travels/  shell/  pin/ …

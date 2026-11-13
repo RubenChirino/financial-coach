@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.6.2/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.5/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -44,7 +44,29 @@
       "style": {
         "noNonNullAssertion": "off",
         "useImportType": "error",
-        "useNodejsImportProtocol": "error"
+        "useNodejsImportProtocol": "error",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "ai": {
+                "importNames": [
+                  "generateText",
+                  "generateObject",
+                  "streamText",
+                  "streamObject",
+                  "embed",
+                  "embedMany"
+                ],
+                "message": "Only src/lib/llm/gateway.ts may call a model. Use resolveModelForUser() so consent, quotas and the user's provider choice apply."
+              },
+              "@ai-sdk/anthropic": "Only src/lib/llm/gateway.ts may call a model. Use resolveModelForUser() so consent, quotas and the user's provider choice apply.",
+              "@ai-sdk/openai": "Only src/lib/llm/gateway.ts may call a model. Use resolveModelForUser() so consent, quotas and the user's provider choice apply.",
+              "@ai-sdk/google": "Only src/lib/llm/gateway.ts may call a model. Use resolveModelForUser() so consent, quotas and the user's provider choice apply.",
+              "ollama-ai-provider-v2": "Only src/lib/llm/gateway.ts may call a model. Use resolveModelForUser() so consent, quotas and the user's provider choice apply."
+            }
+          }
+        }
       },
       "performance": {
         "noImgElement": "warn"
@@ -79,5 +101,11 @@
   },
   "markdown": {
     "formatter": { "enabled": false }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/lib/llm/gateway.ts"],
+      "linter": { "rules": { "style": { "noRestrictedImports": "off" } } }
+    }
+  ]
 }

@@ -57,6 +57,9 @@
     "importTransactionsGuest": "Importar o añadir movimientos",
     "loading": "Cargando…",
     "notAvailable": "No disponible",
+    "pageErrorBody": "Algo falló por nuestra parte. Tus datos están a salvo: inténtalo de nuevo.",
+    "pageErrorTitle": "No se pudo cargar esta página",
+    "retry": "Reintentar",
     "save": "Guardar",
     "success": "Hecho"
   },
@@ -202,6 +205,9 @@
     "catDoneDetail": "{count, plural, =0 {Nada nuevo que categorizar} one {# movimiento categorizado} other {# movimientos categorizados}}",
     "catDoneCorrected": "{count, plural, one {# corregido} other {# corregidos}}",
     "catDoneErrors": "{count, plural, one {# para la próxima vez} other {# para la próxima vez}}",
+    "catSkippedConsent": "{count, plural, one {# sin categorizar} other {# sin categorizar}}: aprueba la IA en la nube en Ajustes → Coach IA para ordenar el resto.",
+    "catSkippedRateLimited": "{count, plural, one {# para la próxima vez} other {# para la próxima vez}}: se alcanzó el límite de IA, inténtalo en un minuto.",
+    "catSkippedUnavailable": "{count, plural, one {# para la próxima vez} other {# para la próxima vez}}: el modelo de IA no respondió, así que las reglas y palabras clave ordenaron el resto.",
     "catErrorTitle": "Categorización detenida",
     "catClose": "Descartar",
     "guestNudge": "Inicia sesión para guardar cambios — el modo invitado es solo lectura.",
@@ -437,6 +443,8 @@
     "historyDeleteError": "No se pudo eliminar. Inténtalo de nuevo.",
     "historyDeleting": "Eliminando…",
     "historyDuplicate": "{n} duplicadas omitidas",
+    "historyRunning": "Importando…",
+    "historyInterrupted": "Interrumpida — elimínala o vuelve a importar el mismo archivo para añadir las filas que faltan",
     "historyEmpty": "Aún no hay importaciones.",
     "historyInserted": "{n} importadas",
     "historyPasted": "Datos pegados",
@@ -594,7 +602,6 @@
     "confirmPinLabel": "Confirmar PIN nuevo",
     "changePinSubmit": "Cambiar PIN",
     "changePinSuccess": "PIN actualizado",
-    "changePinWarning": "Tras cambiar el PIN, las conexiones bancarias pueden necesitar volver a autorizarse en la próxima sincronización.",
     "dangerZone": "Zona peligrosa",
     "deleteAllTitle": "Eliminar todos los datos",
     "deleteAllDescription": "Borra cada transacción, vínculo bancario, objetivo e insight almacenado en este dispositivo. Esto no se puede deshacer.",
@@ -727,7 +734,9 @@
       "tryAgain": "Volver",
       "done": "Continuar",
       "toastTitle": "Banco conectado correctamente",
-      "toastDescription": "{accounts, plural, one {# cuenta} other {# cuentas}} conectada · {inserted, plural, one {# movimiento} other {# movimientos}} importado"
+      "toastDescription": "{accounts, plural, one {# cuenta} other {# cuentas}} conectada · {inserted, plural, one {# movimiento} other {# movimientos}} importado",
+      "needsChoice": "{count, plural, one {# cuenta necesita} other {# cuentas necesitan}} tu confirmación antes de sincronizar.",
+      "reviewAccounts": "Revisar cuentas"
     },
     "providers": {
       "gocardless": "GoCardless",
@@ -788,7 +797,17 @@
     "deleteAccountTitle": "Eliminar cuenta",
     "deleteAccountBody": "¿Eliminar permanentemente «{name}» y todas sus transacciones? Esta acción no se puede deshacer.",
     "deleteAccountDone": "Cuenta eliminada",
-    "deleteAccountError": "No se pudo eliminar la cuenta"
+    "deleteAccountError": "No se pudo eliminar la cuenta",
+    "relink": {
+      "title": "Confirma las cuentas reconectadas",
+      "hint": "Estas cuentas llegaron con una nueva conexión a un banco que ya tenías vinculado. Indica si cada una continúa una cuenta que ya tienes, para no contar su historial dos veces. No se sincronizarán hasta que respondas.",
+      "question": "¿{account} de {bank} es una cuenta que ya tienes?",
+      "sameAs": "La misma que {account}",
+      "newAccount": "Es una cuenta nueva",
+      "resolved": "Cuenta vinculada",
+      "imported": "{count, plural, one {# movimiento importado} other {# movimientos importados}}",
+      "failed": "No se pudo vincular la cuenta"
+    }
   },
   "goals": {
     "title": "Objetivos",
@@ -937,5 +956,37 @@
     "goalFreedom": "Independencia financiera",
     "goalOther": "Otra cosa",
     "disclaimer": "Estas sugerencias son orientación educativa, no asesoramiento de inversión. Nunca recomendamos acciones, fondos ni productos financieros específicos. Para decisiones sobre productos concretos consulta a un asesor financiero regulado."
+  },
+  "insights": {
+    "needs_review": {
+      "title": "{count, plural, one {# movimiento sin revisar} other {# movimientos sin revisar}}",
+      "body": "Algunos movimientos importados aún no tienen categoría. Clasificarlos mejora los análisis.",
+      "action": "Revisar ahora"
+    },
+    "overspend": {
+      "title": "Presupuesto de {name} superado",
+      "body": "Has gastado un {pct}% más de lo presupuestado en {name} este mes.",
+      "action": "Ver presupuestos"
+    },
+    "on_track": {
+      "title": "¡Vas bien este mes!",
+      "body": "Llevas {saved} ahorrados este mes. Sigue así.",
+      "action": "Ver objetivos"
+    },
+    "low_balance": {
+      "title": "Saldo bajo en {name}",
+      "body": "El saldo de {name} es {balance}. Considera hacer una transferencia.",
+      "action": "Ver cuentas"
+    },
+    "goal_near": {
+      "title": "{emoji} ¡Casi alcanzas \"{title}\"!",
+      "body": "Llevas el {pct}% del objetivo. Un poco más y lo habrás conseguido.",
+      "action": "Ver objetivo"
+    },
+    "recurring_increase": {
+      "title": "{merchant} subió de precio",
+      "body": "El último cargo de {merchant} fue {latest}, un {pct}% más que su media de {average}.",
+      "action": "Ver suscripciones"
+    }
   }
 }

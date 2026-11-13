@@ -23,11 +23,6 @@ export async function updateCurrencyAction(currency: string): Promise<void> {
   revalidatePath("/");
 }
 
-export async function getUserCurrencyAction(): Promise<string> {
-  const user = await getUser();
-  return user?.currency ?? "EUR";
-}
-
 const VALID_PROVIDERS: LlmProvider[] = ["ollama", "anthropic", "openai", "google"];
 
 export async function updateLlmAction(provider: string, model: string): Promise<void> {

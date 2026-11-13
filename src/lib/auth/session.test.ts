@@ -18,8 +18,14 @@ vi.mock("@/lib/env", () => ({
 }));
 
 const { sessions } = await import("@/db/schema");
-const { createSession, destroyAllSessions, destroySession, getSessionByToken, INACTIVITY_MS } =
-  await import("./session");
+const {
+  ACTIVITY_WRITE_EVERY_MS,
+  createSession,
+  destroyAllSessions,
+  destroySession,
+  getSessionByToken,
+  INACTIVITY_MS,
+} = await import("./session");
 
 const USER_ID = 42;
 const ENCRYPTION_KEY = Buffer.alloc(32, 7);
@@ -89,7 +95,7 @@ describe("session store", () => {
     expect(rows).toHaveLength(0);
   });
 
-  it("bumps last_activity_at on every read (sliding expiry)", async () => {
+  it("bumps a stale last_activity_at on read (sliding expiry)", async () => {
     const token = await createSession(USER_ID, ENCRYPTION_KEY);
     // Backdate to just inside the window.
     const inWindow = Date.now() - INACTIVITY_MS + 60_000;
@@ -101,6 +107,22 @@ describe("session store", () => {
     await getSessionByToken(token);
     const row = (await fixture.db.select().from(sessions))[0];
     expect(row?.lastActivityAt.getTime()).toBeGreaterThan(inWindow);
+  });
+
+  it("skips the activity write while the stored value is under a minute old", async () => {
+    const token = await createSession(USER_ID, ENCRYPTION_KEY);
+    const recent = Date.now() - ACTIVITY_WRITE_EVERY_MS / 2;
+    await fixture.client.execute({
+      sql: "UPDATE sessions SET last_activity_at = ? WHERE 1=1",
+      args: [recent],
+    });
+    const update = vi.spyOn(fixture.db, "update");
+
+    const session = await getSessionByToken(token);
+    expect(session?.lastActivityAt).toBe(recent);
+    expect(update).not.toHaveBeenCalled();
+    const row = (await fixture.db.select().from(sessions))[0];
+    expect(row?.lastActivityAt.getTime()).toBe(recent);
   });
 
   it("destroySession removes the row", async () => {

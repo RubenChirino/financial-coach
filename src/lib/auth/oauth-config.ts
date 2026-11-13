@@ -8,8 +8,9 @@ import Google from "next-auth/providers/google";
 import MicrosoftEntraId from "next-auth/providers/microsoft-entra-id";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
-import { generateSalt } from "@/lib/crypto";
+import { generateDataKey, generateSalt } from "@/lib/crypto";
 import { env } from "@/lib/env";
+import { oauthKeySource, resolveDataKey } from "./keys";
 
 /**
  * Auth.js v5 configuration for OAuth mode.
@@ -140,29 +141,38 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       // First sign-in for this email: provision a fresh user row. PIN columns
-      // stay NULL — this user authenticates exclusively via OAuth. The
-      // encryption salt is what `deriveOAuthEncryptionKey` mixes with
-      // APP_SECRET to get the per-user AES key.
+      // stay NULL — this user authenticates exclusively via OAuth. The user
+      // gets a random data key, wrapped under the OAuth KEK (APP_SECRET + the
+      // encryption salt); see `./keys.ts`.
       const now = new Date();
-      await db.insert(users).values({
-        email,
-        oauthProvider: provider,
-        emailVerifiedAt: now,
-        name: user.name ?? null,
-        image: user.image ?? null,
-        encryptionSalt: generateSalt(),
-        // Hosted-mode defaults: Spanish UI, EUR currency, Gemini as the LLM
-        // (free tier; Ollama isn't reachable from a Vercel function). The
-        // user can change these in settings post-onboarding.
-        language: "es",
-        currency: "EUR",
-        llmProvider: "google",
-        llmModel: e.GOOGLE_MODEL,
-        // OAuth users are already on a cloud-hosted service — they implicitly
-        // consent to cloud LLM calls (same infrastructure, same trust boundary).
-        // The consent gate was designed for local-first users who might not
-        // expect their data going to third-party APIs; it doesn't apply here.
-        cloudLlmConsentAt: now,
+      const encryptionSalt = generateSalt();
+      const [created] = await db
+        .insert(users)
+        .values({
+          email,
+          oauthProvider: provider,
+          emailVerifiedAt: now,
+          name: user.name ?? null,
+          image: user.image ?? null,
+          encryptionSalt,
+          // Hosted-mode defaults: Spanish UI, EUR currency, Gemini as the LLM
+          // (free tier; Ollama isn't reachable from a Vercel function). The
+          // user can change these in settings post-onboarding.
+          language: "es",
+          currency: "EUR",
+          llmProvider: "google",
+          llmModel: e.GOOGLE_MODEL,
+          // OAuth users are already on a cloud-hosted service — they implicitly
+          // consent to cloud LLM calls (same infrastructure, same trust boundary).
+          // The consent gate was designed for local-first users who might not
+          // expect their data going to third-party APIs; it doesn't apply here.
+          cloudLlmConsentAt: now,
+        })
+        .returning({ id: users.id });
+      if (!created) return false;
+      await resolveDataKey({
+        ...oauthKeySource({ id: created.id, encryptionSalt, wrappedDek: null }),
+        initialKey: generateDataKey,
       });
       return true;
     },

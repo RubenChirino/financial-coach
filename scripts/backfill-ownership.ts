@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./load-env";
 import path from "node:path";
 import { type Client, createClient } from "@libsql/client";
 

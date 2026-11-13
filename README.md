@@ -24,12 +24,12 @@ Designed for Spanish banks first, English fully supported. Works as an installab
 
 ## Features
 
-- **PIN-gated, encrypted vault (local mode).** AES-256-GCM + scrypt. Your PIN + `APP_SECRET` together derive the at-rest key. Sessions persist across dev restarts (libSQL-backed, SHA-256-hashed cookie tokens, PIN-derived keys wrapped at rest).
+- **PIN-gated, encrypted vault (local mode).** AES-256-GCM + scrypt. A random data key encrypts your data; your PIN + `APP_SECRET` together unlock it, so changing the PIN never touches the data. Sessions persist across dev restarts (libSQL-backed, SHA-256-hashed cookie tokens, data keys wrapped at rest).
 - **OAuth sign-in (hosted mode).** Auth.js v5 with Google, Microsoft (Entra), and GitHub. Multi-user, one account per OAuth identity.
 - **libSQL / Turso backend.** Same Drizzle schema runs against a local SQLite file or a hosted Turso replica — switch via `DATABASE_URL`.
 - **Bank aggregation via GoCardless PSD2.** Spanish banks first-class; most of Europe supported. Read-only access — the app never requests payment scopes. **Demo mode** lets you explore the app with synthetic data — no API keys needed.
 - **TrueLayer connector.** Alternate Open Banking provider with better Live coverage for some banks (Santander ES, BBVA, Revolut, Monzo). Credentials stored AES-256-GCM in your local DB.
-- **CSV + XLSX import.** Drop a bank statement into the import flow — XLSX parsed server-side via SheetJS, CSV via streaming parser. Account-aware deduping, initial-balance detection.
+- **CSV + XLSX import.** Drop a bank statement into the import flow — XLSX converted server-side via SheetJS, then parsed like any CSV. Account-aware deduping, initial-balance detection.
 - **Transactions + categories.** Rule-based matcher runs first (fast, deterministic); LLM fallback categorizes the rest with a confidence score and a "needs review" queue. Full merchant editor, keyboard-driven category picker.
 - **Bento dashboard.** Net worth, monthly income/expenses, sparkline, top categories donut, recent activity — all auto-recomputed on sync.
 - **Predictions.** A dedicated forecast page that projects next months' cash flow from transparent, explainable layers — fixed income, recurring outflows, habitual spend, and a median of the variable residual (median, not mean, so one holiday month doesn't poison the projection). No black-box ML; every number is auditable.
@@ -50,7 +50,7 @@ Designed for Spanish banks first, English fully supported. Works as an installab
 - **Goals.** Track savings targets with emoji, deadline, progress bar, and optional category linking.
 - **Insights engine.** Rule-based, idempotent alerts: uncategorized transactions, budget overruns, on-track savings, low balance, near-complete goals. Dismissible, severity-ranked.
 - **Privacy mode.** One-tap balance blur across the entire UI — persisted to `localStorage`. Works globally via a React pub-sub store, no provider needed.
-- **Export wizard (CSV + PDF).** Export transactions or the daily spending heatmap from the Transactions page: pick accounts (merged chronologically when several), a period (today → 1 year, or a custom range), and CSV or a branded, print-ready PDF. The legacy `GET /api/export/transactions` full-CSV endpoint still works.
+- **Export wizard (CSV + PDF).** Export transactions or the daily spending heatmap from the Transactions page: pick accounts (merged chronologically when several), a period (today → 1 year, or a custom range), and CSV or a branded, print-ready PDF.
 - **Privacy redaction (LLM).** IBANs, card numbers, DNIs, emails, phone numbers, postal codes, long digit sequences are scrubbed from every LLM prompt — local or cloud.
 - **Spanish + English.** Full ICU-plural i18n, cookie-driven locale, mobile-first responsive layout, PWA manifest.
 
@@ -108,7 +108,7 @@ Platform one-click options (after `pnpm install`):
 
 ## System requirements
 
-- Node.js **20 LTS or newer** (24 recommended if you run Ollama locally)
+- Node.js **22 or newer** (`engines` in `package.json`)
 - pnpm 9+
 - ~500 MB disk for the app and its dependencies
 - RAM:
@@ -162,6 +162,6 @@ Contributions welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setup, 
 - [Turso](https://turso.tech) — hosted libSQL
 - [Auth.js](https://authjs.dev) — OAuth on Next.js
 - [Ollama](https://ollama.com) — local LLM runtime
-- [shadcn/ui](https://ui.shadcn.com), [Radix UI](https://www.radix-ui.com), [Lucide](https://lucide.dev), [Recharts](https://recharts.org)
+- [shadcn/ui](https://ui.shadcn.com), [Radix UI](https://www.radix-ui.com), [Lucide](https://lucide.dev)
 - [Drizzle ORM](https://orm.drizzle.team), [Next.js](https://nextjs.org), [Vercel AI SDK](https://sdk.vercel.ai)
-- [next-intl](https://next-intl.dev), [Biome](https://biomejs.dev), [Vitest](https://vitest.dev), [Playwright](https://playwright.dev)
+- [next-intl](https://next-intl.dev), [Biome](https://biomejs.dev), [Vitest](https://vitest.dev)
