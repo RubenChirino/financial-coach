@@ -15,6 +15,9 @@ const ASSET_PREFIXES = [
   // in constant time, and the handlers return 503 when no secret is set — so
   // an unconfigured deployment exposes nothing here.
   "/api/cron",
+  // Fonts are requested by every page, the lock and onboarding screens
+  // included, before there is a session.
+  "/fonts",
   "/icons",
   "/manifest.json",
   "/sw.js",

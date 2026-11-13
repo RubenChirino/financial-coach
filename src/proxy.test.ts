@@ -40,3 +40,23 @@ describe("proxy CSP nonce", () => {
     expect(redirect.headers.get("content-security-policy")).toContain("script-src");
   });
 });
+
+describe("proxy auth gate", () => {
+  it("serves static assets without a session, and gates app routes", () => {
+    for (const path of [
+      "/fonts/Inter-VariableFont_opsz_wght.ttf",
+      "/icons/icon-192.png",
+      "/manifest.json",
+      "/sw.js",
+      "/offline.html",
+    ]) {
+      expect(
+        proxy(new NextRequest(`http://localhost${path}`)).headers.get("location"),
+        path,
+      ).toBeNull();
+    }
+    expect(proxy(new NextRequest("http://localhost/goals")).headers.get("location")).toContain(
+      "/lock?from=%2Fgoals",
+    );
+  });
+});
