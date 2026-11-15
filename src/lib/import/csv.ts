@@ -1,3 +1,5 @@
+import { splitRow } from "./split-row";
+
 /**
  * CSV transaction parser — pure, no I/O.
  *
@@ -76,39 +78,6 @@ export function amountToCents(raw: string): number {
   const cents = Number.parseInt(intPart, 10) * 100 + Number.parseInt(frac || "0", 10);
   if (!Number.isFinite(cents)) throw new Error(`invalid amount "${raw}"`);
   return negative ? -cents : cents;
-}
-
-/** RFC-4180-ish single-line splitter: handles quoted commas and doubled quotes. */
-function splitCsvLine(line: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (line[i + 1] === '"') {
-          cur += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        cur += ch;
-      }
-    } else {
-      if (ch === ",") {
-        out.push(cur);
-        cur = "";
-      } else if (ch === '"' && cur === "") {
-        inQuotes = true;
-      } else {
-        cur += ch;
-      }
-    }
-  }
-  out.push(cur);
-  return out;
 }
 
 function normalizeHeader(raw: string): string {
@@ -211,7 +180,7 @@ export function parseCsv(input: string): ParseCsvResult {
     return { rows: [], errors: [], headerError: "empty file" };
   }
 
-  const rawHeader = splitCsvLine(lines[0]!).map(normalizeHeader);
+  const rawHeader = splitRow(lines[0]!).map(normalizeHeader);
   const missing = REQUIRED_HEADERS.filter((h) => !rawHeader.includes(h));
   if (missing.length > 0) {
     return {
@@ -231,7 +200,7 @@ export function parseCsv(input: string): ParseCsvResult {
   for (let i = 1; i < lines.length; i++) {
     const raw = lines[i]!;
     if (raw.trim() === "") continue; // skip blank rows silently
-    const parsed = parseRow(splitCsvLine(raw), idx, i, raw);
+    const parsed = parseRow(splitRow(raw), idx, i, raw);
     if (isParsedRow(parsed)) rows.push(parsed);
     else errors.push(parsed);
   }

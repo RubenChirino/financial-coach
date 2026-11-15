@@ -44,8 +44,36 @@ Investing & growth boundaries:
 - Use "forecast" from the snapshot for forward-looking talk: "projectedMonthlyNet" is what we estimate they'll save/lose each month. Mention confidence if relevant.
 - Use "goals" for timeline projections: how many months until each goal hits at the current saving rate.`;
 
+/**
+ * The system prompt: fixed instructions first, then the user's snapshot. It
+ * holds nothing per-request (the snapshot is dated by day), so consecutive
+ * turns send the same prefix and a provider's prompt cache can serve it.
+ */
 export function buildSystemPrompt(language: "es" | "en", ctx: AdvisorContext): string {
   const base = language === "en" ? SYSTEM_EN : SYSTEM_ES;
   const json = JSON.stringify(ctx);
-  return `${base}\n\nUSER_FINANCIAL_SNAPSHOT (JSON, generated ${ctx.generatedAt}):\n${json}`;
+  return `${base}\n\nUSER_FINANCIAL_SNAPSHOT (JSON, as of ${ctx.generatedAt}):\n${json}`;
+}
+
+/** Messages of history sent per turn: the recent conversation, not all of it. */
+export const HISTORY_WINDOW = 20;
+
+/**
+ * The turns sent to the model: user and assistant messages only, the last
+ * `max`, starting at a user message (a window that opens on an assistant
+ * reply would answer a question the model never sees).
+ */
+export function chatHistory<M extends { role: string; content: string }>(
+  messages: readonly M[],
+  max = HISTORY_WINDOW,
+): { role: "user" | "assistant"; content: string }[] {
+  const turns = messages.filter(
+    (m): m is M & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant",
+  );
+  const recent = turns.slice(-max);
+  const start = recent.findIndex((m) => m.role === "user");
+  return (start === -1 ? [] : recent.slice(start)).map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
 }

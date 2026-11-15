@@ -4,8 +4,8 @@ import { AlertTriangle, Calendar, Sparkles, TrendingUp, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import type { Insight } from "@/db/schema";
 import { dismissInsightAction } from "@/lib/insights/actions";
+import type { InsightView } from "@/lib/insights/engine";
 import { cn } from "@/lib/utils";
 
 type Severity = "info" | "warning" | "positive";
@@ -16,7 +16,7 @@ const SEVERITY_STYLES: Record<Severity, { bg: string; fg: string }> = {
   info: { bg: "var(--brand-primary-soft)", fg: "var(--brand-primary)" },
 };
 
-function InsightIcon({ kind, severity }: { kind: Insight["kind"]; severity: Severity }) {
+function InsightIcon({ kind, severity }: { kind: InsightView["kind"]; severity: Severity }) {
   const Icon =
     severity === "warning"
       ? AlertTriangle
@@ -28,7 +28,7 @@ function InsightIcon({ kind, severity }: { kind: Insight["kind"]; severity: Seve
   return <Icon className="h-4 w-4" strokeWidth={2} />;
 }
 
-function InsightRow({ insight, dismissLabel }: { insight: Insight; dismissLabel: string }) {
+function InsightRow({ insight, dismissLabel }: { insight: InsightView; dismissLabel: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [dismissed, setDismissed] = useState(false);
@@ -40,7 +40,7 @@ function InsightRow({ insight, dismissLabel }: { insight: Insight; dismissLabel:
   function onDismiss() {
     setDismissed(true);
     startTransition(async () => {
-      await dismissInsightAction(insight.id);
+      await dismissInsightAction(insight.key);
       router.refresh();
     });
   }
@@ -82,7 +82,7 @@ function InsightRow({ insight, dismissLabel }: { insight: Insight; dismissLabel:
 }
 
 interface InsightsListProps {
-  insights: Insight[];
+  insights: InsightView[];
   dismissLabel: string;
   titleLabel: string;
 }
@@ -96,7 +96,7 @@ export function InsightsList({ insights: rows, dismissLabel, titleLabel }: Insig
         {titleLabel}
       </div>
       {rows.map((ins) => (
-        <InsightRow key={ins.id} insight={ins} dismissLabel={dismissLabel} />
+        <InsightRow key={ins.key} insight={ins} dismissLabel={dismissLabel} />
       ))}
     </div>
   );

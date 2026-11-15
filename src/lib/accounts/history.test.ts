@@ -15,14 +15,14 @@ async function seed() {
   await fixture.db.insert(users).values({ encryptionSalt: "salt" });
   const inst = await fixture.db
     .insert(institutions)
-    .values({ gocardlessId: "INST-1", name: "Bank", logoUrl: null, country: "ES" })
+    .values({ providerInstitutionId: "INST-1", name: "Bank", logoUrl: null, country: "ES" })
     .returning({ id: institutions.id });
   const req = await fixture.db
     .insert(requisitions)
     .values({
       userId: USER,
       institutionId: inst[0]!.id,
-      gocardlessRequisitionId: "ENC",
+      providerRequisitionId: "ENC",
       status: "linked",
       reference: "ref",
       link: null,
@@ -32,7 +32,7 @@ async function seed() {
     {
       userId: USER,
       requisitionId: req[0]!.id,
-      gocardlessAccountId: "ENC-CASH",
+      providerAccountId: "ENC-CASH",
       name: "Cash",
       kind: "cash",
       isManual: true,
@@ -42,7 +42,7 @@ async function seed() {
     {
       userId: USER,
       requisitionId: req[0]!.id,
-      gocardlessAccountId: "ENC-LOAN",
+      providerAccountId: "ENC-LOAN",
       name: "Car loan",
       kind: "loan",
       isManual: true,

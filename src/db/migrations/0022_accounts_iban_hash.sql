@@ -1,0 +1,1 @@
+ALTER TABLE `accounts` ADD `iban_hash` text;

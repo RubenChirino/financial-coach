@@ -68,7 +68,7 @@ async function ensureManualRequisition(userId: number, encryptionKey: Buffer): P
   const existingInst = await db
     .select({ id: institutions.id })
     .from(institutions)
-    .where(eq(institutions.gocardlessId, MANUAL_INSTITUTION_GCID))
+    .where(eq(institutions.providerInstitutionId, MANUAL_INSTITUTION_GCID))
     .limit(1);
   const institutionId =
     existingInst[0]?.id ??
@@ -76,7 +76,7 @@ async function ensureManualRequisition(userId: number, encryptionKey: Buffer): P
       await db
         .insert(institutions)
         .values({
-          gocardlessId: MANUAL_INSTITUTION_GCID,
+          providerInstitutionId: MANUAL_INSTITUTION_GCID,
           name: "Manual",
           logoUrl: null,
           country: "ES",
@@ -105,7 +105,7 @@ async function ensureManualRequisition(userId: number, encryptionKey: Buffer): P
           userId,
           institutionId,
           provider: "manual",
-          gocardlessRequisitionId: encrypt(MANUAL_REFERENCE, encryptionKey),
+          providerRequisitionId: encrypt(MANUAL_REFERENCE, encryptionKey),
           status: "linked",
           reference: MANUAL_REFERENCE,
           link: null,
@@ -132,7 +132,7 @@ export async function createManualAccountAction(
     .values({
       userId: session.userId,
       requisitionId,
-      gocardlessAccountId: encrypt(`manual-${randomUUID()}`, session.encryptionKey),
+      providerAccountId: encrypt(`manual-${randomUUID()}`, session.encryptionKey),
       name: input.name.trim().slice(0, 80),
       kind: input.kind,
       isManual: true,
@@ -177,20 +177,4 @@ export async function updateManualAccountAction(
   revalidatePath("/");
   revalidatePath("/banks");
   return { ok: true, accountId };
-}
-
-/** List the current user's manual accounts (for the Banks management UI). */
-export async function listManualAccountsAction(): Promise<ManualAccountRow[]> {
-  const session = await getCurrentSession();
-  if (!session) return [];
-  return db
-    .select({
-      id: accounts.id,
-      name: accounts.name,
-      kind: accounts.kind,
-      balanceCents: accounts.balanceCents,
-      currency: accounts.currency,
-    })
-    .from(accounts)
-    .where(and(eq(accounts.userId, session.userId), eq(accounts.isManual, true)));
 }

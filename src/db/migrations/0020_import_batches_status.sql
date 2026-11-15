@@ -1,0 +1,1 @@
+ALTER TABLE `import_batches` ADD `status` text DEFAULT 'complete' NOT NULL;

@@ -69,14 +69,14 @@ describe("matchTransfers (pure)", () => {
 async function seedTwoAccounts() {
   const inst = await fixture.db
     .insert(institutions)
-    .values({ gocardlessId: "INST-1", name: "Bank", logoUrl: null, country: "ES" })
+    .values({ providerInstitutionId: "INST-1", name: "Bank", logoUrl: null, country: "ES" })
     .returning({ id: institutions.id });
   const req = await fixture.db
     .insert(requisitions)
     .values({
       userId: USER,
       institutionId: inst[0]!.id,
-      gocardlessRequisitionId: "ENC",
+      providerRequisitionId: "ENC",
       status: "linked",
       reference: "ref",
       link: null,
@@ -87,7 +87,7 @@ async function seedTwoAccounts() {
     .values({
       userId: USER,
       requisitionId: req[0]!.id,
-      gocardlessAccountId: "ENC-A",
+      providerAccountId: "ENC-A",
       name: "Checking",
       balanceCents: 100_000,
       currency: "EUR",
@@ -98,7 +98,7 @@ async function seedTwoAccounts() {
     .values({
       userId: USER,
       requisitionId: req[0]!.id,
-      gocardlessAccountId: "ENC-B",
+      providerAccountId: "ENC-B",
       name: "Savings",
       balanceCents: 50_000,
       currency: "EUR",
@@ -115,7 +115,7 @@ async function addTx(accountId: number, amountCents: number, date: Date): Promis
     .values({
       userId: USER,
       accountId,
-      gocardlessTransactionId: `TX-${txSeq}`,
+      externalId: `TX-${txSeq}`,
       bookingDate: date,
       amountCents,
       currency: "EUR",

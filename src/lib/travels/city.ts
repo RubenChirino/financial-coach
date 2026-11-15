@@ -1,9 +1,10 @@
 import "server-only";
 
-import { generateText, type LanguageModel } from "ai";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { travelCityLabels } from "@/db/schema";
+import type { LlmHandle } from "@/lib/llm/gateway";
+import { type Redacted, redact } from "@/lib/redact";
 
 export type CitySource = "ai" | "user";
 
@@ -59,35 +60,46 @@ export async function upsertCity(
 }
 
 /**
+ * Build the city prompt. Merchant text arrives only as `Redacted`; `country`
+ * is a name from our own table and `currency` is an ISO code.
+ */
+export function buildCityPrompt(args: {
+  country: string;
+  currency: string;
+  merchants: readonly Redacted[];
+}): string {
+  const currency = /^[A-Z]{3}$/.test(args.currency) ? args.currency : "an unknown currency";
+  return `These card payments were made during a single trip, in ${currency} (likely in ${args.country}).
+Merchant names / descriptions:
+${args.merchants.join("\n")}
+
+What single city was this trip most likely in? Use the merchant text for clues (many include a city or area name).
+Reply with ONLY the city name (no country, no punctuation, no extra words).
+If you genuinely cannot tell, reply exactly: UNKNOWN`;
+}
+
+/**
  * Ask the LLM to name the city a trip most likely took place in, from its
  * merchant names. Returns null when the model can't tell (no hallucinated
  * guesses) or the output doesn't look like a plausible city name.
  */
 export async function generateCity(args: {
-  model: LanguageModel;
+  llm: LlmHandle;
   country: string;
   currency: string;
   merchantNames: string[];
 }): Promise<string | null> {
-  const { model, country, currency, merchantNames } = args;
+  const { llm, country, currency, merchantNames } = args;
   if (merchantNames.length === 0) return null;
 
-  const list = merchantNames.slice(0, 30).join("\n");
-  const prompt = `These card payments were made during a single trip, in ${currency} (likely in ${country}).
-Merchant names / descriptions:
-${list}
-
-What single city was this trip most likely in? Use the merchant text for clues (many include a city or area name).
-Reply with ONLY the city name (no country, no punctuation, no extra words).
-If you genuinely cannot tell, reply exactly: UNKNOWN`;
+  const prompt = buildCityPrompt({
+    country,
+    currency,
+    merchants: merchantNames.slice(0, 30).map((m) => redact(m)),
+  });
 
   try {
-    const { text } = await generateText({
-      model,
-      prompt,
-      temperature: 0,
-      maxOutputTokens: 24,
-    });
+    const text = await llm.generateText({ prompt, temperature: 0, maxOutputTokens: 24 });
     const city = text.trim().replace(/[.;,]+$/, "");
     if (!city || /unknown/i.test(city)) return null;
     // Guard against the model returning a sentence instead of a city name.

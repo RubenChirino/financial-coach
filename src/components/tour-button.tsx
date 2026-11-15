@@ -1,7 +1,5 @@
 "use client";
 
-import "driver.js/dist/driver.css";
-import { driver } from "driver.js";
 import { HelpCircle } from "lucide-react";
 import { useCallback } from "react";
 
@@ -33,6 +31,9 @@ export interface TourButtonProps {
  * Usage: import and drop anywhere in a page. Steps with `element` point to CSS
  * selectors of highlighted DOM nodes; steps without `element` are centred
  * overlay modals (good for intro/outro).
+ *
+ * driver.js and its stylesheet are loaded on the first click, not with every
+ * page that shows the button — most visits never start a tour.
  */
 export function TourButton({
   steps,
@@ -42,7 +43,11 @@ export function TourButton({
   nextBtnText = "→",
   doneBtnText = "✓",
 }: TourButtonProps) {
-  const startTour = useCallback(() => {
+  const startTour = useCallback(async () => {
+    const [{ driver }] = await Promise.all([
+      import("driver.js"),
+      import("driver.js/dist/driver.css"),
+    ]);
     const driverObj = driver({
       showProgress: true,
       animate: true,
@@ -72,7 +77,7 @@ export function TourButton({
   return (
     <button
       type="button"
-      onClick={startTour}
+      onClick={() => void startTour()}
       className="inline-flex items-center gap-1.5 rounded-md border border-[color:var(--border-default)] bg-[color:var(--bg-elevated)] px-2.5 py-1.5 text-[12px] font-medium text-[color:var(--text-secondary)] shadow-sm transition-colors hover:bg-[color:var(--bg-hover)] hover:text-[color:var(--text-primary)]"
     >
       <HelpCircle className="h-3.5 w-3.5" />

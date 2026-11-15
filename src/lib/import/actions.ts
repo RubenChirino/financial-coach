@@ -2,16 +2,14 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db } from "@/db/client";
-import { users } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
-import { providerInfo } from "@/lib/llm/provider";
-import { consumeQuota } from "@/lib/security/rate-limit";
-import { type CsvMappingSpec, parseCsvWithAi } from "./ai-mapper";
+import { llmRefusalCode, resolveModelForUser } from "@/lib/llm/gateway";
+import { type CsvMappingSpec, parseCsvWithAi, parseCsvWithSpec } from "./ai-mapper";
 import { type ParseCsvResult, parseCsv } from "./csv";
+import { type ExcelToCsvResult, excelToCsv } from "./excel";
 import { ensureImportedAccount, importParsedRows } from "./ingest";
+import { findRememberedMapping, rememberMapping } from "./mappings";
 import { extractAccountMetadata } from "./metadata";
 
 export interface AiDetectionInfo {
@@ -21,6 +19,8 @@ export interface AiDetectionInfo {
   spec?: CsvMappingSpec;
   /** Set when AI was tried and threw (e.g. local Ollama daemon down). */
   error?: string;
+  /** The mapping was remembered from an earlier import of this format: no model call. */
+  remembered?: boolean;
 }
 
 export interface ImportActionOk {
@@ -65,48 +65,6 @@ function parseAndSummarize(text: string): ParseCsvResult {
   return parseCsv(text);
 }
 
-async function loadLlmPrefs(userId: number): Promise<{
-  provider: string | null;
-  model: string | null;
-  cloudConsent: Date | null;
-}> {
-  const row = await db
-    .select({
-      provider: users.llmProvider,
-      model: users.llmModel,
-      cloudConsent: users.cloudLlmConsentAt,
-    })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return {
-    provider: row[0]?.provider ?? null,
-    model: row[0]?.model ?? null,
-    cloudConsent: row[0]?.cloudConsent ?? null,
-  };
-}
-
-/**
- * Decide whether the AI CSV path is allowed to call the user's configured
- * LLM right now. Mirrors the consent gate `/api/advisor/chat` enforces:
- * any non-Ollama provider requires the user to have ticked the consent box
- * in Settings, because we'd otherwise ship redacted-but-still-private bank
- * data to a third-party API without informed opt-in.
- *
- * Returns null when the call is permitted, or an error string to surface to
- * the UI so it can prompt for consent.
- */
-function checkCloudConsent(prefs: {
-  provider: string | null;
-  model: string | null;
-  cloudConsent: Date | null;
-}): string | null {
-  const info = providerInfo({ provider: prefs.provider, model: prefs.model });
-  if (info.isLocal) return null;
-  if (prefs.cloudConsent != null) return null;
-  return "cloudConsentRequired";
-}
-
 interface RunImportOptions {
   /** "auto" (default) tries strict first then AI; "ai" forces AI; "strict" forces strict. */
   mode?: "auto" | "ai" | "strict";
@@ -143,17 +101,31 @@ async function resolveParse(
     if (mode === "strict") return { kind: "error", error: `header:${strict.headerError}` };
   }
 
+  // A format this user imported before: the remembered mapping, no model call.
+  // Not when the user forced AI detection — that is how a wrong mapping is
+  // replaced (the fresh answer overwrites the remembered one).
+  const remembered = mode === "auto" ? await findRememberedMapping(userId, text) : null;
+  if (remembered) {
+    const again = parseCsvWithSpec(text, remembered.spec);
+    if (!again.headerError && again.rows.length > 0) {
+      return {
+        kind: "parsed",
+        parsed: { rows: again.rows, errors: again.errors, headerError: null },
+        ai: {
+          used: true,
+          remembered: true,
+          provider: remembered.provider,
+          model: remembered.model,
+          spec: again.spec,
+        },
+      };
+    }
+  }
+
   try {
-    const prefs = await loadLlmPrefs(userId);
-    const consentError = checkCloudConsent(prefs);
-    if (consentError) return { kind: "error", error: consentError };
-    // Rate-limit AI calls per user. Each AI import call is a paid roundtrip
-    // (Gemini) and the LLM context can be a few KB of redacted bank data,
-    // so abuse here is more expensive than chat. 10 attempts / 5 min is
-    // generous (a real user re-imports occasionally; a bot would saturate).
-    const quota = consumeQuota(`csv-ai:${userId}`, 10, 5 * 60_000);
-    if (!quota.allowed) return { kind: "error", error: "rateLimited" };
-    const aiResult = await parseCsvWithAi(text, prefs);
+    // Consent and the per-user quota are enforced by the gateway.
+    const llm = await resolveModelForUser(userId, "csv-mapping");
+    const aiResult = await parseCsvWithAi(llm, text);
     const ai: AiDetectionInfo = {
       used: true,
       provider: aiResult.provider,
@@ -163,12 +135,22 @@ async function resolveParse(
     if (aiResult.headerError) {
       return { kind: "error", error: `header:${aiResult.headerError}`, ai };
     }
+    // A mapping that read rows is worth remembering for this bank's next export.
+    if (aiResult.rows.length > 0) {
+      await rememberMapping(userId, text, {
+        spec: aiResult.spec,
+        provider: aiResult.provider,
+        model: aiResult.model,
+      }).catch((err) => console.warn("could not remember the CSV mapping", err));
+    }
     return {
       kind: "parsed",
       parsed: { rows: aiResult.rows, errors: aiResult.errors, headerError: null },
       ai,
     };
   } catch (err) {
+    const refusal = llmRefusalCode(err);
+    if (refusal) return { kind: "error", error: refusal };
     console.error("AI CSV import failed", err);
     const message = err instanceof Error ? err.message : "unknown";
     return { kind: "error", error: "aiUnavailable", ai: { used: true, error: message } };
@@ -259,128 +241,20 @@ export async function importCsvAction(
 }
 
 /**
- * Convert an uploaded Excel file (.xls/.xlsx) to CSV text on the server.
- *
- * Two libraries are used because no single one covers both formats well:
- *   - `.xlsx` / `.xlsm` → ExcelJS (modern XML-based format, active maintenance)
- *   - `.xls`            → SheetJS (legacy binary format; ExcelJS doesn't read it)
- *
- * Why server-side instead of in the browser:
- *   - both libs pull Node.js builtins (stream, fs, zlib) that are awkward to
- *     polyfill in a client bundle
- *   - we avoid shipping ~250 KB+ of parser code to every visitor of /import
- *   - file content is naturally bounded (2 MB cap) so the round-trip is cheap
- *
- * Note on SheetJS source: installed from the official CDN tarball, which is
- * the upstream-patched 0.20.x line. The npm-published `xlsx@0.18.5` has two
- * known CVEs (prototype pollution + ReDoS) and is unmaintained on that
- * registry — SheetJS now distributes updates only via their own CDN.
+ * Convert an uploaded Excel file (.xls, .xlsx) to CSV text on the server; see
+ * `excelToCsv` for how cells are written. The file arrives as a `File` in
+ * `FormData` — multipart, so a 2 MB file stays ~2 MB on the wire and fits
+ * the server-action body limit, where base64 would add a third.
  */
-export type ExcelToCsvResult = { ok: true; csv: string } | { ok: false; error: string };
-
-export async function excelToCsvAction(
-  base64: string,
-  filename?: string,
-): Promise<ExcelToCsvResult> {
+export async function excelToCsvAction(form: FormData): Promise<ExcelToCsvResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
 
-  let buffer: Buffer;
-  try {
-    buffer = Buffer.from(base64, "base64");
-  } catch {
-    return { ok: false, error: "invalidEncoding" };
-  }
-  if (buffer.byteLength === 0) return { ok: false, error: "emptyFile" };
-  if (buffer.byteLength > MAX_CSV_BYTES) return { ok: false, error: "fileTooLarge" };
-
-  const isLegacyXls = filename != null && /\.xls$/i.test(filename);
-  return isLegacyXls ? parseXlsWithSheetJs(buffer) : parseXlsxWithExcelJs(buffer);
-}
-
-async function parseXlsxWithExcelJs(buffer: Buffer): Promise<ExcelToCsvResult> {
-  try {
-    const ExcelJS = await import("exceljs");
-    const workbook = new ExcelJS.Workbook();
-    // ExcelJS's `load()` is typed for ArrayBuffer; in Node, Buffer is a
-    // subclass of Uint8Array whose .buffer may be SharedArrayBuffer per TS,
-    // so copy bytes into a fresh ArrayBuffer to satisfy the signature.
-    const ab = new ArrayBuffer(buffer.byteLength);
-    new Uint8Array(ab).set(buffer);
-    await workbook.xlsx.load(ab);
-    const sheet = workbook.worksheets[0];
-    if (!sheet) {
-      console.error("excelToCsv: xlsx parsed but had no sheets", {
-        sheetCount: workbook.worksheets.length,
-        creator: workbook.creator,
-        size: buffer.byteLength,
-      });
-      return { ok: false, error: "noSheet" };
-    }
-    const lines: string[] = [];
-    sheet.eachRow({ includeEmpty: false }, (row) => {
-      const cells: string[] = [];
-      const last = row.cellCount;
-      for (let i = 1; i <= last; i++) {
-        cells.push(csvEscape(extractCellText(row.getCell(i).value)));
-      }
-      lines.push(cells.join(","));
-    });
-    return { ok: true, csv: lines.join("\n") };
-  } catch (err) {
-    console.error("excelToCsv: xlsx parse failed", err);
-    return { ok: false, error: "parseFailed" };
-  }
-}
-
-async function parseXlsWithSheetJs(buffer: Buffer): Promise<ExcelToCsvResult> {
-  try {
-    const XLSX = await import("xlsx");
-    // `type: "buffer"` is the right path for Node Buffers; SheetJS internally
-    // detects the binary .xls (BIFF) container vs. the .xlsx ZIP.
-    const workbook = XLSX.read(buffer, { type: "buffer", raw: true });
-    const sheetName = workbook.SheetNames[0];
-    if (!sheetName) {
-      console.error("excelToCsv: xls parsed but had no sheets", {
-        size: buffer.byteLength,
-      });
-      return { ok: false, error: "noSheet" };
-    }
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) return { ok: false, error: "noSheet" };
-    // sheet_to_csv produces RFC-4180-ish output that the downstream strict
-    // parser can consume directly.
-    return { ok: true, csv: XLSX.utils.sheet_to_csv(sheet) };
-  } catch (err) {
-    console.error("excelToCsv: xls parse failed", err);
-    return { ok: false, error: "parseFailed" };
-  }
-}
-
-function extractCellText(value: unknown): string {
-  if (value == null) return "";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === "object") {
-    const v = value as {
-      richText?: { text: string }[];
-      text?: unknown;
-      result?: unknown;
-      formula?: unknown;
-      error?: unknown;
-    };
-    if (Array.isArray(v.richText)) return v.richText.map((rt) => rt.text).join("");
-    if (typeof v.text === "string") return v.text;
-    if (v.result != null) return extractCellText(v.result);
-    if ("formula" in v) return "";
-    if (typeof v.error === "string") return v.error;
-  }
-  return String(value);
-}
-
-function csvEscape(s: string): string {
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const file = form.get("file");
+  if (!(file instanceof File)) return { ok: false, error: "invalidEncoding" };
+  if (file.size === 0) return { ok: false, error: "emptyFile" };
+  if (file.size > MAX_CSV_BYTES) return { ok: false, error: "fileTooLarge" };
+  return excelToCsv(new Uint8Array(await file.arrayBuffer()));
 }
 
 /**

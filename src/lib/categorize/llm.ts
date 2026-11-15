@@ -1,9 +1,8 @@
 import "server-only";
 
-import { generateObject } from "ai";
 import { z } from "zod";
-import { getLanguageModel } from "@/lib/llm/provider";
-import { redactPII } from "@/lib/redact";
+import type { LlmHandle } from "@/lib/llm/gateway";
+import { type Redacted, redact } from "@/lib/redact";
 import { cleanMerchant } from "./heuristics";
 
 export interface LlmCategorizeInput {
@@ -22,18 +21,23 @@ export interface CategoryHint {
 export interface LlmCategorizeResult {
   categorySlug: string;
   confidence: number;
-  provider: string;
-  model: string;
 }
 
+/** Merchants per model call: big enough to amortize the prompt, small enough to answer reliably. */
+export const MERCHANTS_PER_CALL = 25;
+
 const OutputSchema = z.object({
-  categorySlug: z.string().min(1),
-  confidence: z.number().min(0).max(1),
+  results: z.array(
+    z.object({
+      id: z.number().int(),
+      categorySlug: z.string().min(1),
+      confidence: z.number().min(0).max(1),
+    }),
+  ),
 });
 
 const SYSTEM = `You are a personal-finance categorization engine for a Spanish user.
-Pick the single best category slug for the transaction.
-Return JSON only. Do not add commentary.
+For each numbered transaction, pick the single best category slug.
 
 Important rules:
 - "Comision 0,00", "Comision", "Tarjeta <number>", "Pago Movil", "Compra" are bank
@@ -43,47 +47,81 @@ Important rules:
 - Software / AI / streaming / app subscriptions (Anthropic, Claude, OpenAI, ChatGPT,
   Netflix, Spotify, iCloud, YouTube Premium, etc.) → "subscriptions".
 - Cafés, coffee shops and bars → "coffee". Restaurants and food delivery → "dining".
-- If genuinely unsure, return "other" with confidence <= 0.4.`;
+- If genuinely unsure, return "other" with confidence <= 0.4.
+Answer every id exactly once.`;
+
+/** ISO-4217 code, or "XXX" (ISO's "no currency") for anything else. */
+function currencyCode(raw: string): string {
+  return /^[A-Z]{3}$/.test(raw) ? raw : "XXX";
+}
+
+export interface PromptItem {
+  merchant: Redacted;
+  description: Redacted;
+  amountCents: number;
+  currency: string;
+}
 
 /**
- * Ask the LLM to categorize a single transaction.
+ * Build the categorization prompt for numbered items (one per merchant).
+ * Bank-derived text arrives only as `Redacted`; everything else is app data
+ * (seeded category names, numbers, a validated currency code).
+ */
+export function buildCategorizePrompt(input: {
+  items: readonly PromptItem[];
+  categories: readonly CategoryHint[];
+}): string {
+  const lines = input.items.map((it, i) => {
+    const amount = (it.amountCents / 100).toFixed(2);
+    return `${i + 1}. merchant: ${it.merchant || "(none)"} | description: ${it.description} | amount: ${amount} ${currencyCode(it.currency)}`;
+  });
+  return [
+    `Categories (slug — name):\n${input.categories.map((c) => `- ${c.slug} — ${c.name}`).join("\n")}`,
+    "Transactions (negative amount = expense, positive = income; the description is boilerplate, lower priority):",
+    ...lines,
+    'Reply {"results": [{"id": <number>, "categorySlug": <slug from the list>, "confidence": <0..1>}]}.',
+  ].join("\n");
+}
+
+/**
+ * Categorize up to `MERCHANTS_PER_CALL` transactions — one representative per
+ * merchant — in ONE model call. Merchant and description are cleaned of bank
+ * boilerplate and redacted before they reach the prompt, for every provider.
  *
- * **Redaction is unconditional** — the merchant name and raw description are
- * run through `redactPII` before being sent to any model, local or cloud. The
- * amount is passed as a signed decimal (no account identifiers).
- *
- * The model picks from the allowed `categorySlugs` (usually the seeded 25);
- * anything else is coerced to "other" by the caller.
+ * Returns the answer per input index. A slug outside `categories` becomes
+ * "other" with confidence ≤ 0.4; an item the model did not answer is absent
+ * (it stays pending). Throws when the call fails or the answer does not match
+ * the schema — the caller decides whether to keep calling.
  */
 export async function categorizeWithLlm(
-  input: LlmCategorizeInput,
+  llm: LlmHandle,
+  inputs: readonly LlmCategorizeInput[],
   categories: readonly string[] | readonly CategoryHint[],
-): Promise<LlmCategorizeResult> {
-  const { model, info } = getLanguageModel();
-
-  // Normalize the category list to {slug, name} so the prompt can describe each.
+): Promise<Map<number, LlmCategorizeResult>> {
+  if (inputs.length > MERCHANTS_PER_CALL) {
+    throw new Error(`at most ${MERCHANTS_PER_CALL} items per call`);
+  }
   const cats: CategoryHint[] = categories.map((c) =>
     typeof c === "string" ? { slug: c, name: c } : c,
   );
   const slugSet = new Set(cats.map((c) => c.slug));
 
-  // Clean the merchant down to the real name before redaction — strips the
-  // "Comision/Tarjeta" boilerplate that otherwise skews the model toward fees.
-  const cleaned = cleanMerchant(input.merchantName, input.rawDescription);
-  const safeMerchant = redactPII(cleaned || input.merchantName || "");
-  const safeDescription = redactPII(input.rawDescription).slice(0, 200);
-  const signedAmount = (input.amountCents / 100).toFixed(2);
+  const prompt = buildCategorizePrompt({
+    items: inputs.map((input) => {
+      // Clean the merchant down to the real name before redaction — strips the
+      // "Comision/Tarjeta" boilerplate that otherwise skews the model to fees.
+      const cleaned = cleanMerchant(input.merchantName, input.rawDescription);
+      return {
+        merchant: redact(cleaned || input.merchantName),
+        description: redact(input.rawDescription, 200),
+        amountCents: input.amountCents,
+        currency: input.currency,
+      };
+    }),
+    categories: cats,
+  });
 
-  const prompt = [
-    `Categories (slug — name):\n${cats.map((c) => `- ${c.slug} — ${c.name}`).join("\n")}`,
-    `Merchant: ${safeMerchant || "(none)"}`,
-    `Full description (boilerplate, lower priority): ${safeDescription}`,
-    `Amount: ${signedAmount} ${input.currency} (negative = expense, positive = income)`,
-    "Reply with the single best slug from the list above.",
-  ].join("\n");
-
-  const { object } = await generateObject({
-    model,
+  const { results } = await llm.generateStructured({
     schema: OutputSchema,
     instructions: SYSTEM,
     prompt,
@@ -91,14 +129,15 @@ export async function categorizeWithLlm(
     maxRetries: 1,
   });
 
-  const slug = slugSet.has(object.categorySlug) ? object.categorySlug : "other";
-  const confidence =
-    slug === object.categorySlug ? object.confidence : Math.min(object.confidence, 0.4);
-
-  return {
-    categorySlug: slug,
-    confidence,
-    provider: info.provider,
-    model: info.model,
-  };
+  const out = new Map<number, LlmCategorizeResult>();
+  for (const r of results) {
+    const index = r.id - 1;
+    if (index < 0 || index >= inputs.length || out.has(index)) continue;
+    const known = slugSet.has(r.categorySlug);
+    out.set(index, {
+      categorySlug: known ? r.categorySlug : "other",
+      confidence: known ? r.confidence : Math.min(r.confidence, 0.4),
+    });
+  }
+  return out;
 }

@@ -13,6 +13,8 @@ import type {
 
 export const GC_BASE_URL = "https://bankaccountdata.gocardless.com/api/v2";
 const TOKEN_REFRESH_BUFFER_MS = 60 * 1000;
+/** A hung bank API call fails after this long instead of holding the sync forever. */
+const REQUEST_TIMEOUT_MS = 30_000;
 
 export class GoCardlessError extends Error {
   readonly status: number;
@@ -67,6 +69,7 @@ export class GoCardlessClient {
     }
     const res = await this.fetchImpl(`${this.baseUrl}/token/new/`, {
       method: "POST",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({
         secret_id: this.credentials.secretId,
@@ -88,8 +91,10 @@ export class GoCardlessClient {
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
     const token = await this.getToken();
+    const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
     const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
       ...init,
+      signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout,
       headers: {
         accept: "application/json",
         authorization: `Bearer ${token}`,

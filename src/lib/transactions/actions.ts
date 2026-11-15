@@ -2,11 +2,17 @@
 
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { db } from "@/db/client";
 import { categories, transactions } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { deriveRulePattern } from "@/lib/categorize/rules";
-import { listTransactions, type TransactionRow } from "@/lib/transactions/list";
+import {
+  listTransactions,
+  type TransactionCursor,
+  type TransactionFilters,
+  type TransactionRow,
+} from "@/lib/transactions/list";
 
 export interface SetTxCategoryResult {
   ok: boolean;
@@ -57,6 +63,7 @@ export async function setTransactionCategoryAction(
       categoryId,
       needsReview: false,
       confidence: categoryId == null ? null : 100,
+      categorySource: categoryId == null ? null : "user",
       updatedAt: new Date(),
     })
     .where(and(eq(transactions.id, txId), eq(transactions.userId, session.userId)));
@@ -88,25 +95,43 @@ export interface CategoryOption {
 
 export interface LoadMoreResult {
   rows: TransactionRow[];
-  nextCursor: { bookingDate: number; id: number } | null;
+  nextCursor: TransactionCursor | null;
 }
 
+const LoadMoreInput = z.object({
+  cursor: z.object({
+    bookingDate: z.number().int(),
+    id: z.number().int().positive(),
+  }),
+  filters: z
+    .object({
+      accountId: z.number().int().positive().optional(),
+      categoryId: z.number().int().positive().optional(),
+      needsReviewOnly: z.boolean().optional(),
+      query: z.string().max(200).optional(),
+    })
+    .strict()
+    .default({}),
+});
+
 /**
- * Load the next page of transactions after an existing cursor.
- * Used by the transactions list "Load more" button.
+ * Load the page after `cursor`. Used by the transactions list "Load more"
+ * button. `filters` must be the same server-side filters that produced the
+ * first page, or the listing would change shape mid-scroll.
  */
 export async function loadMoreTransactionsAction(
-  cursor: { bookingDate: number; id: number },
-  opts?: { needsReviewOnly?: boolean },
+  cursor: TransactionCursor,
+  filters?: TransactionFilters,
 ): Promise<LoadMoreResult> {
   const session = await getCurrentSession();
   if (!session) return { rows: [], nextCursor: null };
-  const result = await listTransactions({
+  const parsed = LoadMoreInput.safeParse({ cursor, filters });
+  if (!parsed.success) return { rows: [], nextCursor: null };
+  return listTransactions({
     userId: session.userId,
-    cursor,
-    needsReviewOnly: opts?.needsReviewOnly,
+    cursor: parsed.data.cursor,
+    ...parsed.data.filters,
   });
-  return result;
 }
 
 export async function listCategoryOptionsAction(): Promise<CategoryOption[]> {

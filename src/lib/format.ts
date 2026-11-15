@@ -14,10 +14,3 @@ export function formatDate(date: Date, locale = "es-ES"): string {
     year: "numeric",
   }).format(date);
 }
-
-export function formatDateTime(date: Date, locale = "es-ES"): string {
-  return new Intl.DateTimeFormat(locale, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}

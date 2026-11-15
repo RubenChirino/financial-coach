@@ -5,8 +5,8 @@ import { db } from "@/db/client";
 import { budgets, categories, goals, transactions } from "@/db/schema";
 import {
   getAccountsTotal,
-  getMonthSummary,
-  getTopCategoriesThisMonth,
+  getMonthSummaries,
+  getTopCategoriesByMonth,
 } from "@/lib/dashboard/summary";
 import {
   getInvestorProfile,
@@ -19,7 +19,7 @@ import {
   summarizeForecast,
 } from "@/lib/predictions/forecast";
 import { listRecurringSubscriptions, monthlyEquivalentCents } from "@/lib/recurring/list";
-import { redactPII } from "@/lib/redact";
+import { type Redacted, redact } from "@/lib/redact";
 
 export interface AdvisorContext {
   generatedAt: string;
@@ -53,7 +53,7 @@ export interface AdvisorGoal {
 }
 
 export interface AdvisorSubscription {
-  merchant: string;
+  merchant: Redacted;
   amountPerCharge: number;
   amountMonthly: number;
   frequencyDays: number;
@@ -70,7 +70,7 @@ export interface AdvisorMonth {
 }
 
 export interface AdvisorMerchant {
-  name: string; // already redacted
+  name: Redacted;
   totalSpent: number;
   txCount: number;
   categorySlug: string | null;
@@ -119,8 +119,8 @@ async function latestDataMonthOffset(userId: number): Promise<number> {
  *
  * Privacy contract:
  *   - No transaction-level rows leave this function.
- *   - Merchant names go through `redactPII` even though they're already free
- *     of digits in 99% of cases — defence in depth.
+ *   - Merchant names are typed `Redacted`: they go through `redact` even
+ *     though they're already free of digits in 99% of cases.
  *   - Amounts are rounded to whole units (euros, not cents) so that fingerprint
  *     attacks via exact balances are harder.
  *
@@ -138,46 +138,58 @@ export async function buildAdvisorContext(opts: {
   const monthsBack = Math.max(1, Math.min(opts.monthsBack ?? 3, 12));
   const topMerchantLimit = Math.max(1, Math.min(opts.topMerchantLimit ?? 10, 25));
 
-  const accountsTotal = await getAccountsTotal(userId);
-
   // Anchor every spending window to the user's most recent month of data instead
   // of "today". If the latest transaction is months old (common after a one-off
   // CSV import of historical data), a fixed last-3-calendar-months window would
   // be empty and the coach would falsely report it has no data to work with.
-  const anchorOffset = await latestDataMonthOffset(userId);
+  const [accountsTotal, anchorOffset] = await Promise.all([
+    getAccountsTotal(userId),
+    latestDataMonthOffset(userId),
+  ]);
 
-  const months: AdvisorMonth[] = [];
-  for (let i = 0; i < monthsBack; i++) {
-    const offset = anchorOffset - i;
-    const summary = await getMonthSummary(userId, offset);
-    const cats = await getTopCategoriesThisMonth(userId, 8, offset);
-    months.push({
-      month: summary.month,
-      income: CENTS_TO_UNITS(summary.incomeCents),
-      expense: CENTS_TO_UNITS(summary.expenseCents),
-      net: CENTS_TO_UNITS(summary.netCents),
-      txCount: summary.txCount,
-      categories: cats.map((c) => ({
-        slug: c.slug,
-        nameEn: c.nameEn,
-        spent: CENTS_TO_UNITS(c.spentCents),
-        txCount: c.txCount,
-      })),
-    });
-  }
+  // Everything below depends only on the anchor: one parallel round. The
+  // month totals and per-month categories are one grouped query each.
+  const oldest = anchorOffset - (monthsBack - 1);
+  const [
+    summaries,
+    categoriesByMonth,
+    topMerchants,
+    budgetRows,
+    subscriptions,
+    advisorGoals,
+    profile,
+    forecast,
+  ] = await Promise.all([
+    getMonthSummaries(userId, oldest, anchorOffset),
+    getTopCategoriesByMonth(userId, oldest, anchorOffset, 8),
+    selectTopMerchants(userId, topMerchantLimit, anchorOffset),
+    selectBudgets(userId, anchorOffset),
+    selectSubscriptions(userId),
+    selectGoals(userId),
+    getInvestorProfile(userId).catch(() => null as InvestorProfile | null),
+    getSpendingForecast({ userId, horizonMonths: 3 }).catch(() => null),
+  ]);
 
-  const [topMerchants, budgetRows, subscriptions, advisorGoals, profile, forecast] =
-    await Promise.all([
-      selectTopMerchants(userId, topMerchantLimit, anchorOffset),
-      selectBudgets(userId, anchorOffset),
-      selectSubscriptions(userId),
-      selectGoals(userId),
-      getInvestorProfile(userId).catch(() => null as InvestorProfile | null),
-      getSpendingForecast({ userId, horizonMonths: 3 }).catch(() => null),
-    ]);
+  // Most recent month first, as the prompt presents them.
+  const months: AdvisorMonth[] = [...summaries].reverse().map((summary) => ({
+    month: summary.month,
+    income: CENTS_TO_UNITS(summary.incomeCents),
+    expense: CENTS_TO_UNITS(summary.expenseCents),
+    net: CENTS_TO_UNITS(summary.netCents),
+    txCount: summary.txCount,
+    categories: (categoriesByMonth.get(summary.month) ?? []).map((c) => ({
+      slug: c.slug,
+      nameEn: c.nameEn,
+      spent: CENTS_TO_UNITS(c.spentCents),
+      txCount: c.txCount,
+    })),
+  }));
 
   return {
-    generatedAt: new Date().toISOString(),
+    // The day, not the instant: the snapshot is part of the system prompt, and
+    // a per-request timestamp would make every prompt unique — no provider
+    // prompt cache could ever hit. A day is all the coach needs.
+    generatedAt: new Date().toISOString().slice(0, 10),
     currency: accountsTotal.currency,
     dataThrough: months.find((m) => m.txCount > 0)?.month ?? null,
     accounts: {
@@ -227,7 +239,7 @@ async function selectGoals(userId: number): Promise<AdvisorGoal[]> {
 async function selectSubscriptions(userId: number): Promise<AdvisorSubscription[]> {
   const rows = await listRecurringSubscriptions(userId);
   return rows.map((s) => ({
-    merchant: redactPII(s.merchantName),
+    merchant: redact(s.merchantName),
     amountPerCharge: CENTS_TO_UNITS(s.averageAmountCents),
     amountMonthly: CENTS_TO_UNITS(monthlyEquivalentCents(s.averageAmountCents, s.frequencyDays)),
     frequencyDays: s.frequencyDays,
@@ -273,7 +285,7 @@ async function selectTopMerchants(
 
   return rows
     .map((r) => ({
-      name: redactPII((r.merchant ?? "").trim()),
+      name: redact((r.merchant ?? "").trim()),
       totalSpent: CENTS_TO_UNITS(Number(r.total) || 0),
       txCount: Number(r.txCount) || 0,
       categorySlug: r.categorySlug ?? null,

@@ -16,12 +16,12 @@ import { dismissInsightAction } from "@/lib/insights/actions";
  * tooltip — we don't hide it so the hero card keeps its two-button symmetry.
  */
 export function MarkResolvedButton({
-  topInsightId,
+  topInsightKey,
   label,
   resolvedLabel,
   noneLabel,
 }: {
-  topInsightId: number | null;
+  topInsightKey: string | null;
   label: string;
   resolvedLabel: string;
   noneLabel: string;
@@ -37,22 +37,22 @@ export function MarkResolvedButton({
   }, [justResolved]);
 
   function onClick() {
-    if (topInsightId == null) return;
+    if (topInsightKey == null) return;
     startTransition(async () => {
-      await dismissInsightAction(topInsightId);
+      await dismissInsightAction(topInsightKey);
       setJustResolved(true);
       router.refresh();
     });
   }
 
-  const disabled = topInsightId == null || isPending;
+  const disabled = topInsightKey == null || isPending;
 
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      title={topInsightId == null ? noneLabel : label}
+      title={topInsightKey == null ? noneLabel : label}
       className="inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-white/20 px-3 text-[13px] font-semibold text-white hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {isPending ? (

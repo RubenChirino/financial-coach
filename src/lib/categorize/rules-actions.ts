@@ -6,10 +6,7 @@ import { db } from "@/db/client";
 import { categories, categoryRules, transactions } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { recorrectCategories } from "./index";
-import { deriveRulePattern } from "./rules";
-
-/** User rules sit well below the seeded defaults (lower number = higher priority). */
-const USER_RULE_PRIORITY = 5;
+import { deriveRulePattern, upsertUserRule } from "./rules";
 
 export interface RuleActionResult {
   ok: boolean;
@@ -53,32 +50,7 @@ export async function createRuleFromTransactionAction(
   const pattern = deriveRulePattern(tx.merchantName, tx.rawDescription);
   if (!pattern) return { ok: false, error: "merchantTooShort" };
 
-  // Upsert: one user rule per (user, pattern). Re-pointing the category is the
-  // expected behaviour when the user corrects the same merchant differently.
-  const existing = await db
-    .select({ id: categoryRules.id })
-    .from(categoryRules)
-    .where(
-      and(
-        eq(categoryRules.userId, session.userId),
-        eq(categoryRules.matchPattern, pattern),
-        eq(categoryRules.matchType, "contains"),
-      ),
-    )
-    .limit(1);
-
-  if (existing[0]) {
-    await db.update(categoryRules).set({ categoryId }).where(eq(categoryRules.id, existing[0].id));
-  } else {
-    await db.insert(categoryRules).values({
-      userId: session.userId,
-      createdBy: "user",
-      matchPattern: pattern,
-      matchType: "contains",
-      categoryId,
-      priority: USER_RULE_PRIORITY,
-    });
-  }
+  await upsertUserRule(session.userId, pattern, categoryId);
 
   // Apply the new rule to history (deterministic; never touches manual picks).
   const result = await recorrectCategories(session.userId).catch(() => ({

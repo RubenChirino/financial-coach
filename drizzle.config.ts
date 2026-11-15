@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./scripts/load-env";
 import { defineConfig } from "drizzle-kit";
 
 const rawUrl = process.env.DATABASE_URL ?? "./data/financial-coach.db";

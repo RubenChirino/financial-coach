@@ -1,8 +1,8 @@
 import "server-only";
 
-import { asc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { categories, categoryRules, transactions } from "@/db/schema";
+import { categoryRules } from "@/db/schema";
 import { cleanMerchant } from "./heuristics";
 
 export type MatchType = "merchant_exact" | "contains" | "regex";
@@ -48,22 +48,45 @@ export interface RuleInput {
  *
  * Within each type, rules with lower `priority` win. Returns the first match.
  */
-function ruleMatches(rule: RuleRow, merchant: string, haystack: string): boolean {
-  const pat = rule.matchPattern.toLowerCase();
-  if (rule.matchType === "merchant_exact") return Boolean(merchant) && merchant === pat;
-  if (rule.matchType === "contains") return haystack.includes(pat);
-  if (rule.matchType === "regex") {
-    try {
-      return new RegExp(rule.matchPattern, "i").test(haystack);
-    } catch {
-      // malformed regex — skip silently
-      return false;
-    }
-  }
-  return false;
+interface CompiledRule {
+  rule: RuleRow;
+  test: (merchant: string, haystack: string) => boolean;
 }
 
-export function matchRule(input: RuleInput, rules: RuleRow[]): RuleRow | null {
+/**
+ * Rules sorted by priority with their patterns prepared (lower-cased, regexes
+ * built), once per rules array: a categorization run loads the rules once and
+ * matches every row against that same array.
+ */
+const compiledCache = new WeakMap<readonly RuleRow[], CompiledRule[]>();
+
+function compiled(rules: readonly RuleRow[]): CompiledRule[] {
+  let out = compiledCache.get(rules);
+  if (!out) {
+    out = [...rules].sort((a, b) => a.priority - b.priority).map(compileRule);
+    compiledCache.set(rules, out);
+  }
+  return out;
+}
+
+function compileRule(rule: RuleRow): CompiledRule {
+  const pat = rule.matchPattern.toLowerCase();
+  if (rule.matchType === "merchant_exact") {
+    return { rule, test: (merchant) => Boolean(merchant) && merchant === pat };
+  }
+  if (rule.matchType === "contains") return { rule, test: (_, haystack) => haystack.includes(pat) };
+  if (rule.matchType === "regex") {
+    try {
+      const re = new RegExp(rule.matchPattern, "i");
+      return { rule, test: (_, haystack) => re.test(haystack) };
+    } catch {
+      // malformed regex — never matches
+    }
+  }
+  return { rule, test: () => false };
+}
+
+export function matchRule(input: RuleInput, rules: readonly RuleRow[]): RuleRow | null {
   const merchant = (input.merchantName ?? "").trim().toLowerCase();
   const haystack = `${input.merchantName ?? ""} ${input.rawDescription ?? ""}`
     .trim()
@@ -75,9 +98,8 @@ export function matchRule(input: RuleInput, rules: RuleRow[]): RuleRow | null {
     // is left intact and still matches.
     .replace(/comisi[oó]n\s*0[.,]00/g, " ");
 
-  const sorted = [...rules].sort((a, b) => a.priority - b.priority);
-  for (const r of sorted) {
-    if (ruleMatches(r, merchant, haystack)) return r;
+  for (const r of compiled(rules)) {
+    if (r.test(merchant, haystack)) return r.rule;
   }
   return null;
 }
@@ -88,6 +110,63 @@ export function matchRule(input: RuleInput, rules: RuleRow[]): RuleRow | null {
  * lower `priority` number, so `matchRule`'s priority sort makes a personal
  * correction win over a generic default.
  */
+/** User rules sit well below the seeded defaults (lower number = higher priority). */
+export const USER_RULE_PRIORITY = 5;
+
+/**
+ * Learn "always categorise {pattern} as {category}" for one user: one rule per
+ * (user, pattern), re-pointed when the user corrects the same merchant
+ * differently.
+ *
+ * One batch, update first: the UPDATE takes the write lock, so the INSERT's
+ * NOT EXISTS check runs under it and two concurrent upserts serialize instead
+ * of both inserting (there is no unique index to fall back on — existing
+ * databases may already hold duplicates, which a new index would reject).
+ */
+export async function upsertUserRule(
+  userId: number,
+  pattern: string,
+  categoryId: number,
+): Promise<void> {
+  const sameRule = and(
+    eq(categoryRules.userId, userId),
+    eq(categoryRules.matchPattern, pattern),
+    eq(categoryRules.matchType, "contains"),
+  );
+  await db.batch([
+    db.update(categoryRules).set({ categoryId }).where(sameRule),
+    db.run(sql`insert into "category_rules"
+        ("user_id", "created_by", "match_pattern", "match_type", "category_id", "priority")
+      select ${userId}, 'user', ${pattern}, 'contains', ${categoryId}, ${USER_RULE_PRIORITY}
+      where not exists (
+        select 1 from "category_rules"
+        where "category_rules"."user_id" = ${userId}
+          and "category_rules"."match_pattern" = ${pattern}
+          and "category_rules"."match_type" = 'contains'
+      )`),
+  ]);
+}
+
+/** "ai" rules rank below the user's own (5) and above the built-in ones (100). */
+export const AI_RULE_PRIORITY = 50;
+
+/**
+ * A statement (for a batch) that records "always categorise {pattern} as
+ * {category}" learned from a confident LLM answer — only when the user has no
+ * rule for that pattern yet, so it never overrides a rule the user made.
+ */
+export function insertAiRuleIfAbsent(userId: number, pattern: string, categoryId: number) {
+  return db.run(sql`insert into "category_rules"
+      ("user_id", "created_by", "match_pattern", "match_type", "category_id", "priority")
+    select ${userId}, 'ai', ${pattern}, 'contains', ${categoryId}, ${AI_RULE_PRIORITY}
+    where not exists (
+      select 1 from "category_rules"
+      where "category_rules"."user_id" = ${userId}
+        and "category_rules"."match_pattern" = ${pattern}
+        and "category_rules"."match_type" = 'contains'
+    )`);
+}
+
 export async function loadRules(userId: number): Promise<RuleRow[]> {
   const rows = await db
     .select({
@@ -101,29 +180,4 @@ export async function loadRules(userId: number): Promise<RuleRow[]> {
     .where(or(isNull(categoryRules.userId), eq(categoryRules.userId, userId)))
     .orderBy(asc(categoryRules.priority));
   return rows;
-}
-
-export async function categoryIdBySlug(slug: string): Promise<number | null> {
-  const row = await db
-    .select({ id: categories.id })
-    .from(categories)
-    .where(eq(categories.slug, slug))
-    .limit(1);
-  return row[0]?.id ?? null;
-}
-
-export async function assignCategory(
-  transactionId: number,
-  categoryId: number,
-  opts?: { needsReview?: boolean; confidence?: number | null },
-): Promise<void> {
-  await db
-    .update(transactions)
-    .set({
-      categoryId,
-      needsReview: opts?.needsReview ?? false,
-      confidence: opts?.confidence ?? null,
-      updatedAt: new Date(),
-    })
-    .where(eq(transactions.id, transactionId));
 }

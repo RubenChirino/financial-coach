@@ -2,8 +2,10 @@ import "server-only";
 
 import { and, eq, like } from "drizzle-orm";
 import { db } from "@/db/client";
-import { accounts, categories, institutions, requisitions, transactions } from "@/db/schema";
+import { accounts, categories, institutions, requisitions } from "@/db/schema";
 import { encrypt } from "@/lib/crypto";
+import { upsertInstitution } from "@/lib/ingest/institutions";
+import { type IngestRow, ingestTransactions } from "@/lib/ingest/pipeline";
 
 /**
  * Deterministic fake-bank seeder used by the Demo provider.
@@ -208,31 +210,24 @@ async function slugToCategoryId(): Promise<Map<string, number>> {
 }
 
 async function upsertDemoInstitution(spec: DemoBankSpec): Promise<number> {
-  const existing = await db
-    .select({ id: institutions.id })
-    .from(institutions)
-    .where(eq(institutions.gocardlessId, spec.externalId))
-    .limit(1);
-  if (existing[0]) return existing[0].id;
-  const inserted = await db
-    .insert(institutions)
-    .values({
-      gocardlessId: spec.externalId,
-      name: spec.name,
-      logoUrl: spec.logoUrl,
-      country: spec.country,
-    })
-    .returning({ id: institutions.id });
-  const id = inserted[0]?.id;
-  if (!id) throw new Error("demo: failed to insert institution");
-  return id;
+  return upsertInstitution({
+    providerInstitutionId: spec.externalId,
+    name: spec.name,
+    logoUrl: spec.logoUrl,
+    country: spec.country,
+  });
 }
 
 export async function seedDemoBank(
   userId: number,
   bank: DemoBankKey,
   encryptionKey: Buffer,
-): Promise<{ requisitionRowId: number; accountRowId: number; inserted: number }> {
+): Promise<{
+  requisitionRowId: number;
+  accountRowId: number;
+  inserted: number;
+  ruleMatched: number;
+}> {
   const spec = BANKS[bank];
   const now = Date.now();
   const institutionRowId = await upsertDemoInstitution(spec);
@@ -246,7 +241,7 @@ export async function seedDemoBank(
       userId,
       institutionId: institutionRowId,
       provider: "demo",
-      gocardlessRequisitionId: encrypt(gcRequisitionId, encryptionKey),
+      providerRequisitionId: encrypt(gcRequisitionId, encryptionKey),
       status: "linked",
       reference,
       link: null,
@@ -262,7 +257,7 @@ export async function seedDemoBank(
     .values({
       userId,
       requisitionId: requisitionRowId,
-      gocardlessAccountId: encrypt(gcAccountId, encryptionKey),
+      providerAccountId: encrypt(gcAccountId, encryptionKey),
       ibanLast4: spec.ibanLast4,
       name: spec.accountName,
       ownerName: null,
@@ -280,31 +275,32 @@ export async function seedDemoBank(
 
   const catMap = await slugToCategoryId();
 
-  const rows = seeds.map((s, idx) => {
+  const rows: IngestRow[] = seeds.map((s, idx) => {
     const booking = new Date(now - s.daysAgo * 24 * 60 * 60 * 1000);
+    const categoryId = (s.categorySlug && catMap.get(s.categorySlug)) || null;
     return {
-      userId,
-      accountId: accountRowId,
-      gocardlessTransactionId: `DEMO_TX_${spec.key.toUpperCase()}_${now}_${idx}`,
+      externalId: `DEMO_TX_${spec.key.toUpperCase()}_${now}_${idx}`,
       bookingDate: booking,
       valueDate: booking,
       amountCents: s.amountCents,
       currency: spec.currency,
       merchantName: s.merchant,
       rawDescription: s.description,
-      categoryId: (s.categorySlug && catMap.get(s.categorySlug)) || null,
-      subcategory: null as string | null,
-      confidence: s.categorySlug ? 100 : null,
+      // Seeded categories are kept; the rest go through rules and keywords.
+      categoryId,
+      confidence: categoryId ? 100 : null,
+      needsReview: !categoryId,
       isRecurring: Boolean(s.isRecurring),
-      needsReview: !s.categorySlug,
     };
   });
 
-  if (rows.length > 0) {
-    await db.insert(transactions).values(rows).onConflictDoNothing();
-  }
+  const res = await ingestTransactions({
+    userId,
+    source: "demo",
+    accounts: [{ accountId: accountRowId, rows, balance: { mode: "keep" } }],
+  });
 
-  return { requisitionRowId, accountRowId, inserted: rows.length };
+  return { requisitionRowId, accountRowId, inserted: res.inserted, ruleMatched: res.ruleMatched };
 }
 
 /**
@@ -329,7 +325,7 @@ export async function wipeAllDemoData(userId: number): Promise<{ removedRequisit
   const orphans = await db
     .select({ id: institutions.id, name: institutions.name })
     .from(institutions)
-    .where(like(institutions.gocardlessId, "DEMO_%"));
+    .where(like(institutions.providerInstitutionId, "DEMO_%"));
   for (const o of orphans) {
     const refs = await db
       .select({ id: requisitions.id })

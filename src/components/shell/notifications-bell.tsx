@@ -8,30 +8,21 @@ import {
   dismissAllInsightsAction,
   dismissInsightAction,
   listInsightsAction,
-  refreshInsightsAction,
 } from "@/lib/insights/actions";
-
-interface InsightRow {
-  id: number;
-  kind: string;
-  title: string;
-  body: string;
-  actionLabel: string;
-  actionHref: string;
-  severity: "info" | "warning" | "positive";
-}
+import type { InsightView } from "@/lib/insights/engine";
 
 const REFRESH_MS = 60 * 60 * 1000; // 1 hour
 
 /**
  * Topbar notifications bell — opens a dropdown listing active insights with a
- * count badge. A 1h interval polls `refreshInsightsAction` so the engine keeps
- * up to date without a real cron (MVP).
+ * count badge. Insights are computed on read, so refreshing is just reloading
+ * the list; it also reloads hourly while the app stays open. The first list
+ * arrives with the server render (`initial`), so mounting costs no request.
  */
-export function NotificationsBell() {
+export function NotificationsBell({ initial }: { initial: InsightView[] }) {
   const t = useTranslations("shell");
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<InsightRow[]>([]);
+  const [items, setItems] = useState<InsightView[]>(initial);
   const [loading, setLoading] = useState(false);
   const [, startRefresh] = useTransition();
   const ref = useRef<HTMLDivElement | null>(null);
@@ -39,21 +30,19 @@ export function NotificationsBell() {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const rows = await listInsightsAction();
-      setItems(rows as InsightRow[]);
+      setItems(await listInsightsAction());
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Hourly refresh + initial load.
+  // A server re-render (navigation refresh, `router.refresh()`) brings a new list.
+  useEffect(() => setItems(initial), [initial]);
+
+  // Hourly refresh.
   useEffect(() => {
-    void reload();
     const id = setInterval(() => {
-      startRefresh(async () => {
-        await refreshInsightsAction();
-        await reload();
-      });
+      startRefresh(reload);
     }, REFRESH_MS);
     return () => clearInterval(id);
   }, [reload]);
@@ -70,9 +59,9 @@ export function NotificationsBell() {
 
   const count = items.length;
 
-  function onDismiss(id: number) {
-    setItems((prev) => prev.filter((i) => i.id !== id));
-    void dismissInsightAction(id);
+  function onDismiss(key: string) {
+    setItems((prev) => prev.filter((i) => i.key !== key));
+    void dismissInsightAction(key);
   }
 
   function onClearAll() {
@@ -81,10 +70,7 @@ export function NotificationsBell() {
   }
 
   function onManualRefresh() {
-    startRefresh(async () => {
-      await refreshInsightsAction();
-      await reload();
-    });
+    startRefresh(reload);
   }
 
   return (
@@ -145,7 +131,7 @@ export function NotificationsBell() {
             ) : (
               items.map((it) => (
                 <div
-                  key={it.id}
+                  key={it.key}
                   className="group flex gap-2 border-b border-[color:var(--border-default)] px-3 py-2.5 last:border-b-0"
                 >
                   <span
@@ -178,7 +164,7 @@ export function NotificationsBell() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => onDismiss(it.id)}
+                    onClick={() => onDismiss(it.key)}
                     aria-label={t("notificationsDismiss")}
                     title={t("notificationsDismiss")}
                     className="self-start rounded-md p-1 text-[color:var(--text-tertiary)] hover:bg-[color:var(--surface-app)] hover:text-[color:var(--text-primary)]"

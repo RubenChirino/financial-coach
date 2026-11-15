@@ -6,7 +6,7 @@ import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
 import { getUser, updateUserHomeLocation } from "@/lib/auth/user";
-import { getLanguageModel, providerInfo } from "@/lib/llm/provider";
+import { type LlmHandle, llmRefusalCode, resolveModelForUser } from "@/lib/llm/gateway";
 import { generateCity, getCityLabels, upsertCity } from "./city";
 import { countryName } from "./countries";
 import { listTravels } from "./detect";
@@ -41,8 +41,8 @@ export async function setCityAction(tripKey: string, city: string): Promise<City
 }
 
 /**
- * Guess a trip's city with the LLM and cache it. Gated by the same cloud
- * consent rule as the advisor chat. Never overwrites a city the user typed.
+ * Guess a trip's city with the LLM and cache it. The gateway enforces cloud
+ * consent and the quota. Never overwrites a city the user typed.
  */
 export async function guessCityAction(tripKey: string): Promise<CityActionResult> {
   const session = await getCurrentSession();
@@ -52,12 +52,6 @@ export async function guessCityAction(tripKey: string): Promise<CityActionResult
   const user = await loadUser(session.userId);
   if (!user) return { ok: false, error: "userNotFound" };
   if (!user.homeCountry) return { ok: false, error: "homeNotSet" };
-
-  const prefs = { provider: user.llmProvider, model: user.llmModel };
-  const info = providerInfo(prefs);
-  if (!info.isLocal && user.cloudLlmConsentAt == null) {
-    return { ok: false, error: "cloudConsentRequired" };
-  }
 
   // A city the user set by hand always wins — don't spend an LLM call.
   const existing = await getCityLabels(session.userId, [tripKey]);
@@ -74,9 +68,16 @@ export async function guessCityAction(tripKey: string): Promise<CityActionResult
   ).find((t) => t.tripKey === tripKey);
   if (!trip) return { ok: false, error: "tripNotFound" };
 
-  const { model } = getLanguageModel(prefs);
+  let llm: LlmHandle;
+  try {
+    llm = await resolveModelForUser(session.userId, "travel-city");
+  } catch (err) {
+    const refusal = llmRefusalCode(err);
+    if (refusal) return { ok: false, error: refusal };
+    throw err;
+  }
   const city = await generateCity({
-    model,
+    llm,
     country: countryName(trip.countryCode, "en"),
     currency: trip.currency,
     merchantNames: trip.merchantNames,
@@ -129,17 +130,19 @@ export async function resolveTravelCitiesBatchAction(opts: {
   if (!user) return { ok: false, error: "userNotFound" };
   if (!user.homeCountry) return { ok: true, scanned: 0, resolved: 0, hasMore: false };
 
-  const prefs = { provider: user.llmProvider, model: user.llmModel };
-  const info = providerInfo(prefs);
-  const aiAllowed = info.isLocal || user.cloudLlmConsentAt != null;
-  const model = aiAllowed ? getLanguageModel(prefs).model : null;
+  // Without consent or quota the run still completes, resolving nothing.
+  const llm = () =>
+    resolveModelForUser(session.userId, "travel-places").catch((err: unknown) => {
+      if (llmRefusalCode(err)) return null;
+      throw err;
+    });
 
   try {
     const res = await resolveCityBatch({
       userId: session.userId,
       afterKey: opts.afterKey,
       limit: opts.limit,
-      model,
+      llm,
       homeCountry: user.homeCountry,
     });
     if (!res.hasMore) revalidatePath("/travels");

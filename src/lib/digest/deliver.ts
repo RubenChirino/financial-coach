@@ -2,9 +2,9 @@ import "server-only";
 
 import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/db/client";
-import { type Insight, users } from "@/db/schema";
+import { users } from "@/db/schema";
 import { env } from "@/lib/env";
-import { listActiveInsights } from "@/lib/insights/engine";
+import { type InsightView, listActiveInsights } from "@/lib/insights/engine";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://financial-coach-ai.vercel.app";
 
@@ -28,7 +28,7 @@ function subjectFor(language: string): string {
   return language === "es" ? "Tu resumen de Financial Coach" : "Your Financial Coach digest";
 }
 
-function renderHtml(language: string, name: string | null, rows: Insight[]): string {
+function renderHtml(language: string, name: string | null, rows: InsightView[]): string {
   const es = language === "es";
   const greeting = es
     ? `Hola${name ? ` ${escapeHtml(name)}` : ""},`
@@ -101,7 +101,7 @@ export async function deliverDigests(): Promise<DigestDeliverySummary> {
 
   for (const u of recipients) {
     if (!u.email) continue;
-    const rows = await listActiveInsights(u.id);
+    const rows = await listActiveInsights(u.id, u.language);
     if (rows.length === 0) {
       summary.skipped += 1;
       continue;

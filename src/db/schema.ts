@@ -38,6 +38,14 @@ export const users = sqliteTable(
     // salt + APP_SECRET feed it (so loss of APP_SECRET, in OAuth mode, is the
     // only thing standing between a compromised DB and plaintext).
     encryptionSalt: text("encryption_salt").notNull(),
+    /**
+     * The user's data key (DEK), wrapped by a key-encryption key derived from
+     * the PIN (PIN mode) or APP_SECRET (OAuth mode): `v1:` + base64(iv || tag
+     * || ciphertext), AES-256-GCM with associated data `fc:dek:v1:<userId>`.
+     * NULL = legacy user whose data key is still the derived one; it gets
+     * wrapped on the next unlock / OAuth request. See `lib/auth/keys.ts`.
+     */
+    wrappedDek: text("wrapped_dek"),
     // OAuth identity (populated only when AUTH_MODE=oauth and the user came
     // through Google/Microsoft/GitHub). `email` is the lookup key, but it is
     // NOT sufficient on its own: matching on email alone means anyone who can
@@ -126,9 +134,16 @@ export const providerCredentials = sqliteTable(
   (t) => [uniqueIndex("provider_credentials_user_provider_uniq").on(t.userId, t.provider)],
 );
 
+/*
+ * Provider ids. Every bank source (GoCardless, TrueLayer, demo, manual, CSV)
+ * stores its own id for an institution, requisition, account and transaction
+ * in columns that still carry their original `gocardless_*` names. Only the
+ * TypeScript property names say what they hold; renaming the columns would be
+ * a destructive migration for no runtime gain.
+ */
 export const institutions = sqliteTable("institutions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  gocardlessId: text("gocardless_id").notNull().unique(),
+  providerInstitutionId: text("gocardless_id").notNull().unique(),
   name: text("name").notNull(),
   logoUrl: text("logo_url"),
   country: text("country").notNull(),
@@ -158,7 +173,7 @@ export const requisitions = sqliteTable(
     provider: text("provider", { enum: ["gocardless", "demo", "truelayer", "manual"] })
       .notNull()
       .default("gocardless"),
-    gocardlessRequisitionId: encryptedText("gocardless_requisition_id").notNull(),
+    providerRequisitionId: encryptedText("gocardless_requisition_id").notNull(),
     status: text("status", {
       enum: ["created", "linked", "expired", "suspended", "revoked"],
     })
@@ -169,7 +184,10 @@ export const requisitions = sqliteTable(
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
     createdAt: timestamp("created_at"),
   },
-  (t) => [index("requisitions_institution_idx").on(t.institutionId)],
+  (t) => [
+    index("requisitions_institution_idx").on(t.institutionId),
+    index("requisitions_user_idx").on(t.userId),
+  ],
 );
 
 export const accounts = sqliteTable(
@@ -184,7 +202,7 @@ export const accounts = sqliteTable(
     requisitionId: integer("requisition_id")
       .notNull()
       .references(() => requisitions.id, { onDelete: "cascade" }),
-    gocardlessAccountId: encryptedText("gocardless_account_id").notNull(),
+    providerAccountId: encryptedText("gocardless_account_id").notNull(),
     ibanLast4: text("iban_last4"),
     name: text("name").notNull(),
     ownerName: text("owner_name"),
@@ -206,8 +224,49 @@ export const accounts = sqliteTable(
     isManual: integer("is_manual", { mode: "boolean" }).notNull().default(false),
     lastSyncedAt: integer("last_synced_at", { mode: "timestamp_ms" }),
     createdAt: timestamp("created_at"),
+    /**
+     * `blindIndex(IBAN or sort code + number, dataKey, "account-number")`:
+     * recognises the same bank account when it is linked again under a new
+     * consent, without storing the number. NULL for accounts linked before
+     * this column existed; those are matched by asking the user.
+     */
+    ibanHash: text("iban_hash"),
+    /**
+     * Set when a re-link adopted this account: rows booked on or before this
+     * instant were stored under the previous consent, whose transaction ids
+     * may differ from the new one's. The pipeline matches such rows by
+     * (booking date, amount) instead of by id, so the overlap is not doubled.
+     */
+    relinkedThrough: integer("relinked_through", { mode: "timestamp_ms" }),
   },
-  (t) => [index("accounts_requisition_idx").on(t.requisitionId)],
+  (t) => [
+    index("accounts_requisition_idx").on(t.requisitionId),
+    index("accounts_user_idx").on(t.userId),
+  ],
+);
+
+/**
+ * A bank account from a new consent that might be one the user already has
+ * (same bank, but nothing proves it is the same account). It waits here,
+ * neither linked nor synced, until the user says "continue account X" or
+ * "it's a new account". See `src/lib/accounts/link.ts`.
+ */
+export const accountLinkChoices = sqliteTable(
+  "account_link_choices",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The new consent the account arrived with. */
+    requisitionId: integer("requisition_id")
+      .notNull()
+      .references(() => requisitions.id, { onDelete: "cascade" }),
+    /** Encrypted JSON of the provider account (`LinkedAccount` in link.ts). */
+    payload: encryptedText("payload").notNull(),
+    createdAt: timestamp("created_at"),
+  },
+  (t) => [index("account_link_choices_user_idx").on(t.userId)],
 );
 
 /**
@@ -285,19 +344,57 @@ export const budgets = sqliteTable(
  * One row per CSV/XLS file the user imports. Lets users see what they uploaded
  * and delete a specific batch if they imported something wrong.
  */
-export const importBatches = sqliteTable("import_batches", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  /** Owner of the import. Scopes the import-history list per user. */
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  /** Original filename, or null when data was pasted directly. */
-  filename: text("filename"),
-  rowsParsed: integer("rows_parsed").notNull().default(0),
-  rowsInserted: integer("rows_inserted").notNull().default(0),
-  rowsDuplicate: integer("rows_duplicate").notNull().default(0),
-  createdAt: timestamp("created_at"),
-});
+export const importBatches = sqliteTable(
+  "import_batches",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** Owner of the import. Scopes the import-history list per user. */
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Original filename, or null when data was pasted directly. */
+    filename: text("filename"),
+    rowsParsed: integer("rows_parsed").notNull().default(0),
+    rowsInserted: integer("rows_inserted").notNull().default(0),
+    rowsDuplicate: integer("rows_duplicate").notNull().default(0),
+    createdAt: timestamp("created_at"),
+    /**
+     * "running" from creation until the ingest finalizes, then "complete". A
+     * batch still "running" well after it started was interrupted: its rows are
+     * whole and categorized, it can be undone, and re-importing the same file
+     * adds only the missing rows. Rows from before this column read "complete".
+     */
+    status: text("status", { enum: ["running", "complete"] })
+      .notNull()
+      .default("complete"),
+  },
+  (t) => [index("import_batches_user_created_idx").on(t.userId, t.createdAt)],
+);
+
+/**
+ * CSV column mappings the LLM worked out, remembered per user by the file's
+ * header row: the next export from the same bank is parsed with the stored
+ * mapping, without a model call. `spec` is the mapping as JSON (column
+ * indices, formats and the model's one-line note — no row data).
+ */
+export const importMappings = sqliteTable(
+  "import_mappings",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** sha256 of the normalized header row (see `headerKey`). */
+    headerHash: text("header_hash").notNull(),
+    spec: text("spec").notNull(),
+    /** "provider · model" that inferred the mapping, for display. */
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    createdAt: timestamp("created_at"),
+    updatedAt: timestamp("updated_at"),
+  },
+  (t) => [uniqueIndex("import_mappings_user_header_uniq").on(t.userId, t.headerHash)],
+);
 
 export const transactions = sqliteTable(
   "transactions",
@@ -312,7 +409,13 @@ export const transactions = sqliteTable(
     accountId: integer("account_id")
       .notNull()
       .references(() => accounts.id, { onDelete: "cascade" }),
-    gocardlessTransactionId: text("gocardless_transaction_id").notNull().unique(),
+    /**
+     * The transaction's identity within its account: the provider's id for
+     * bank rows, a content hash (+ occurrence ordinal) for imports. Unique per
+     * ACCOUNT, not globally — see `transactions_account_external_uniq`. A
+     * global constraint made one user's import collide with another's.
+     */
+    externalId: text("gocardless_transaction_id").notNull(),
     /** Which import batch this came from. Null for bank-synced transactions. */
     importBatchId: integer("import_batch_id").references(() => importBatches.id, {
       onDelete: "set null",
@@ -326,6 +429,14 @@ export const transactions = sqliteTable(
     categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
     subcategory: text("subcategory"),
     confidence: integer("confidence", { mode: "number" }),
+    /**
+     * How the category was set: a rule (built-in, learned or AI-learned), a
+     * well-known-merchant keyword, the LLM, or the user's own pick ("user" is
+     * never overwritten by an automatic pass). NULL when uncategorized, or for
+     * rows categorized before this column whose confidence carried no marker.
+     * Replaces reading provenance from sentinel confidences (100 / 95 / 1).
+     */
+    categorySource: text("category_source", { enum: ["rule", "keyword", "llm", "user"] }),
     isRecurring: integer("is_recurring", { mode: "boolean" }).notNull().default(false),
     needsReview: integer("needs_review", { mode: "boolean" }).notNull().default(false),
     notes: text("notes"),
@@ -349,11 +460,13 @@ export const transactions = sqliteTable(
     updatedAt: timestamp("updated_at"),
   },
   (t) => [
+    uniqueIndex("transactions_account_external_uniq").on(t.accountId, t.externalId),
     index("transactions_account_date_idx").on(t.accountId, t.bookingDate),
     index("transactions_category_idx").on(t.categoryId),
     index("transactions_needs_review_idx").on(t.needsReview),
     index("transactions_user_date_idx").on(t.userId, t.bookingDate),
     index("transactions_transfer_group_idx").on(t.transferGroupId),
+    index("transactions_user_review_idx").on(t.userId, t.needsReview),
   ],
 );
 
@@ -369,7 +482,8 @@ export const categoryRules = sqliteTable(
      * wins over a generic guess. See `src/lib/categorize/rules.ts`.
      */
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
-    createdBy: text("created_by", { enum: ["system", "user"] })
+    /** "ai": learned from a confident LLM answer, so the merchant skips the LLM next time. */
+    createdBy: text("created_by", { enum: ["system", "user", "ai"] })
       .notNull()
       .default("system"),
     matchPattern: text("match_pattern").notNull(),
@@ -388,19 +502,40 @@ export const categoryRules = sqliteTable(
   ],
 );
 
-export const recurringSubscriptions = sqliteTable("recurring_subscriptions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  merchantName: text("merchant_name").notNull(),
-  averageAmountCents: integer("average_amount_cents", { mode: "number" }).notNull(),
-  frequencyDays: integer("frequency_days").notNull(),
-  lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
-  categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
-  createdAt: timestamp("created_at"),
-});
+export const recurringSubscriptions = sqliteTable(
+  "recurring_subscriptions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    merchantName: text("merchant_name").notNull(),
+    averageAmountCents: integer("average_amount_cents", { mode: "number" }).notNull(),
+    frequencyDays: integer("frequency_days").notNull(),
+    lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
+    categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
+    /**
+     * Effective state the app reads: `user_status` when the user set one,
+     * otherwise what detection concluded.
+     */
+    isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    createdAt: timestamp("created_at"),
+    /**
+     * The detector's grouping key — direction + normalized merchant
+     * (`-netflix`, `+acme payroll`). Identifies the series across detection
+     * runs, so a re-run updates the row (same id) instead of replacing it.
+     * NULL only for rows from before this column, until the next run.
+     */
+    seriesKey: text("series_key"),
+    /**
+     * What the user said with the pause/resume toggle ("active" | "inactive");
+     * NULL when they never touched it. Detection never writes it, and never
+     * deletes a row that has it.
+     */
+    userStatus: text("user_status", { enum: ["active", "inactive"] }),
+  },
+  (t) => [uniqueIndex("recurring_subscriptions_user_series_uniq").on(t.userId, t.seriesKey)],
+);
 
 /**
  * Persisted city label for a detected travel ("trip").
@@ -466,23 +601,27 @@ export const cityCountries = sqliteTable("city_countries", {
  * themselves (or from the advisor suggestion). No auto-link to accounts yet;
  * that can be wired in a later phase.
  */
-export const goals = sqliteTable("goals", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  emoji: text("emoji").notNull().default("🎯"),
-  targetCents: integer("target_cents", { mode: "number" }).notNull(),
-  savedCents: integer("saved_cents", { mode: "number" }).notNull().default(0),
-  /** Optional soft deadline shown as a countdown. */
-  deadline: integer("deadline", { mode: "timestamp_ms" }),
-  /** Optional link to a category — e.g. "reduce Dining spend toward this goal". */
-  categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
-  notes: text("notes"),
-  createdAt: timestamp("created_at"),
-  updatedAt: timestamp("updated_at"),
-});
+export const goals = sqliteTable(
+  "goals",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    emoji: text("emoji").notNull().default("🎯"),
+    targetCents: integer("target_cents", { mode: "number" }).notNull(),
+    savedCents: integer("saved_cents", { mode: "number" }).notNull().default(0),
+    /** Optional soft deadline shown as a countdown. */
+    deadline: integer("deadline", { mode: "timestamp_ms" }),
+    /** Optional link to a category — e.g. "reduce Dining spend toward this goal". */
+    categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at"),
+    updatedAt: timestamp("updated_at"),
+  },
+  (t) => [index("goals_user_idx").on(t.userId)],
+);
 
 /**
  * Persisted insights generated by the rule engine (Phase 7h).
@@ -530,6 +669,26 @@ export const insights = sqliteTable(
     index("insights_dismissed_idx").on(t.dismissedAt),
     index("insights_user_idx").on(t.userId),
   ],
+);
+
+/**
+ * Insights the user dismissed, by the key each rule computes (for example
+ * `overspend:<categoryId>:<YYYY-MM>`). Insights themselves are not stored:
+ * they are computed on read, minus the keys dismissed in the last 30 days.
+ * A key that changes (a new month, a new price) is a new insight and shows.
+ * The `insights` table above is no longer written.
+ */
+export const insightDismissals = sqliteTable(
+  "insight_dismissals",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    insightKey: text("insight_key").notNull(),
+    dismissedAt: timestamp("dismissed_at"),
+  },
+  (t) => [uniqueIndex("insight_dismissals_user_key_uniq").on(t.userId, t.insightKey)],
 );
 
 /**
@@ -588,16 +747,20 @@ export type NewBudget = typeof budgets.$inferInsert;
 export type Goal = typeof goals.$inferSelect;
 export type NewGoal = typeof goals.$inferInsert;
 
-export const advisorConversations = sqliteTable("advisor_conversations", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  title: text("title").notNull().default(""),
-  summary: text("summary").notNull().default(""),
-  createdAt: timestamp("created_at"),
-  updatedAt: timestamp("updated_at"),
-});
+export const advisorConversations = sqliteTable(
+  "advisor_conversations",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull().default(""),
+    summary: text("summary").notNull().default(""),
+    createdAt: timestamp("created_at"),
+    updatedAt: timestamp("updated_at"),
+  },
+  (t) => [index("advisor_conversations_user_updated_idx").on(t.userId, t.updatedAt)],
+);
 
 export const advisorMessages = sqliteTable(
   "advisor_messages",

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
-import { providerInfo } from "@/lib/llm/provider";
+import { resolveProvider } from "@/lib/llm/provider";
 import { deleteConversation as dbDeleteConversation } from "./conversations";
 
 export interface ActionResult {
@@ -67,7 +67,7 @@ export async function getAdvisorProviderStateAction(): Promise<ProviderState> {
     u = await db.query.users.findFirst({ where: eq(users.id, session.userId) });
   }
   const prefs = u ? { provider: u.llmProvider, model: u.llmModel } : undefined;
-  const info = providerInfo(prefs);
+  const info = resolveProvider(prefs);
   const consentNeeded = !info.isLocal && !!session && !u?.cloudLlmConsentAt;
   return {
     provider: info.provider,

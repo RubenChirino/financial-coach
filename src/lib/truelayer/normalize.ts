@@ -20,6 +20,8 @@ export function decimalToCents(amount: number | string): number {
 
 export interface NormalizedTrueLayerTransaction {
   externalId: string;
+  /** True when TrueLayer sent no transaction id and `externalId` is a content hash. */
+  externalIdDerived: boolean;
   bookingDate: Date;
   valueDate: Date | null;
   amountCents: number;
@@ -51,16 +53,16 @@ export function normalizeTrueLayerTransaction(
     (tx.description ?? "").trim() || tx.transaction_category || "(no description)";
   const merchantName = tx.merchant_name?.trim() || null;
 
+  const providerId =
+    tx.transaction_id || tx.normalised_provider_transaction_id || tx.provider_transaction_id;
   const externalId =
-    tx.transaction_id ||
-    tx.normalised_provider_transaction_id ||
-    tx.provider_transaction_id ||
-    `${accountHint}:${tx.timestamp}:${tx.amount}:${rawDescription.slice(0, 32)}`;
+    providerId || `${accountHint}:${tx.timestamp}:${tx.amount}:${rawDescription.slice(0, 32)}`;
 
   const bookingDate = new Date(tx.timestamp);
 
   return {
     externalId: `tl_${externalId}`,
+    externalIdDerived: !providerId,
     bookingDate,
     valueDate: null,
     amountCents,

@@ -10,6 +10,7 @@ import {
   requisitions,
   transactions,
 } from "@/db/schema";
+import { monthRange } from "@/lib/dates";
 
 export interface MonthSummary {
   month: string;
@@ -39,23 +40,22 @@ export interface AccountsTotal {
 }
 
 /**
- * Return {year, month} for the month offset from today (0 = current, -1 = prev).
- * Offsets use UTC to avoid off-by-one issues around DST.
+ * Income/expense totals per calendar month (UTC), for the months at offsets
+ * `from`..`to` (0 = current, -1 = previous), oldest first, zero-filled — in
+ * ONE grouped query, however many months. Internal transfers are excluded:
+ * they are neither income nor expense.
  */
-function monthRange(offset = 0): { start: Date; end: Date; label: string } {
-  const now = new Date();
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth() + offset;
-  const start = new Date(Date.UTC(y, m, 1));
-  const end = new Date(Date.UTC(y, m + 1, 1));
-  const label = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, "0")}`;
-  return { start, end, label };
-}
-
-export async function getMonthSummary(userId: number, offset = 0): Promise<MonthSummary> {
-  const { start, end, label } = monthRange(offset);
-  const result = await db
+export async function getMonthSummaries(
+  userId: number,
+  from: number,
+  to = from,
+): Promise<MonthSummary[]> {
+  const first = monthRange(from);
+  const last = monthRange(to);
+  const month = sql<string>`strftime('%Y-%m', ${transactions.bookingDate} / 1000, 'unixepoch')`;
+  const rows = await db
     .select({
+      month,
       income: sql<number>`coalesce(sum(case when ${transactions.amountCents} > 0 then ${transactions.amountCents} else 0 end), 0)`,
       expense: sql<number>`coalesce(sum(case when ${transactions.amountCents} < 0 then ${transactions.amountCents} else 0 end), 0)`,
       count: sql<number>`count(*)`,
@@ -65,22 +65,36 @@ export async function getMonthSummary(userId: number, offset = 0): Promise<Month
     .where(
       and(
         eq(transactions.userId, userId),
-        gte(transactions.bookingDate, start),
-        lt(transactions.bookingDate, end),
-        // Exclude internal transfers — they're not income or expense.
+        gte(transactions.bookingDate, first.start),
+        lt(transactions.bookingDate, last.end),
         isNull(transactions.transferGroupId),
       ),
-    );
+    )
+    .groupBy(month);
+  const byMonth = new Map(rows.map((r) => [r.month, r]));
 
-  const r = result[0] ?? { income: 0, expense: 0, count: 0, currency: null };
-  return {
-    month: label,
-    incomeCents: Number(r.income) || 0,
-    expenseCents: Number(r.expense) || 0,
-    netCents: (Number(r.income) || 0) + (Number(r.expense) || 0),
-    txCount: Number(r.count) || 0,
-    currency: r.currency ?? "EUR",
-  };
+  const out: MonthSummary[] = [];
+  for (let offset = from; offset <= to; offset++) {
+    const { label } = monthRange(offset);
+    const r = byMonth.get(label);
+    const income = Number(r?.income) || 0;
+    const expense = Number(r?.expense) || 0;
+    out.push({
+      month: label,
+      incomeCents: income,
+      expenseCents: expense,
+      netCents: income + expense,
+      txCount: Number(r?.count) || 0,
+      currency: r?.currency ?? "EUR",
+    });
+  }
+  return out;
+}
+
+export async function getMonthSummary(userId: number, offset = 0): Promise<MonthSummary> {
+  const [summary] = await getMonthSummaries(userId, offset);
+  if (!summary) throw new Error("unreachable: one month requested");
+  return summary;
 }
 
 export async function getTopCategoriesThisMonth(
@@ -136,6 +150,62 @@ export async function getTopCategoriesThisMonth(
 }
 
 /**
+ * The top `limit` spending categories of each month at offsets `from`..`to`,
+ * keyed by "YYYY-MM" — one grouped query instead of one per month. Same rules
+ * as `getTopCategoriesThisMonth` (expenses only, transfers excluded).
+ */
+export async function getTopCategoriesByMonth(
+  userId: number,
+  from: number,
+  to: number,
+  limit = 6,
+): Promise<Map<string, CategoryBreakdown[]>> {
+  const month = sql<string>`strftime('%Y-%m', ${transactions.bookingDate} / 1000, 'unixepoch')`;
+  const spent = sql<number>`coalesce(sum(-${transactions.amountCents}), 0)`;
+  const rows = await db
+    .select({
+      month,
+      categoryId: categories.id,
+      slug: categories.slug,
+      nameEs: categories.nameEs,
+      nameEn: categories.nameEn,
+      icon: categories.icon,
+      color: categories.color,
+      budgetMonthlyCents: budgets.monthlyCents,
+      spentCents: spent,
+      txCount: sql<number>`count(${transactions.id})`,
+    })
+    .from(transactions)
+    .innerJoin(categories, eq(categories.id, transactions.categoryId))
+    .leftJoin(budgets, and(eq(budgets.categoryId, categories.id), eq(budgets.userId, userId)))
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        gte(transactions.bookingDate, monthRange(from).start),
+        lt(transactions.bookingDate, monthRange(to).end),
+        lt(transactions.amountCents, 0),
+        isNull(transactions.transferGroupId),
+      ),
+    )
+    .groupBy(month, categories.id)
+    .orderBy(month, desc(spent), categories.id);
+
+  const out = new Map<string, CategoryBreakdown[]>();
+  for (let offset = from; offset <= to; offset++) out.set(monthRange(offset).label, []);
+  for (const { month: m, ...r } of rows) {
+    const list = out.get(m);
+    if (!list || list.length >= limit) continue;
+    list.push({
+      ...r,
+      spentCents: Number(r.spentCents) || 0,
+      budgetMonthlyCents: r.budgetMonthlyCents ?? null,
+      txCount: Number(r.txCount) || 0,
+    });
+  }
+  return out;
+}
+
+/**
  * SQL fragment that hides accounts which carry no balance AND no transactions —
  * a freshly-created shell with nothing in it. This is what filters the empty
  * "Imported Transactions" fallback out of the UI once the user has imported
@@ -173,45 +243,22 @@ export interface MonthFlowPoint {
   netCents: number;
 }
 
-/**
- * Last N months (most recent last). Caller passes a locale so the short label
- * ("Apr" / "abr") is ready to render without a client-side `Intl` pass.
- */
-export async function getMonthlyFlowHistory(
-  userId: number,
-  months = 6,
-  locale: "es" | "en" = "es",
-): Promise<MonthFlowPoint[]> {
-  const intl = locale === "es" ? "es-ES" : "en-US";
-  const fmt = new Intl.DateTimeFormat(intl, { month: "short" });
-  const out: MonthFlowPoint[] = [];
-  for (let i = months - 1; i >= 0; i--) {
-    const { start, end, label } = monthRange(-i);
-    const r = await db
-      .select({
-        income: sql<number>`coalesce(sum(case when ${transactions.amountCents} > 0 then ${transactions.amountCents} else 0 end), 0)`,
-        expense: sql<number>`coalesce(sum(case when ${transactions.amountCents} < 0 then ${transactions.amountCents} else 0 end), 0)`,
-      })
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.userId, userId),
-          gte(transactions.bookingDate, start),
-          lt(transactions.bookingDate, end),
-          isNull(transactions.transferGroupId),
-        ),
-      );
-    const income = Number(r[0]?.income) || 0;
-    const expense = Math.abs(Number(r[0]?.expense) || 0);
-    out.push({
-      month: label,
-      shortLabel: fmt.format(start).replace(".", ""),
-      incomeCents: income,
+/** The flow chart's points from month summaries (oldest first). */
+export function toFlow(summaries: readonly MonthSummary[], locale: "es" | "en"): MonthFlowPoint[] {
+  const fmt = new Intl.DateTimeFormat(locale === "es" ? "es-ES" : "en-US", {
+    month: "short",
+    timeZone: "UTC",
+  });
+  return summaries.map((m) => {
+    const expense = Math.abs(m.expenseCents);
+    return {
+      month: m.month,
+      shortLabel: fmt.format(new Date(`${m.month}-01T00:00:00Z`)).replace(".", ""),
+      incomeCents: m.incomeCents,
       expenseCents: expense,
-      netCents: income - expense,
-    });
-  }
-  return out;
+      netCents: m.incomeCents - expense,
+    };
+  });
 }
 
 export interface AccountTile {

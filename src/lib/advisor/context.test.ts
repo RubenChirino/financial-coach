@@ -21,14 +21,14 @@ async function seed() {
 
   const inst = await fixture.db
     .insert(institutions)
-    .values({ gocardlessId: "INST-1", name: "Bank", logoUrl: null, country: "ES" })
+    .values({ providerInstitutionId: "INST-1", name: "Bank", logoUrl: null, country: "ES" })
     .returning({ id: institutions.id });
   const req = await fixture.db
     .insert(requisitions)
     .values({
       userId,
       institutionId: inst[0]!.id,
-      gocardlessRequisitionId: "ENC",
+      providerRequisitionId: "ENC",
       status: "linked",
       reference: "ref",
       link: null,
@@ -39,7 +39,7 @@ async function seed() {
     .values({
       userId,
       requisitionId: req[0]!.id,
-      gocardlessAccountId: "ENC",
+      providerAccountId: "ENC",
       ibanLast4: "1234",
       name: "Checking",
       ownerName: null,
@@ -88,7 +88,7 @@ async function seed() {
     {
       userId,
       accountId: acc[0]!.id,
-      gocardlessTransactionId: "tx-income",
+      externalId: "tx-income",
       bookingDate: thisMonth(1),
       amountCents: 250_000,
       currency: "EUR",
@@ -101,7 +101,7 @@ async function seed() {
     {
       userId,
       accountId: acc[0]!.id,
-      gocardlessTransactionId: "tx-g1",
+      externalId: "tx-g1",
       bookingDate: thisMonth(5),
       amountCents: -12_000, // 120 EUR
       currency: "EUR",
@@ -113,7 +113,7 @@ async function seed() {
     {
       userId,
       accountId: acc[0]!.id,
-      gocardlessTransactionId: "tx-g2",
+      externalId: "tx-g2",
       bookingDate: thisMonth(10),
       amountCents: -8_000, // 80 EUR
       currency: "EUR",
@@ -125,7 +125,7 @@ async function seed() {
     {
       userId,
       accountId: acc[0]!.id,
-      gocardlessTransactionId: "tx-r1",
+      externalId: "tx-r1",
       bookingDate: thisMonth(12),
       amountCents: -4_500, // 45 EUR
       currency: "EUR",
@@ -205,8 +205,15 @@ describe("buildAdvisorContext", () => {
     );
     // No per-transaction identifiers or raw IBAN patterns anywhere.
     const blob = JSON.stringify(ctx);
-    expect(blob).not.toMatch(/gocardlessTransactionId/);
+    expect(blob).not.toMatch(/externalId/);
     // A raw IBAN-shaped string would be 2 letters + digits — must not survive redaction.
     expect(blob).not.toMatch(/\bES\d{20,}\b/);
+  });
+});
+
+describe("snapshot date", () => {
+  it("dates the snapshot by day, so the system prompt is stable across turns", async () => {
+    const ctx = await buildAdvisorContext({ userId });
+    expect(ctx.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

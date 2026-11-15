@@ -1,9 +1,17 @@
 import "server-only";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { accounts, institutions, requisitions, transactions } from "@/db/schema";
+import { accounts, requisitions } from "@/db/schema";
+import { type LinkResult, linkProviderAccounts, normalizeAccountNumber } from "@/lib/accounts/link";
 import { decrypt, encrypt } from "@/lib/crypto";
+import { upsertInstitution } from "@/lib/ingest/institutions";
+import {
+  type AccountIngest,
+  type IngestRow,
+  ingestTransactions,
+  syncWindowStart,
+} from "@/lib/ingest/pipeline";
 import type { TrueLayerClient, TrueLayerConnectionTokens } from "./client";
 import { decimalToCents, normalizeTrueLayerTransaction } from "./normalize";
 import type { TrueLayerAccount } from "./types";
@@ -32,33 +40,12 @@ export async function upsertTrueLayerInstitution(opts: {
   logoUrl: string | null;
   country: string;
 }): Promise<number> {
-  const externalId = `tl_${opts.providerId}`;
-  const existing = await db
-    .select({ id: institutions.id })
-    .from(institutions)
-    .where(eq(institutions.gocardlessId, externalId))
-    .limit(1);
-
-  if (existing[0]) {
-    await db
-      .update(institutions)
-      .set({ name: opts.displayName, logoUrl: opts.logoUrl, country: opts.country })
-      .where(eq(institutions.id, existing[0].id));
-    return existing[0].id;
-  }
-
-  const inserted = await db
-    .insert(institutions)
-    .values({
-      gocardlessId: externalId,
-      name: opts.displayName,
-      logoUrl: opts.logoUrl,
-      country: opts.country,
-    })
-    .returning({ id: institutions.id });
-  const id = inserted[0]?.id;
-  if (!id) throw new Error("failed to insert institution");
-  return id;
+  return upsertInstitution({
+    providerInstitutionId: `tl_${opts.providerId}`,
+    name: opts.displayName,
+    logoUrl: opts.logoUrl,
+    country: opts.country,
+  });
 }
 
 /**
@@ -85,7 +72,7 @@ export async function createTrueLayerPendingConnection(opts: {
       userId: opts.userId,
       institutionId: opts.placeholderInstitutionId,
       provider: "truelayer",
-      gocardlessRequisitionId: placeholder,
+      providerRequisitionId: placeholder,
       status: "created",
       reference: opts.reference,
       link: null,
@@ -98,8 +85,9 @@ export async function createTrueLayerPendingConnection(opts: {
 
 /**
  * After the OAuth callback produces an authorization code, exchange it for
- * tokens, resolve the real provider, persist accounts + balances, and flip
- * the requisition to "linked".
+ * tokens, resolve the real provider, flip the requisition to "linked", and
+ * link its accounts through `linkProviderAccounts` (new, continued, or a
+ * question for the user).
  */
 export async function finalizeTrueLayerConnection(
   client: TrueLayerClient,
@@ -110,7 +98,7 @@ export async function finalizeTrueLayerConnection(
     redirectUri: string;
     encryptionKey: Buffer;
   },
-): Promise<{ accountRowIds: number[] }> {
+): Promise<LinkResult> {
   const tokenRes = await client.exchangeCode(opts.code, opts.redirectUri);
   if (!tokenRes.refresh_token) {
     throw new Error(
@@ -130,9 +118,9 @@ export async function finalizeTrueLayerConnection(
     // it as an incomplete connection.
     await db
       .update(requisitions)
-      .set({ gocardlessRequisitionId: encrypt(serializeTokens(tokens), opts.encryptionKey) })
+      .set({ providerRequisitionId: encrypt(serializeTokens(tokens), opts.encryptionKey) })
       .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
-    return { accountRowIds: [] };
+    return { accountIds: [], created: 0, adopted: 0, pendingChoices: 0 };
   }
 
   // Resolve the institution from the first account's provider (TrueLayer
@@ -151,36 +139,35 @@ export async function finalizeTrueLayerConnection(
     .set({
       institutionId: institutionRowId,
       status: "linked",
-      gocardlessRequisitionId: encrypt(serializeTokens(tokens), opts.encryptionKey),
+      providerRequisitionId: encrypt(serializeTokens(tokens), opts.encryptionKey),
     })
     .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
 
-  const rowIds: number[] = [];
-  for (const acc of tlAccounts) {
-    const balance = await client.getBalance(tokens.accessToken, acc.account_id).catch(() => null);
-    const balanceCents = balance ? decimalToCents(balance.current) : 0;
-    const ibanLast4 = acc.account_number?.iban
-      ? acc.account_number.iban.replace(/\s/g, "").slice(-4)
-      : (acc.account_number?.number?.slice(-4) ?? null);
-
-    const encryptedAccId = encrypt(acc.account_id, opts.encryptionKey);
-    const inserted = await db
-      .insert(accounts)
-      .values({
-        userId: opts.userId,
-        requisitionId: opts.requisitionRowId,
-        gocardlessAccountId: encryptedAccId,
-        ibanLast4,
+  const byId = new Map(tlAccounts.map((acc) => [acc.account_id, acc]));
+  return linkProviderAccounts({
+    userId: opts.userId,
+    requisitionId: opts.requisitionRowId,
+    encryptionKey: opts.encryptionKey,
+    providerAccountIds: tlAccounts.map((acc) => acc.account_id),
+    describe: async (accountId) => {
+      const acc = byId.get(accountId);
+      if (!acc) throw new Error("unknown TrueLayer account");
+      const balance = await client.getBalance(tokens.accessToken, acc.account_id).catch(() => null);
+      const n = acc.account_number;
+      const iban = normalizeAccountNumber(n?.iban);
+      const accountNumber =
+        iban ?? (n?.sort_code && n.number ? normalizeAccountNumber(n.sort_code + n.number) : null);
+      return {
+        providerAccountId: acc.account_id,
+        accountNumber,
+        ibanLast4: iban ? iban.slice(-4) : (n?.number?.slice(-4) ?? null),
         name: acc.display_name || acc.account_type || "Account",
-        balanceCents,
+        ownerName: null,
+        balanceCents: balance ? decimalToCents(balance.current) : 0,
         currency: acc.currency || "GBP",
-      })
-      .returning({ id: accounts.id });
-    const id = inserted[0]?.id;
-    if (id) rowIds.push(id);
-  }
-
-  return { accountRowIds: rowIds };
+      };
+    },
+  });
 }
 
 /**
@@ -192,7 +179,7 @@ export async function getValidAccessToken(
   opts: { userId: number; requisitionRowId: number; encryptionKey: Buffer },
 ): Promise<string> {
   const row = await db
-    .select({ blob: requisitions.gocardlessRequisitionId })
+    .select({ blob: requisitions.providerRequisitionId })
     .from(requisitions)
     .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)))
     .limit(1);
@@ -213,88 +200,98 @@ export async function getValidAccessToken(
   };
   await db
     .update(requisitions)
-    .set({ gocardlessRequisitionId: encrypt(serializeTokens(next), opts.encryptionKey) })
+    .set({ providerRequisitionId: encrypt(serializeTokens(next), opts.encryptionKey) })
     .where(and(eq(requisitions.userId, opts.userId), eq(requisitions.id, opts.requisitionRowId)));
   return next.accessToken;
+}
+
+/** Fetch and normalize one account's transactions since `since`. */
+export async function fetchTrueLayerAccount(
+  client: TrueLayerClient,
+  opts: { tlAccountId: string; accessToken: string; since: Date },
+): Promise<IngestRow[]> {
+  const from = opts.since.toISOString().slice(0, 10);
+  const txs = await client.getTransactions(opts.accessToken, opts.tlAccountId, { from });
+  return txs
+    .map((t) => normalizeTrueLayerTransaction(t, opts.tlAccountId))
+    .filter((t): t is NonNullable<typeof t> => t !== null);
 }
 
 export interface TrueLayerSyncResult {
   inserted: number;
   skipped: number;
-  insertedIds: number[];
+  accounts: number;
+  /** Accounts whose fetch failed; their cursor did not move. */
+  failed: number;
+  ruleMatched: number;
 }
 
-/** Pull recent transactions for one TrueLayer account and upsert them. */
-export async function syncTrueLayerAccountTransactions(
+/**
+ * Sync every linked TrueLayer account of the user: one access token per
+ * connection, each account fetched from its own cursor, then one pipeline
+ * run for all of them. A failed account keeps its `last_synced_at`.
+ */
+export async function syncTrueLayerAccounts(
   client: TrueLayerClient,
-  opts: {
-    userId: number;
-    accountRowId: number;
-    tlAccountId: string;
-    accessToken: string;
-    sinceDays?: number;
-  },
+  opts: { userId: number; encryptionKey: Buffer },
 ): Promise<TrueLayerSyncResult> {
-  const sinceDays = opts.sinceDays ?? 90;
-  const from = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const txs = await client.getTransactions(opts.accessToken, opts.tlAccountId, { from });
-
-  const normalized = txs
-    .map((t) => normalizeTrueLayerTransaction(t, opts.tlAccountId))
-    .filter((t): t is NonNullable<typeof t> => t !== null);
-
-  if (normalized.length === 0) {
-    await db
-      .update(accounts)
-      .set({ lastSyncedAt: new Date() })
-      .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
-    return { inserted: 0, skipped: 0, insertedIds: [] };
-  }
-
-  const existing = await db
-    .select({ id: transactions.gocardlessTransactionId })
-    .from(transactions)
+  const rows = await db
+    .select({
+      accountRowId: accounts.id,
+      cipher: accounts.providerAccountId,
+      lastSyncedAt: accounts.lastSyncedAt,
+      requisitionId: requisitions.id,
+    })
+    .from(accounts)
+    .innerJoin(requisitions, eq(accounts.requisitionId, requisitions.id))
     .where(
       and(
-        eq(transactions.userId, opts.userId),
-        eq(transactions.accountId, opts.accountRowId),
-        inArray(
-          transactions.gocardlessTransactionId,
-          normalized.map((t) => t.externalId),
-        ),
+        eq(requisitions.userId, opts.userId),
+        eq(requisitions.status, "linked"),
+        eq(requisitions.provider, "truelayer"),
       ),
     );
-  const existingIds = new Set(existing.map((r) => r.id));
-  const fresh = normalized.filter((t) => !existingIds.has(t.externalId));
 
-  const insertedIds: number[] = [];
-  if (fresh.length > 0) {
-    const rows = await db
-      .insert(transactions)
-      .values(
-        fresh.map((t) => ({
+  const tokenByRequisition = new Map<number, string>();
+  const parts: AccountIngest[] = [];
+  let failed = 0;
+  for (const r of rows) {
+    try {
+      let accessToken = tokenByRequisition.get(r.requisitionId);
+      if (!accessToken) {
+        accessToken = await getValidAccessToken(client, {
           userId: opts.userId,
-          accountId: opts.accountRowId,
-          gocardlessTransactionId: t.externalId,
-          bookingDate: t.bookingDate,
-          valueDate: t.valueDate,
-          amountCents: t.amountCents,
-          currency: t.currency,
-          merchantName: t.merchantName,
-          rawDescription: t.rawDescription,
-          needsReview: true,
-        })),
-      )
-      .returning({ id: transactions.id });
-    for (const r of rows) insertedIds.push(r.id);
+          requisitionRowId: r.requisitionId,
+          encryptionKey: opts.encryptionKey,
+        });
+        tokenByRequisition.set(r.requisitionId, accessToken);
+      }
+      parts.push({
+        accountId: r.accountRowId,
+        rows: await fetchTrueLayerAccount(client, {
+          tlAccountId: decrypt(r.cipher, opts.encryptionKey),
+          accessToken,
+          since: syncWindowStart(r.lastSyncedAt),
+        }),
+      });
+    } catch (err) {
+      failed++;
+      console.warn("truelayer fetch failed", r.accountRowId, err);
+    }
   }
 
-  await db
-    .update(accounts)
-    .set({ lastSyncedAt: new Date() })
-    .where(and(eq(accounts.userId, opts.userId), eq(accounts.id, opts.accountRowId)));
-
-  return { inserted: fresh.length, skipped: normalized.length - fresh.length, insertedIds };
+  const res = await ingestTransactions({
+    userId: opts.userId,
+    source: "truelayer",
+    accounts: parts,
+  });
+  return {
+    inserted: res.inserted,
+    skipped: res.duplicates,
+    accounts: rows.length,
+    failed,
+    ruleMatched: res.ruleMatched + res.keywordMatched,
+  };
 }
 
 export type { TrueLayerAccount };

@@ -19,14 +19,14 @@ let txSeq = 0;
 async function seedAccount() {
   const inst = await fixture.db
     .insert(institutions)
-    .values({ gocardlessId: "INST", name: "Bank", logoUrl: null, country: "ES" })
+    .values({ providerInstitutionId: "INST", name: "Bank", logoUrl: null, country: "ES" })
     .returning({ id: institutions.id });
   const req = await fixture.db
     .insert(requisitions)
     .values({
       userId: USER,
       institutionId: inst[0]!.id,
-      gocardlessRequisitionId: "ENC",
+      providerRequisitionId: "ENC",
       status: "linked",
       reference: "ref",
       link: null,
@@ -37,7 +37,7 @@ async function seedAccount() {
     .values({
       userId: USER,
       requisitionId: req[0]!.id,
-      gocardlessAccountId: "ENC",
+      providerAccountId: "ENC",
       ibanLast4: "1234",
       name: "Checking",
       ownerName: null,
@@ -59,7 +59,7 @@ async function tx(opts: {
   await fixture.db.insert(transactions).values({
     userId: USER,
     accountId,
-    gocardlessTransactionId: `tx-${txSeq}`,
+    externalId: `tx-${txSeq}`,
     bookingDate: new Date(BASE + opts.dayOffset * DAY),
     amountCents: opts.amountCents,
     currency: opts.currency ?? "EUR",

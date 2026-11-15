@@ -42,16 +42,31 @@ declare global {
   var __libsqlClient: Client | undefined;
 }
 
+/** How long a local write waits for another connection's lock before SQLITE_BUSY. */
+const BUSY_TIMEOUT_MS = 5000;
+
+/**
+ * Connection settings, and why they are set where they are. The local client
+ * keeps a pool of connections (a transaction borrows its own), so a per-
+ * connection PRAGMA run once reaches only one of them:
+ *  - busy timeout: libSQL's `timeout` option, which it applies to every
+ *    pooled connection (a `PRAGMA busy_timeout` left the others at 0);
+ *  - foreign keys: on by default on every libSQL connection;
+ *  - WAL: a property of the database file, so setting it once is enough. It
+ *    is the first request on the client, and the pool serves requests in
+ *    order, so nothing runs before it.
+ */
 function createConnection(): Client {
   ensureDataDir();
   const client = createClient({
     url: DB_URL,
     authToken: process.env.TURSO_AUTH_TOKEN,
+    timeout: BUSY_TIMEOUT_MS,
   });
   if (IS_LOCAL_FILE) {
-    void client.executeMultiple(
-      "PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;",
-    );
+    client.execute("PRAGMA journal_mode = WAL").catch((err) => {
+      console.error("could not enable WAL", err);
+    });
   }
   return client;
 }

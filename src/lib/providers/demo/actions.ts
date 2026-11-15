@@ -2,9 +2,8 @@
 
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { requisitions, transactions } from "@/db/schema";
+import { requisitions } from "@/db/schema";
 import { getCurrentSession } from "@/lib/auth/session";
-import { categorizeBatchByRules } from "@/lib/categorize";
 import { DEMO_BANK_KEYS, type DemoBankKey, seedDemoBank, wipeAllDemoData } from "./seed";
 
 export interface DemoActionOk<T = undefined> {
@@ -26,23 +25,12 @@ export async function seedDemoBankAction(
     if (session.isGuest) return { ok: false, error: "guestReadOnly" };
     if (!DEMO_BANK_KEYS.includes(bank)) return { ok: false, error: "invalidBank" };
 
-    const { accountRowId, inserted } = await seedDemoBank(
+    // Seeded rows arrive through the ingestion pipeline: rows without a
+    // seeded category get rules and keywords, then the shared post-ingest steps.
+    const { inserted, ruleMatched } = await seedDemoBank(
       session.userId,
       bank,
       session.encryptionKey,
-    );
-
-    // Re-categorize anything still missing a category via rules (seed provides
-    // categoryIds for most rows already, but rules may refine).
-    const uncategorized = await db
-      .select({ id: transactions.id })
-      .from(transactions)
-      .where(
-        and(eq(transactions.userId, session.userId), eq(transactions.accountId, accountRowId)),
-      );
-    const ruleMatched = await categorizeBatchByRules(
-      session.userId,
-      uncategorized.map((r) => r.id),
     );
 
     return { ok: true, data: { inserted, ruleMatched } };

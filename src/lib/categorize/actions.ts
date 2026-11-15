@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { getCurrentSession } from "@/lib/auth/session";
 import {
   type BatchResult,
@@ -61,15 +62,22 @@ export interface CategorizeBatchResult extends Partial<BatchResult> {
  * passing back `lastId`, until `hasMore` is false — keeping each request short
  * so the run never blocks or times out.
  */
-export async function categorizeBatchAction(opts: {
-  afterId?: number;
-  limit?: number;
-}): Promise<CategorizeBatchResult> {
+const BatchOpts = z.object({
+  afterId: z.number().int().min(0).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  skipLlm: z.boolean().optional(),
+});
+
+export async function categorizeBatchAction(
+  opts: z.input<typeof BatchOpts>,
+): Promise<CategorizeBatchResult> {
   const session = await getCurrentSession();
   if (!session) return { ok: false, error: "unauthenticated" };
   if (session.isGuest) return { ok: false, error: "guestReadOnly" };
+  const parsed = BatchOpts.safeParse(opts);
+  if (!parsed.success) return { ok: false, error: "invalidInput" };
   try {
-    const res = await categorizePendingBatch({ userId: session.userId, ...opts });
+    const res = await categorizePendingBatch({ userId: session.userId, ...parsed.data });
     if (!res.hasMore) revalidatePath("/transactions");
     return { ok: true, ...res };
   } catch (err) {
