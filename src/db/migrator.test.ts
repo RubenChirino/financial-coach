@@ -64,4 +64,41 @@ describe("applyMigrations", () => {
       splitStatements("A;\n--> statement-breakpoint\n  B;  \n--> statement-breakpoint\n"),
     ).toEqual(["A", "B"]);
   });
+
+  it("migrates legacy insights whose user is gone, with foreign keys enforced as on Turso", async () => {
+    const real = path.resolve(__dirname, "migrations");
+    const journal = JSON.parse(fs.readFileSync(path.join(real, "meta/_journal.json"), "utf8")) as {
+      entries: { idx: number; tag: string; when: number }[];
+    };
+    // The schema as it was before the dismissals backfill (0029).
+    const before = fs.mkdtempSync(path.join(os.tmpdir(), "fc-migrator-"));
+    dirs.push(before);
+    fs.mkdirSync(path.join(before, "meta"));
+    const entries = journal.entries.filter((e) => e.idx < 29);
+    fs.writeFileSync(path.join(before, "meta/_journal.json"), JSON.stringify({ entries }));
+    for (const e of entries)
+      fs.copyFileSync(path.join(real, `${e.tag}.sql`), path.join(before, `${e.tag}.sql`));
+
+    const client = createClient({ url: ":memory:" });
+    await client.execute("PRAGMA foreign_keys = ON");
+    await applyMigrations(client, before);
+
+    // `insights.user_id` has no foreign key: rows survive their user (a purged
+    // guest, 7) and rows from before user scoping keep the default 0.
+    await client.execute("INSERT INTO users (id, encryption_salt) VALUES (1, 's')");
+    const insight = (userId: number, kind: string) =>
+      client.execute({
+        sql: "INSERT INTO insights (user_id, kind, title, body, action_label, action_href, dismissed_at, created_at) VALUES (?, ?, 't', 'b', 'a', '/', 1, 1)",
+        args: [userId, kind],
+      });
+    await insight(1, "needs_review");
+    await insight(7, "needs_review");
+    await insight(0, "needs_review");
+
+    expect(await applyMigrations(client, real)).toContain("0029_insight_dismissals_backfill");
+    const rows = await client.execute("SELECT user_id, insight_key FROM insight_dismissals");
+    expect(rows.rows.map((r) => [Number(r.user_id), String(r.insight_key)])).toEqual([
+      [1, "needs_review"],
+    ]);
+  });
 });

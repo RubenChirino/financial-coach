@@ -2,6 +2,9 @@
 -- `dismissed_at`) over to their keys, so they stay hidden after the upgrade.
 -- `recurring_increase` keys include the latest charge, which the old rows
 -- don't hold; those may show once more. Re-entrant: INSERT OR IGNORE.
+-- `insights.user_id` has no foreign key, so rows outlive their user (purged
+-- guests) or still hold the pre-scoping default 0; `insight_dismissals` does
+-- reference `users`, so only rows whose user exists are carried over.
 INSERT OR IGNORE INTO `insight_dismissals` (`user_id`, `insight_key`, `dismissed_at`)
 SELECT `user_id`, `insight_key`, max(`dismissed_at`)
 FROM (
@@ -17,6 +20,7 @@ FROM (
     END AS `insight_key`
   FROM `insights`
   WHERE `dismissed_at` IS NOT NULL
+    AND `user_id` IN (SELECT `id` FROM `users`)
 )
 WHERE `insight_key` IS NOT NULL
 GROUP BY `user_id`, `insight_key`;
