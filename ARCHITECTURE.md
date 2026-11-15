@@ -169,9 +169,10 @@ UI as exhaustive unions, so adding a status forces every `switch` to be revisite
 > run." But the product is a *web UI* with a rich, fast-moving frontend; React +
 > TypeScript is the path of least resistance there, and Next.js lets the same
 > language and types span client and server. The frontier of LLM tooling (the
-> Vercel AI SDK, provider clients) is also TS-first. Node 24 LTS is pinned via
-> `.nvmrc`; the lower bound is Node 22 (`package.json` `engines`), raised from
-> 20 because the AI SDK v7 requires it.
+> Vercel AI SDK, provider clients) is also TS-first. Node 24 LTS: `.nvmrc`
+> pins the exact release for local work and CI, and `package.json` `engines`
+> is `24.x`, so Vercel builds on the major set in the project settings instead
+> of the newest one (an open range like `>=22` made it pick Node 26).
 
 ### 4.2 Framework — Next.js 16 (App Router) + React 19
 

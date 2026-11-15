@@ -108,7 +108,7 @@ Platform one-click options (after `pnpm install`):
 
 ## System requirements
 
-- Node.js **22 or newer** (`engines` in `package.json`)
+- Node.js **24** (`engines` in `package.json`; `.nvmrc` pins the exact release)
 - pnpm 9+
 - ~500 MB disk for the app and its dependencies
 - RAM:
