@@ -167,6 +167,7 @@ export default async function AdvisorPage({
           content: m.content,
         }))}
         providerState={providerState}
+        isGuest={session.isGuest === true}
         context={context}
         suggestions={suggestions}
         labels={{
@@ -183,6 +184,7 @@ export default async function AdvisorPage({
           consentAccept: t("consentAccept"),
           consentCancel: t("consentCancel"),
           errorRequest: t("errorRequest"),
+          errorGuest: t("errorGuest"),
           contextOn: tChat("contextOn"),
           tryAsking: tChat("tryAsking"),
           encrypted: tChat("encrypted"),

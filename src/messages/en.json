@@ -514,6 +514,7 @@
     "consentAccept": "I understand, continue",
     "consentCancel": "Not now",
     "errorRequest": "Could not reach the AI. Try again.",
+    "errorGuest": "Guest mode is read-only — sign in to chat with the coach.",
     "providerLocal": "Local AI · {model}",
     "providerCloud": "{provider} · {model}",
     "digest": {
