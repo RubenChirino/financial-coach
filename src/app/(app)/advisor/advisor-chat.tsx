@@ -53,6 +53,7 @@ interface Labels {
   consentAccept: string;
   consentCancel: string;
   errorRequest: string;
+  errorGuest: string;
   /** Chat-redesign only — wrapped from advisor.chat.* keys. */
   contextOn: string;
   tryAsking: string;
@@ -68,6 +69,8 @@ interface Props {
   activeConversationId: number | null;
   initialMessages: { id: string; role: "system" | "user" | "assistant"; content: string }[];
   providerState: ProviderState;
+  /** Guests can't chat (the route answers 403 `guestReadOnly`), so they never see the consent dialog. */
+  isGuest: boolean;
   labels: Labels;
   context: ChatContextSnapshot;
   /** Localized "try asking" suggestion strings. */
@@ -82,6 +85,16 @@ export function AdvisorChat(props: Props) {
   const toast = useToast();
   const [conversationId, setConversationId] = useState<number | null>(props.activeConversationId);
   const [showConsent, setShowConsent] = useState(false);
+  const [granting, setGranting] = useState(false);
+  // Set once the grant succeeds, so the next send doesn't reopen the dialog
+  // while `router.refresh()` is still bringing in the new `providerState`.
+  const [consentGranted, setConsentGranted] = useState(false);
+  const consentNeeded = props.providerState.consentNeeded && !consentGranted;
+  // What to send once the user accepts: a question typed before the dialog
+  // opened, or a resend of the user turn the route bounced with 403.
+  const pendingRef = useRef<{ kind: "text"; text: string } | { kind: "resend" } | null>(null);
+  // Error code from the last 403, read by `onError` to pick the message.
+  const lastErrorCodeRef = useRef<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pendingDelete, startDelete] = useTransition();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -101,8 +114,19 @@ export function AdvisorChat(props: Props) {
         body: () => ({ conversationId: conversationIdRef.current }),
         fetch: async (input, init) => {
           const response = await fetch(input as RequestInfo, init);
+          lastErrorCodeRef.current = null;
           if (response.status === 403) {
-            setShowConsent(true);
+            // 403 also covers guests and CSRF rejections; only a missing
+            // consent should open the dialog.
+            const body = (await response
+              .clone()
+              .json()
+              .catch(() => null)) as { error?: string } | null;
+            lastErrorCodeRef.current = body?.error ?? "forbidden";
+            if (body?.error === "cloudConsentRequired") {
+              pendingRef.current = { kind: "resend" };
+              setShowConsent(true);
+            }
             return response;
           }
           const newId = response.headers.get("X-Conversation-Id");
@@ -135,7 +159,10 @@ export function AdvisorChat(props: Props) {
         parts: [{ type: "text" as const, text: m.content }],
       })),
     onError() {
-      setErrorMsg(props.labels.errorRequest);
+      const code = lastErrorCodeRef.current;
+      // The consent dialog is already explaining what happened.
+      if (code === "cloudConsentRequired") return;
+      setErrorMsg(code === "guestReadOnly" ? props.labels.errorGuest : props.labels.errorRequest);
     },
     onFinish() {
       router.refresh();
@@ -156,30 +183,59 @@ export function AdvisorChat(props: Props) {
     e.preventDefault();
     const text = input.trim();
     if (!text) return;
+    setInput("");
+    send(text);
+  }
+
+  function send(text: string) {
     setErrorMsg(null);
-    if (props.providerState.consentNeeded) {
+    if (props.isGuest) {
+      setErrorMsg(props.labels.errorGuest);
+      return;
+    }
+    if (consentNeeded) {
+      pendingRef.current = { kind: "text", text };
       setShowConsent(true);
       return;
     }
-    setInput("");
     chat.sendMessage({ text });
   }
 
-  function sendSuggestion(text: string) {
-    setErrorMsg(null);
-    if (props.providerState.consentNeeded) {
-      setShowConsent(true);
-      return;
-    }
-    chat.sendMessage({ text });
+  function cancelConsent() {
+    const pending = pendingRef.current;
+    pendingRef.current = null;
+    setShowConsent(false);
+    // Give the typed question back instead of dropping it.
+    if (pending?.kind === "text") setInput(pending.text);
   }
 
   async function handleConsent() {
-    const res = await grantCloudLlmConsentAction();
-    if (res.ok) {
-      setShowConsent(false);
-      router.refresh();
+    if (granting) return;
+    setGranting(true);
+    let res: Awaited<ReturnType<typeof grantCloudLlmConsentAction>>;
+    try {
+      res = await grantCloudLlmConsentAction();
+    } catch {
+      res = { ok: false, error: "network" };
+    } finally {
+      setGranting(false);
     }
+    const pending = pendingRef.current;
+    pendingRef.current = null;
+    setShowConsent(false);
+    if (!res.ok) {
+      if (pending?.kind === "text") setInput(pending.text);
+      setErrorMsg(
+        res.error === "guestReadOnly" ? props.labels.errorGuest : props.labels.errorRequest,
+      );
+      return;
+    }
+    setConsentGranted(true);
+    setErrorMsg(null);
+    if (pending?.kind === "text") chat.sendMessage({ text: pending.text });
+    // The bounced user turn is still the last message; resend it as-is.
+    else if (pending?.kind === "resend") chat.regenerate();
+    router.refresh();
   }
 
   async function handleDelete(id: number) {
@@ -240,7 +296,7 @@ export function AdvisorChat(props: Props) {
             <li key={s}>
               <button
                 type="button"
-                onClick={() => sendSuggestion(s)}
+                onClick={() => send(s)}
                 disabled={isStreaming}
                 className="w-full rounded-lg border border-[color:var(--border-default)] px-3 py-2 text-left text-[12.5px] text-[color:var(--text-primary)] transition-colors hover:border-[color:var(--brand-primary-border)] hover:bg-[color:var(--brand-primary-soft)] disabled:opacity-50"
               >
@@ -431,10 +487,12 @@ export function AdvisorChat(props: Props) {
               )}
             </p>
             <div className="mt-6 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowConsent(false)}>
+              <Button variant="ghost" onClick={cancelConsent} disabled={granting}>
                 {props.labels.consentCancel}
               </Button>
-              <Button onClick={handleConsent}>{props.labels.consentAccept}</Button>
+              <Button onClick={handleConsent} disabled={granting} aria-busy={granting}>
+                {props.labels.consentAccept}
+              </Button>
             </div>
           </div>
         </div>

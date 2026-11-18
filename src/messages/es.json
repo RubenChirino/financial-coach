@@ -514,6 +514,7 @@
     "consentAccept": "Entiendo, continuar",
     "consentCancel": "Ahora no",
     "errorRequest": "No se pudo contactar con la IA. Inténtalo de nuevo.",
+    "errorGuest": "El modo invitado es de solo lectura — inicia sesión para hablar con el coach.",
     "providerLocal": "IA local · {model}",
     "providerCloud": "{provider} · {model}",
     "digest": {
