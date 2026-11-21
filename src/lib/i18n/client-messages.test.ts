@@ -1,16 +1,14 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import en from "@/messages/en.json";
 import { CLIENT_MESSAGE_PATHS, pickMessages } from "./client-messages";
 
 function clientFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) return clientFiles(path);
-    if (!/\.tsx?$/.test(name) || /\.test\./.test(name)) return [];
-    return readFileSync(path, "utf8").startsWith('"use client"') ? [path] : [];
-  });
+  return readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile() && /\.tsx?$/.test(e.name) && !/\.test\./.test(e.name))
+    .map((e) => join(e.parentPath, e.name))
+    .filter((path) => readFileSync(path, "utf8").startsWith('"use client"'));
 }
 
 const covered = (ns: string) =>
